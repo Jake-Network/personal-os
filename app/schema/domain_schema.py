@@ -68,6 +68,8 @@ class HoldingCreate(BaseModel):
     avg_cost: Decimal | None = None
     last_price: Decimal | None = None
     price_as_of: datetime | None = None
+    # Not stored on holdings (the schema stays as-is): it only dates this edit in the value history.
+    trade_date: date | None = Field(None, description="Trade date of this quantity / average-cost change")
 
 
 class HoldingItem(_Item, HoldingCreate):

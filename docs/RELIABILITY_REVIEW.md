@@ -19,6 +19,9 @@ commit and, where practical, by a test that fails on the old code. Line referenc
 | 8 | Safety | No Host/Origin validation: DNS rebinding and CSRF on an unauthenticated API | Fixed |
 | 9 | CI | No CI | Added |
 | 10 | Advisor | Non-`AdvisorError` provider failure breaks the SSE stream without an error event | Fixed |
+| 11 | Schema | No safe way to bring a `create_all` database under Alembic | Added (explicit command) |
+| 12 | Finance UI | Value history not visible; holding edits had no trade date | Added |
+| 13 | API client | Duplicate operationIds drop ChatGPT provider functions on client regeneration | Fixed |
 
 ## 1. Privacy leakage through conversation history
 
@@ -246,7 +249,7 @@ anything except the local machine:
 3. Keep the Google and ChatGPT OAuth callbacks on loopback, or register the new redirect URIs and
    accept that they become reachable.
 4. Treat `data/secret.key`, the database and backups as secrets. They decrypt OAuth tokens.
-5. Use PostgreSQL with `alembic upgrade head`, not `create_all`, so that the append-only triggers
+5. Run `python -m app.modules.database.migration_manager --apply` (PostgreSQL recommended) so that the append-only triggers
    exist.
 
 ## 9. CI
@@ -275,14 +278,72 @@ another provider. Paid API billing is selectable only explicitly, as before.
 selection untouched), mid-stream quota exhaustion, a transport timeout and an empty model list. The
 existing quota, failed-turn and disconnect tests still pass.
 
+## 11. Explicit migration of existing databases
+
+**Defect.** The app creates tables with `create_all`, which never records an Alembic revision. The
+documented upgrade path asked the user to verify the schema by hand and then `stamp 0001_baseline`.
+That is wrong for any database created after 0001: the real local database matches 0004, so
+stamping it 0001 would re-run 0002–0004 against tables that already exist.
+
+**Fix.** Startup is unchanged on purpose: it uses the existing database as it is.
+`app/modules/database/migration_manager.py` is a separate command the user runs explicitly. It is
+a read-only plan by default and runs only with `--apply`.
+- It compares the database's tables and columns with the schema of every revision, each built in a
+  temporary SQLite file.
+- Only an exact match is stamped. The append-only triggers that `create_all` never installed are
+  then added, and the remaining migrations run.
+- Without an exact match it lists the differences and changes nothing.
+- SQLite files are copied to `<file>.bak-<UTC timestamp>` first.
+
+**Evidence.** `tests/test_migration_manager.py` (6 tests) covers:
+- a `create_all` database: stamped at head, triggers enforced;
+- a 0001-era database with data: preserved, baseline history created, backup exists;
+- a schema with an extra column: refused, nothing written;
+- versioned and empty databases;
+- dry run;
+- **app startup does not stamp or migrate an existing database**.
+
+A copy of the real local database was also migrated. Its schema matched 0004, so it was stamped
+0004 and upgraded to 0005; its 2 messages were preserved, and the triggers were added. The
+original file's hash was unchanged before and after.
+
+## 12. Value history UI and holding trade date
+
+- **History dialog.** Account and holding rows have a 이력 button that opens the append-only
+  history (`value-history-dialog.tsx`), newest first. It states that differences are edits, not
+  returns.
+- **Trade date.** `HoldingCreate.trade_date` is optional. It dates the history row of that edit
+  and is **not** stored on `holdings`, so the existing schema stays as it is. Without it, the
+  recording date is used.
+- **No-op history rows.** A trade date alone, or an unchanged empty value, no longer creates a
+  history row.
+- **Label.** The `is_liquid` label now says that it only applies to cash-kind accounts.
+
+**Evidence.** `test_trade_date_dates_the_history_row_without_a_schema_change`; lint, typecheck and
+build.
+
+## 13. Duplicate OpenAPI operationIds
+
+**Defect.** `google_oauth_router` reused the handler names `get_status`, `start_login` and
+`disconnect`, which are already the operationIds of the ChatGPT AI Provider router. Regenerating
+the orval client silently removed `getStatus` / `startLogin` / `disconnect` from `ai-provider.ts`,
+which would break Settings → AI Provider.
+
+**Fix.** The Google routes now have explicit, unique operationIds; the frontend calls them by URL,
+so the rename changes nothing at runtime. The client was regenerated: `ai-provider.ts` is
+unchanged, and the previously missing portfolio and Google modules are now generated.
+
+**Evidence.** `test_openapi_operation_ids_are_unique` turns FastAPI's duplicate-id warning into a
+failure.
+
 ## Test evidence
 
 All commands were run in the worktree on WSL2 (Linux 6.18) on 2026-10-18.
 
 | Command | Result |
 |---------|--------|
-| `uv run pytest -q` (SQLite) | 187 passed, 1 skipped (`test_sheets_live`: needs live Google credentials) |
-| `TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest -q` (postgres:17-alpine) | 187 passed, 1 skipped |
+| `uv run pytest -q` (SQLite) | 195 passed, 1 skipped (`test_sheets_live`: needs live Google credentials) |
+| `TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest -q` (postgres:17-alpine) | 195 passed, 1 skipped |
 | `alembic upgrade head && alembic check && alembic downgrade base && alembic upgrade head` (PostgreSQL) | OK, "No new upgrade operations detected" |
 | 0005 on populated PostgreSQL: backfill, UPDATE/DELETE blocked by trigger, downgrade keeps data | OK |
 | `yarn lint` | exit 0 |
@@ -309,19 +370,17 @@ Sheets test (it needs real credentials, which were deliberately not accessed).
   recorded only partly (tracking began mid-month) can still lower the average.
 - **Sheets liquidity is unknown.** Sheets rows have no account kinds, so spendable liquidity and
   runway are unavailable on the Sheets source until the sheet records an account kind.
-- **Holding history dates.** Holding quantity and cost history uses the recording date as `as_of`.
-  A trade date needs a new optional field in the entry form.
-- **`create_all` startup path.** Native development still creates tables with `create_all`, which
-  does not install the append-only triggers. The ORM guard still applies; raw SQL can bypass it.
+- **Triggers until the explicit migration runs.** Startup deliberately leaves the existing database
+  as it is, so a database that has not been through `migration_manager --apply` has no append-only
+  triggers. The ORM guard still applies; raw SQL can bypass it.
 - **Memory proposals.** `memory_manager.decide` keeps a check-then-write pattern. A concurrent
   confirm/reject leaves contradictory audit rows. There is no external side effect, so it is lower
   risk; the same `transition` pattern applies.
-- **Generated client.** The OpenAPI client (`orval`) was not regenerated for the new history
-  endpoint. Nothing in the UI uses it yet.
+- **History UI not exercised in a browser.** The 이력 dialog passed lint, typecheck and the
+  production build, but it has not been clicked through in a running app.
 
 ## Suggested next PR
 
-Make the `alembic upgrade head` path the default at startup, instead of `create_all`, with a
-verified `stamp` for databases created by older versions. Then add a small "변경 이력" view on
-account and holding rows backed by the new history endpoint, and an optional trade date for
-holding edits.
+Apply the same `transition` compare-and-set to memory confirmations. Record an account kind in the
+Google Sheets source so that spendable liquidity and runway work there. Add day-level coverage to
+the expense average for months whose tracking started part-way through.

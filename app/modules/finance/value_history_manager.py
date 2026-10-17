@@ -2,8 +2,8 @@
 
 The manual-entry workflow is unchanged: the user still edits `accounts` and `holdings` directly.
 Each create/update/delete also appends a ManualValueChange row in the same transaction, with an
-explicit as-of date: the account's `balance_as_of`, or for holdings (which carry no quantity date)
-the date the edit was recorded. A record edited for the first time without any history (created
+explicit as-of date: the account's `balance_as_of`, or for holdings the trade date entered with the
+edit (`trade_date`, kept only in the history) and otherwise the date the edit was recorded. A record edited for the first time without any history (created
 before this table existed) first gets a `baseline` row holding the value being replaced.
 """
 
@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 from app.modules.crud.finance_handler import manual_value_change_handler
 from app.modules.database.model import ManualValueChange
 
-# resource name -> (table name, tracked fields)
-TRACKED: dict[str, tuple[str, tuple[str, ...]]] = {
-    "accounts": ("accounts", ("balance",)),
-    "holdings": ("holdings", ("quantity", "avg_cost")),
+# resource name -> (table name, as-of attribute on the row, tracked fields)
+TRACKED: dict[str, tuple[str, str | None, tuple[str, ...]]] = {
+    "accounts": ("accounts", "balance_as_of", ("balance",)),
+    "holdings": ("holdings", None, ("quantity", "avg_cost")),
 }
+# Request fields that only date the history row and are not columns of the current-state table.
+HISTORY_ONLY_FIELDS: dict[str, frozenset[str]] = {"holdings": frozenset({"trade_date"})}
 
 
 def _dec(value) -> Decimal | None:
@@ -34,22 +36,26 @@ class ValueHistoryManager:
     @staticmethod
     def capture(resource: str, obj) -> dict:
         """Tracked values and as-of date of `obj` before an edit."""
-        _, fields = TRACKED[resource]
-        return {"as_of": getattr(obj, "balance_as_of", None), **{f: _dec(getattr(obj, f)) for f in fields}}
+        _, as_of, fields = TRACKED[resource]
+        return {"as_of": getattr(obj, as_of) if as_of else None, **{f: _dec(getattr(obj, f)) for f in fields}}
 
     def record(self, session: Session, resource: str, obj, before: dict | None, verb: str,
-               today: date | None = None) -> list[ManualValueChange]:
+               today: date | None = None, trade_date: date | None = None) -> list[ManualValueChange]:
         """Append one row per tracked field that changed. `before` is None on create."""
-        table, fields = TRACKED[resource]
+        table, as_of_attr, fields = TRACKED[resource]
         today = today or datetime.now(UTC).date()
         after = None if verb == "delete" else self.capture(resource, obj)
+        if after is not None and trade_date is not None:
+            after["as_of"] = trade_date
         rows = []
         for field in fields:
             old = before[field] if before else None
             new = after[field] if after else None
             new_as_of = (after or {}).get("as_of") or today
             old_as_of = (before or {}).get("as_of") or today
-            if verb == "update" and old == new and old_as_of == new_as_of:
+            # An unchanged value is only worth a row when it is re-confirmed at a new as-of date of the
+            # record itself (an account balance); a holding's trade date alone changes nothing.
+            if verb == "update" and old == new and (old is None or as_of_attr is None or old_as_of == new_as_of):
                 continue
             if verb == "create" and new is None:
                 continue
@@ -61,7 +67,7 @@ class ValueHistoryManager:
 
     @staticmethod
     def list(session: Session, resource: str, record_id: int) -> list[ManualValueChange]:
-        table, _ = TRACKED[resource]
+        table, _, _ = TRACKED[resource]
         return manual_value_change_handler.get_for_record(session, table, record_id)
 
     @staticmethod

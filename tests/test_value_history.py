@@ -8,7 +8,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DatabaseError
 
-from app.modules.database.model import Account, ManualValueChange
+from app.modules.database.model import Account, Holding, ManualValueChange
 
 
 def history(client, resource, item_id):
@@ -106,3 +106,17 @@ def test_migration_backfills_baselines_without_touching_existing_rows(tmp_path):
     with engine.begin() as c:
         assert c.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
     engine.dispose()
+
+
+def test_trade_date_dates_the_history_row_without_a_schema_change(client, session):
+    h = client.post("/api/data/holdings", json={"symbol": "AAPL", "currency": "USD", "quantity": "3",
+                                                "trade_date": "2026-08-14"})
+    assert h.status_code == 201 and h.json()["trade_date"] is None  # not stored on the holding
+    hid = h.json()["id"]
+    client.put(f"/api/data/holdings/{hid}", json={"symbol": "AAPL", "currency": "USD", "quantity": "5",
+                                                  "trade_date": "2026-09-02"})
+    client.put(f"/api/data/holdings/{hid}", json={"symbol": "AAPL", "currency": "USD", "quantity": "6"})
+    as_of = [r[4] for r in history(client, "holdings", hid)]
+    assert as_of[:2] == ["2026-08-14", "2026-09-02"]
+    assert as_of[2] not in ("2026-08-14", "2026-09-02")  # no trade date → the recording date
+    assert "trade_date" not in Holding.__table__.columns
