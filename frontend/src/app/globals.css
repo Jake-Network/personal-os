@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 60 14% 96%;
+    --foreground: 60 4% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 4% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 60 4% 11%;
+    --primary: 163 33% 27%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 60 12% 93%;
+    --secondary-foreground: 60 4% 11%;
+    --muted: 60 12% 93%;
+    --muted-foreground: 60 3% 35%;
+    --faint: 60 3% 53%;
+    --accent: 153 19% 91%;
+    --accent-foreground: 163 33% 27%;
+    --destructive: 7 57% 41%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 11 61% 93%;
+    --warning: 39 100% 27%;
+    --warning-soft: 41 79% 92%;
+    --success: 131 39% 30%;
+    --success-soft: 129 32% 92%;
+    --info-soft: 216 45% 94%;
+    --border: 60 9% 87%;
+    --input: 60 9% 79%;
+    --ring: 163 33% 27%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 90 5% 9%;
+    --foreground: 60 12% 92%;
+    --card: 90 3% 12%;
+    --card-foreground: 60 12% 92%;
+    --popover: 90 3% 12%;
+    --popover-foreground: 60 12% 92%;
+    --primary: 159 29% 61%;
+    --primary-foreground: 158 27% 8%;
+    --secondary: 80 4% 15%;
+    --secondary-foreground: 60 12% 92%;
+    --muted: 80 4% 15%;
+    --muted-foreground: 60 5% 67%;
+    --faint: 60 3% 50%;
+    --accent: 158 19% 17%;
+    --accent-foreground: 159 29% 61%;
+    --destructive: 8 71% 70%;
+    --destructive-foreground: 158 27% 8%;
+    --destructive-soft: 9 36% 18%;
+    --warning: 40 70% 62%;
+    --warning-soft: 41 43% 16%;
+    --success: 128 40% 69%;
+    --success-soft: 129 24% 16%;
+    --info-soft: 215 24% 18%;
+    --border: 72 5% 19%;
+    --input: 69 5% 26%;
+    --ring: 159 29% 61%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-[14px] leading-[1.55] text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold leading-tight;
+  }
+}
+
+@layer components {
+  /* Advisor answers (react-markdown output). */
+  .markdown p {
+    @apply mb-2 last:mb-0;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4 {
+    @apply mb-1.5 mt-3 text-sm font-semibold first:mt-0;
+  }
+  .markdown ul {
+    @apply mb-2 list-disc pl-5;
+  }
+  .markdown ol {
+    @apply mb-2 list-decimal pl-5;
+  }
+  .markdown li {
+    @apply my-0.5;
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-md bg-muted px-2.5 py-2 text-xs;
+  }
+  .markdown :not(pre) > code {
+    @apply rounded-sm bg-muted px-1 font-mono text-xs;
+  }
+  .markdown table {
+    @apply my-2 w-full border-collapse text-[13px];
+  }
+  .markdown th,
+  .markdown td {
+    @apply border-b px-2 py-1 text-left;
+  }
+  .markdown a {
+    @apply text-primary hover:underline;
+  }
+
+  /* Blinking caret while an answer streams in. */
+  .typing::after {
+    content: '▍';
+    @apply animate-blink text-faint;
+  }
+}

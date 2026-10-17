@@ -1,4 +1,4 @@
-import type { Category } from '../api/types';
+import type { Category } from '@/api-client/model';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   financial: '재무',
@@ -55,9 +55,7 @@ const FLAG_TEXT: Record<string, string> = {
 };
 
 // Their backend `detail` is guidance for the model (English); the Korean text above says it all.
-const MODEL_ONLY_DETAIL = new Set([
-  'monthly_expense_unknown', 'investment_excluded_from_net_worth', 'no_liabilities_recorded', 'no_career_criteria',
-]);
+const MODEL_ONLY_DETAIL = new Set(['monthly_expense_unknown', 'investment_excluded_from_net_worth', 'no_liabilities_recorded', 'no_career_criteria']);
 
 export function flagDetail(code: string, detail?: string): string | undefined {
   return detail && !MODEL_ONLY_DETAIL.has(code) ? detail : undefined;
@@ -113,9 +111,9 @@ export const MEMORY_KIND_LABEL: Record<string, string> = {
   priority: '우선순위',
 };
 
-export const ERROR_HINT: Record<string, { action: string; to: string }> = {
-  not_connected: { action: 'ChatGPT 연결하기', to: '/settings/ai-provider' },
-  reauth_required: { action: '다시 로그인', to: '/settings/ai-provider' },
-  plan_usage_not_authorized: { action: '권한 포함해 재연결', to: '/settings/ai-provider' },
-  plan_usage_limit_exceeded: { action: '사용량 상태 보기', to: '/settings/ai-provider' },
+export const ERROR_HINT: Record<string, { action: string; href: string }> = {
+  not_connected: { action: 'ChatGPT 연결하기', href: '/settings/ai-provider' },
+  reauth_required: { action: '다시 로그인', href: '/settings/ai-provider' },
+  plan_usage_not_authorized: { action: '권한 포함해 재연결', href: '/settings/ai-provider' },
+  plan_usage_limit_exceeded: { action: '사용량 상태 보기', href: '/settings/ai-provider' },
 };

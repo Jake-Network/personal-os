@@ -7,8 +7,8 @@
 #   docker compose -f docker/docker-compose.yml down            # 데이터 유지
 #   docker compose -f docker/docker-compose.yml down -v         # DB·키 볼륨까지 삭제
 #
-# 프론트엔드는 컨테이너 밖에서 실행합니다:  cd frontend && pnpm dev
-# (Vite가 /api 를 http://127.0.0.1:${API_PORT} 로 프록시)
+# 프론트엔드는 컨테이너 밖에서 실행합니다:  cd frontend && corepack yarn dev
+# (Next.js가 /api 를 SERVER_DOMAIN, 기본 http://127.0.0.1:8000 으로 프록시)
 #
 # 모든 포트는 127.0.0.1 에만 바인딩합니다. 인증·TLS가 없으므로 외부에 노출하지 마세요.
 
@@ -16,7 +16,7 @@ name: personal-os
 
 services:
   db:
-    image: postgres:21-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-personal_os}

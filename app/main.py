@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -29,7 +30,12 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Personal OS", version="0.2.0", lifespan=lifespan)
+def _operation_id(route: APIRoute) -> str:
+    # Handler name as operationId so orval generates `listConversations`, not `listConversationsApiAdvisor...Get`.
+    return route.name
+
+
+app = FastAPI(title="Personal OS", version="0.2.0", lifespan=lifespan, generate_unique_id_function=_operation_id)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_url], allow_methods=["*"], allow_headers=["*"])
 
 
