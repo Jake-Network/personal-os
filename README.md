@@ -54,9 +54,10 @@ hosts (DNS-rebinding defence, including the `X-Forwarded-Host` set by the Next.j
 cross-site state-changing requests. Remote deployment needs real authentication and TLS first; see
 [Reliability review](docs/RELIABILITY_REVIEW.md#remote-deployment-requirements).
 Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
-Native development creates missing tables on startup. For managed databases, run
-`uv run alembic upgrade head` before starting the app (see the migration notes in
-[Finance setup](docs/finance.md)). Migration `0005_manual_value_history` adds an append-only log of
+Startup uses the existing database as it is: it only creates tables that do not exist yet and never
+alters, migrates or stamps existing ones. Schema upgrades are an explicit step:
+`uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
+performs it, after backing up a SQLite file (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
 it never modifies existing rows.
 
