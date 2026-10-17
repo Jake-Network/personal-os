@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Python tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgresql]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: personal_os
+          POSTGRES_PASSWORD: personal_os
+          POSTGRES_DB: personal_os_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U personal_os" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # Tests use mocked LLM providers only; no OAuth tokens or API keys exist in CI.
+      PERSONAL_OS_DATA_DIR: ${{ runner.temp }}/personal-os-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Migrations on PostgreSQL (upgrade, model check, downgrade, re-upgrade)
+        if: matrix.database == 'postgresql'
+        env:
+          DATABASE_URL: postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+      - name: pytest
+        env:
+          TEST_DATABASE_URL: ${{ matrix.database == 'postgresql' && 'postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test' || 'sqlite://' }}
+        run: uv run pytest -q
+
+  frontend:
+    name: Frontend (lint, typecheck, vitest, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn typecheck
+      - run: yarn test
+      - run: yarn build
