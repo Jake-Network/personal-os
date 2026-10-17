@@ -1,5 +1,6 @@
 """PRD AdvisorService: query → route → context snapshot → LLM → persisted, grounded answer (§3.1)."""
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -11,6 +12,7 @@ from app.modules.advisor.prompts import SYSTEM_PROMPT
 from app.modules.advisor.proposal_manager import proposal_manager
 from app.modules.context.context_builder_manager import ContextBuilderManager, context_builder_manager
 from app.modules.context.context_routing_manager import ContextRoutingManager, context_routing_manager
+from app.modules.context.history_privacy_manager import HistoryDecision, history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
 from app.modules.crud.audit_log_handler import audit_log_handler
@@ -18,8 +20,10 @@ from app.modules.database.model import AdvisorConversation
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
 from app.schema.advisor_schema import AskOptions
-from app.schema.context_schema import RouteDecision
+from app.schema.context_schema import ContextPackage, RouteDecision
 from app.schema.llm_schema import LLMRequest
+
+logger = logging.getLogger(__name__)
 
 
 class AdvisorManager:
@@ -32,6 +36,11 @@ class AdvisorManager:
 
     # --- routing / context ---------------------------------------------------------------
 
+    @staticmethod
+    def excluded(session: Session, options: AskOptions) -> frozenset[Category]:
+        """Saved privacy settings plus this request's exclusions: the policy for the whole outbound request."""
+        return privacy_manager.get_excluded(session) | options.exclude
+
     def route(self, session: Session, query: str, conversation: AdvisorConversation | None,
               options: AskOptions) -> RouteDecision:
         previous = None
@@ -41,7 +50,7 @@ class AdvisorManager:
                 previous = frozenset(Category(c) for c in last.context_categories)
         return self.router.route(
             query,
-            excluded=privacy_manager.get_excluded(session) | options.exclude,
+            excluded=self.excluded(session, options),
             override=options.categories,
             previous=previous,
             domain=conversation.domain if conversation else None,
@@ -51,11 +60,46 @@ class AdvisorManager:
                 options: AskOptions) -> dict:
         """What would be shared for this question — nothing is persisted or sent."""
         route = self.route(session, query, conversation, options)
-        package = self.builder.build(session, route, conversation_id=None)
+        package = self.builder.build(session, route, conversation_id=None, query=query)
+        history = (self.history(session, conversation.id, None, self.excluded(session, options))
+                   if conversation is not None else HistoryDecision([], [], []))
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
-        return {"route": route.as_dict(), **inspector}
+        return {"route": route.as_dict(), **inspector, **history.as_dict()}
+
+    def history(self, session: Session, conversation_id: int, before_id: int | None,
+                excluded: frozenset[Category]) -> HistoryDecision:
+        """Replayable earlier messages minus those tainted by a now-excluded category, newest `history_limit`."""
+        messages = message_handler.get_replayable_before(session, conversation_id, before_id)
+        decision = history_privacy_manager.filter(session, messages, excluded)
+        return HistoryDecision(decision.kept[-self.history_limit:] if self.history_limit else [],
+                               decision.withheld_ids, decision.withheld_categories)
+
+    @staticmethod
+    def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
+                      excluded: frozenset[Category]) -> LLMRequest:
+        """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
+        leaked = excluded & {Category(c) for c in package.categories}
+        if leaked:  # a builder bug must fail closed, never send
+            raise AdvisorError("context package contains an excluded category", provider_code="privacy_violation")
+        notes = []
+        if history.withheld_ids:
+            notes.append({"role": "developer", "content": (
+                f"이전 대화 메시지 {len(history.withheld_ids)}개는 사용자가 현재 공유를 막은 범주"
+                f"({', '.join(history.withheld_categories)})의 정보를 포함할 수 있어 전달하지 않았습니다. "
+                "그 내용을 기억하거나 추측하지 말고, 필요하면 사용자에게 다시 물어보세요.")})
+        return LLMRequest(
+            model=model,
+            instructions=SYSTEM_PROMPT,
+            input=[
+                *notes,
+                *({"role": m.role, "content": m.content} for m in history.kept),
+                {"role": "developer",
+                 "content": "Context Package (JSON, 사용자 데이터의 유일한 출처):\n" + package.text},
+                {"role": "user", "content": query},
+            ],
+        )
 
     # --- conversations -------------------------------------------------------------------
 
@@ -86,32 +130,29 @@ class AdvisorManager:
     async def ask(self, session: Session, conversation: AdvisorConversation, query: str,
                   options: AskOptions | None = None) -> AsyncIterator[dict]:
         options = options or AskOptions()
+        excluded = self.excluded(session, options)
         route = self.route(session, query, conversation, options)
-        package = self.builder.build(session, route, conversation_id=conversation.id)
+        try:
+            package = self.builder.build(session, route, conversation_id=conversation.id, query=query)
+        except AdvisorError as exc:  # e.g. over the context budget: nothing is sent or stored
+            session.rollback()
+            yield {"type": "error", **exc.as_dict()}
+            return
         user_msg = message_handler.create(session, {
             "conversation_id": conversation.id, "role": "user", "content": query,
             "context_snapshot_id": package.snapshot_id,
         })
         conversation_handler.update(session, conversation, {"updated_at": datetime.now(UTC)})
         session.commit()
-        yield {"type": "context", "route": route.as_dict(), **package.inspector()}
+        history = self.history(session, conversation.id, user_msg.id, excluded)
+        yield {"type": "context", "route": route.as_dict(), **package.inspector(), **history.as_dict()}
 
         model = None
         parts: list[str] = []
         settled = False
         try:
             model = await self.gateway.resolve_model(session)
-            history = message_handler.get_history(session, conversation.id, user_msg.id, self.history_limit)
-            request = LLMRequest(
-                model=model,
-                instructions=SYSTEM_PROMPT,
-                input=[
-                    *({"role": m.role, "content": m.content} for m in history),
-                    {"role": "developer",
-                     "content": "Context Package (JSON, 사용자 데이터의 유일한 출처):\n" + package.text},
-                    {"role": "user", "content": query},
-                ],
-            )
+            request = self.build_request(model, history, package, query, excluded)
             async for event in self.gateway.stream(session, request, conversation_id=conversation.id):
                 if event.type == "delta" and event.text:
                     parts.append(event.text)
@@ -121,6 +162,13 @@ class AdvisorManager:
             self._settle_unanswered(session, conversation.id, user_msg, parts, package.snapshot_id, model)
             settled = True
             yield {"type": "error", **exc.as_dict()}
+            return
+        except Exception:  # transport errors, malformed provider payloads: fail the turn, not the stream
+            logger.exception("advisor turn failed for conversation %s", conversation.id)
+            session.rollback()
+            self._settle_unanswered(session, conversation.id, user_msg, parts, package.snapshot_id, model)
+            settled = True
+            yield {"type": "error", **AdvisorError().as_dict()}
             return
         finally:
             if not settled:  # client went away mid-stream (generator closed)

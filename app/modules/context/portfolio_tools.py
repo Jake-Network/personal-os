@@ -47,7 +47,10 @@ def sheets_accounts(ctx: ToolContext) -> ToolResult:
 
     worth = {"base_currency": "KRW", "total_assets": p["total_assets"] if include_investment else None,
              "total_liabilities": p["total_liabilities"], "net_worth": p["net_worth"] if include_investment else None,
-             "liquid_assets": None, "complete": p["complete"] and include_investment,
+             # Sheets rows carry no account kind, so the eligible-cash policy cannot be applied.
+             "cash_and_equivalents": None, "spendable_liquidity": None, "spendable_liquidity_complete": False,
+             "investable_assets": None, "restricted_retirement_assets": None,
+             "complete": p["complete"] and include_investment,
              "excluded_positions": issues}
     data = {"source": "google_sheets", "accounts": rows("cash"), "other_assets": rows("other"),
             "liabilities": rows("liability"), "computed": {"net_worth": worth, "computed_by": "backend"},

@@ -1,7 +1,9 @@
 """PRD ContextBuilder: run the selected tools and freeze the result as a Context Snapshot (§3.4)."""
 
+import copy
 import hashlib
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -9,10 +11,28 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.enums.context_category import ALL_CATEGORIES, Category
-from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_currency
+from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_currency, derive_cash_runway
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
+from app.modules.llm.errors import AdvisorError
 from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext
+
+
+# Budget reduction order, lowest priority first. Sections not listed rank just above news.
+SECTION_PRIORITY: tuple[str, ...] = (
+    "get_relevant_news", "get_market_data", "get_health_summary", "get_monthly_asset_history", "get_tasks",
+    "get_calendar_events", "get_interview_schedule", "get_goals", "get_job_applications", "get_profile",
+    "get_portfolio_summary", "get_cashflow_summary", "get_accounts_summary", "cash_runway",
+)
+# Calculated numbers the advisor must never lose; their row lists can be summarized, the section cannot go.
+ESSENTIAL_SECTIONS = frozenset({"get_accounts_summary", "get_cashflow_summary", "get_portfolio_summary",
+                                "cash_runway"})
+ESSENTIAL_KEYS = frozenset({"computed", "computed_by", "currency", "base_currency", "monthly_expense",
+                            "monthly_income", "source", "synced_at", "stale"})
+FREE_TEXT_KEYS = ("jd_excerpt", "notes", "prep_notes", "description", "compensation_note", "next_step", "location")
+TEXT_CAP = 300
+ROW_FLOOR = 5
+MAX_FLAGS = 40
 
 
 def _hash(value: dict) -> str:
@@ -56,21 +76,27 @@ class ContextBuilderManager:
                 if result.source_updated_at and (latest is None or result.source_updated_at > latest):
                     latest = result.source_updated_at
             freshness[category.value] = latest.isoformat() if latest else None
+        runway = derive_cash_runway(data)
+        if runway is not None:
+            data["cash_runway"] = runway
         return data, refs, flags, freshness
 
     def build(self, session: Session, route: RouteDecision, conversation_id: int | None = None,
-              now: datetime | None = None) -> ContextPackage:
+              now: datetime | None = None, query: str = "") -> ContextPackage:
         now = now or datetime.now(UTC)
         data, refs, flags, freshness = self.collect(session, route.selected, now)
         for category in sorted(route.excluded):
             flags.append({"code": "category_excluded_by_user", "category": category.value})
+        # The snapshot id and timestamp are added to the payload after fitting; reserve their room.
+        overhead = len(json.dumps({"context_snapshot_id": str(uuid.uuid4()), "generated_at": now.isoformat()},
+                                  separators=(",", ":"))) - 1
         body = self._fit({
             "base_currency": base_currency(session),
             "categories": sorted(c.value for c in route.selected),
             "excluded_categories": sorted(c.value for c in route.excluded),
             "data": data,
             "data_quality_flags": flags,
-        })
+        }, query, self.char_limit - overhead)
         content_hash = _hash(body)
 
         # Unchanged data since the previous turn → reuse that snapshot instead of a duplicate.
@@ -104,25 +130,171 @@ class ContextBuilderManager:
         unchanged = sorted(k for k in set(past) & set(current) if k not in changed)
         return changed, unchanged
 
-    def _fit(self, body: dict) -> dict:
-        """Enforce the context length budget by dropping bulky free text first, never numbers."""
-        if len(json.dumps(body, ensure_ascii=False, default=str)) <= self.char_limit:
+    def _fit(self, body: dict, query: str = "", limit: int | None = None) -> dict:
+        """Enforce the serialized size budget deterministically, reporting everything left out.
+
+        Steps run in order until the package fits: cap long text, drop free text, keep only the
+        first rows of low-priority lists (question-relevant rows first), drop whole low-priority
+        sections, reduce essential sections to their calculated numbers. Calculated numbers in
+        ESSENTIAL_SECTIONS are never removed. If even that does not fit, BudgetExceeded is raised:
+        an oversized package is never returned.
+        """
+        limit = self.char_limit if limit is None else limit
+        body = copy.deepcopy(body)
+        data: dict = body["data"]
+        base_flags: list[dict] = body["data_quality_flags"]
+        fit_flags: list[dict] = []
+        terms = _query_terms(query)
+        cap_flags = False
+
+        def fits() -> bool:
+            # Budget flags always survive; only the tools' own flags are ever capped (last step).
+            body["data_quality_flags"] = (_cap_flags(base_flags) if cap_flags else base_flags) + fit_flags
+            return _size(body) <= limit
+
+        if fits():
             return body
-        for app in body["data"].get("get_job_applications", {}).get("applications", []):
-            app["jd_excerpt"] = (app["jd_excerpt"] or "")[:300] or None
-        for section in body["data"].values():
-            for rows in section.values():
-                if isinstance(rows, list):
-                    for row in rows:
-                        if isinstance(row, dict):
-                            for key in ("notes", "prep_notes"):
-                                if key in row:
-                                    row[key] = None
-        over = len(json.dumps(body, ensure_ascii=False, default=str)) > self.char_limit
-        body["data_quality_flags"] = body["data_quality_flags"] + [
-            {"code": "context_over_budget" if over else "context_text_trimmed", "category": "system"}
-        ]
-        return body
+
+        order = _reduction_order(data, terms)
+
+        # 1-2. Free text: cap, then drop.
+        if _cap_text(data, TEXT_CAP):
+            fit_flags.append({"code": "context_text_trimmed", "category": "system"})
+            if fits():
+                return body
+        dropped = _drop_text(data)
+        if dropped:
+            fit_flags.append({"code": "context_text_omitted", "category": "system", "detail": ", ".join(dropped)})
+            if fits():
+                return body
+
+        # 3. Long row lists, lowest priority section first; relevant rows survive.
+        for name in order:
+            omitted = _shrink_rows(data.get(name), terms, ROW_FLOOR)
+            if omitted:
+                fit_flags.append({"code": "context_rows_omitted", "category": "system", "detail": f"{name}: {omitted}"})
+                if fits():
+                    return body
+
+        # 4. Whole low-priority sections.
+        for name in order:
+            if name in data and name not in ESSENTIAL_SECTIONS:
+                del data[name]
+                fit_flags.append({"code": "context_section_omitted", "category": "system", "detail": name})
+                if fits():
+                    return body
+
+        # 5. Essential sections keep only their calculated numbers.
+        for name in order:
+            section = data.get(name)
+            if isinstance(section, dict):
+                removed = sorted(k for k in section if k not in ESSENTIAL_KEYS)
+                if removed:
+                    data[name] = {k: v for k, v in section.items() if k in ESSENTIAL_KEYS}
+                    fit_flags.append({"code": "context_records_summarized", "category": "system",
+                                      "detail": f"{name}: {', '.join(removed)}"})
+                    if fits():
+                        return body
+
+        # 6. Repetitive tool flags (e.g. one stale_price per holding).
+        cap_flags = True
+        if fits():
+            return body
+        raise BudgetExceeded(f"context package exceeds {limit} chars even with only calculated numbers")
+
+
+class BudgetExceeded(AdvisorError):
+    code = "context_over_budget"
+    http_status = 422
+    user_message = "필수 재무 수치만으로도 Context 길이 제한을 넘어 요청을 보내지 않았습니다."
+
+
+def _size(body: dict) -> int:
+    return len(json.dumps(body, ensure_ascii=False, separators=(",", ":"), default=str))
+
+
+def _query_terms(query: str) -> list[str]:
+    return [t for t in re.split(r"[\s,.?!·()\[\]\"'/]+", query.lower()) if len(t) >= 2]
+
+
+def _row_relevant(row: dict, terms: list[str]) -> bool:
+    for value in row.values():
+        if isinstance(value, str) and len(value) >= 2:
+            v = value.lower()
+            if any(t in v or v in t for t in terms):
+                return True
+    return False
+
+
+def _row_lists(section) -> list[tuple[str, list]]:
+    if not isinstance(section, dict):
+        return []
+    return [(k, v) for k, v in section.items() if isinstance(v, list) and v and all(isinstance(r, dict) for r in v)]
+
+
+def _reduction_order(data: dict, terms: list[str]) -> list[str]:
+    """Lowest priority first; a section holding question-relevant rows is reduced after the others."""
+    rank = {name: i for i, name in enumerate(SECTION_PRIORITY)}
+
+    def key(name: str) -> tuple[int, int, str]:
+        relevant = any(_row_relevant(r, terms) for _, rows in _row_lists(data[name]) for r in rows)
+        return (1 if relevant else 0, rank.get(name, 0), name)
+
+    return sorted(data, key=key)
+
+
+def _walk_rows(data: dict):
+    for section in data.values():
+        for _, rows in _row_lists(section):
+            yield from rows
+
+
+def _cap_text(data: dict, cap: int) -> bool:
+    changed = False
+    for row in _walk_rows(data):
+        for key, value in row.items():
+            if isinstance(value, str) and len(value) > cap:
+                row[key] = value[:cap] + " …[truncated]"
+                changed = True
+    return changed
+
+
+def _drop_text(data: dict) -> list[str]:
+    dropped = set()
+    for row in _walk_rows(data):
+        for key in FREE_TEXT_KEYS:
+            if row.get(key) is not None:
+                row[key] = None
+                dropped.add(key)
+    return sorted(dropped)
+
+
+def _shrink_rows(section, terms: list[str], keep: int) -> int:
+    omitted = 0
+    for key, rows in _row_lists(section):
+        if len(rows) <= keep:
+            continue
+        ranked = sorted(range(len(rows)), key=lambda i: (not _row_relevant(rows[i], terms), i))[:keep]
+        section[key] = [rows[i] for i in sorted(ranked)]
+        section[f"{key}_omitted_rows"] = len(rows) - keep
+        omitted += len(rows) - keep
+    return omitted
+
+
+def _cap_flags(flags: list[dict]) -> list[dict]:
+    """One flag per (code, category), with a repeat count, then at most MAX_FLAGS."""
+    merged: dict[tuple, dict] = {}
+    for f in flags:
+        key = (f.get("code"), f.get("category"))
+        if key in merged:
+            merged[key]["count"] = merged[key].get("count", 1) + 1
+        else:
+            merged[key] = dict(f)
+    out = list(merged.values())
+    if len(out) > MAX_FLAGS:
+        out = out[:MAX_FLAGS - 1] + [{"code": "data_quality_flags_omitted", "category": "system",
+                                      "detail": str(len(out) - MAX_FLAGS + 1)}]
+    return out
 
 
 context_builder_manager = ContextBuilderManager(settings.context_char_limit)

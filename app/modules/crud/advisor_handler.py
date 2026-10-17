@@ -1,3 +1,4 @@
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.modules.crud.base import BaseCRUDHandler
@@ -28,15 +29,13 @@ class MessageHandler(BaseCRUDHandler[AdvisorMessage]):
     def __init__(self):
         super().__init__(AdvisorMessage)
 
-    def get_history(self, session: Session, conversation_id: int, before_id: int, limit: int) -> list[AdvisorMessage]:
-        rows = self.get_multiple_with_filters(
-            session,
-            [AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.id < before_id,
-             AdvisorMessage.status == "complete"],
-            [AdvisorMessage.id.desc()],
-            limit,
-        )
-        return list(reversed(rows))
+    def get_replayable_before(self, session: Session, conversation_id: int,
+                              before_id: int | None) -> list[AdvisorMessage]:
+        """Every message a later turn could have replayed, oldest first (failed/incomplete turns never are)."""
+        filters = [AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.status == "complete"]
+        if before_id is not None:
+            filters.append(AdvisorMessage.id < before_id)
+        return self.get_multiple_with_filters(session, filters, [AdvisorMessage.id])
 
     def get_by_conversation(self, session: Session, conversation_id: int) -> list[AdvisorMessage]:
         return self.get_multiple_with_filters(session, [AdvisorMessage.conversation_id == conversation_id],
@@ -55,6 +54,8 @@ class ContextSnapshotHandler(BaseCRUDHandler[ContextSnapshot]):
         return self.get_first_with_filters(session, [ContextSnapshot.conversation_id == conversation_id],
                                            [ContextSnapshot.generated_at.desc()])
 
+    def get_many(self, session: Session, ids: set[str]) -> list[ContextSnapshot]:
+        return self.get_multiple_with_filters(session, [ContextSnapshot.id.in_(ids)]) if ids else []
 
     def delete_for_conversation(self, session: Session, conversation_id: int) -> None:
         for snap in self.get_multiple_with_filters(session, [ContextSnapshot.conversation_id == conversation_id]):
@@ -73,6 +74,22 @@ class ProposedActionHandler(BaseCRUDHandler[ProposedAction]):
 
     def get_by_status(self, session: Session, status: str) -> list[ProposedAction]:
         return self.get_multiple_with_filters(session, [ProposedAction.status == status], [ProposedAction.id])
+
+    def transition(self, session: Session, proposal_id: int, from_status: str, to_status: str,
+                   values: dict | None = None) -> bool:
+        """Compare-and-set the status in one UPDATE; True only for the request that won."""
+        result = session.execute(
+            update(ProposedAction)
+            .where(ProposedAction.id == proposal_id, ProposedAction.status == from_status)
+            .values(status=to_status, **(values or {}))
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 1:
+            # Refresh the identity-map copy so the caller sees the new status.
+            proposal = session.get(ProposedAction, proposal_id)
+            if proposal is not None:
+                session.refresh(proposal)
+        return result.rowcount == 1
 
 
 class PersonalMemoryHandler(BaseCRUDHandler[PersonalMemory]):
