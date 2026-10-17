@@ -1,3 +1,5 @@
+import type { DocumentCitation } from '@/features/documents/api';
+
 import type { Category, MemoryItem, ProposalItem } from '@/api-client/model';
 
 // The preview, snapshot-stream and dashboard endpoints return untyped dicts in OpenAPI; these mirror the backend shape.
@@ -28,6 +30,7 @@ export interface RouteInfo {
 
 export interface InspectorData {
   route?: RouteInfo;
+  document_citations?: DocumentCitation[];
   context_snapshot_id: string | null;
   context_reused: boolean;
   categories: string[];
@@ -61,4 +64,5 @@ export interface ChatMessage {
   error?: { code: string; message: string };
   proposals?: ProposalItem[];
   memoryProposals?: MemoryProposal[];
+  document_citations?: DocumentCitation[];
 }

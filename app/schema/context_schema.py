@@ -70,6 +70,7 @@ class ContextPackage:
             "source_updated_at": self.source_updated_at,
             "record_references": self.record_references,
             "data_quality_flags": self.data_quality_flags,
+            "document_citations": self.payload.get("data", {}).get("search_documents", {}).get("citations", []),
         }
 
 

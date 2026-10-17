@@ -95,7 +95,8 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
           <div className='flex flex-col gap-1.5'>
             {flags.map((f, n) => (
               <div key={n} className='text-xs'>
-                <Badge variant='warning'>{CATEGORY_LABEL[f.category as Category] ?? f.category}</Badge> {flagText(f.code)}
+                <Badge variant='warning'>{f.category === 'documents' ? '문서' : (CATEGORY_LABEL[f.category as Category] ?? f.category)}</Badge>{' '}
+                {flagText(f.code)}
                 {flagDetail(f.code, f.detail) && <div className='text-faint'>{flagDetail(f.code, f.detail)}</div>}
               </div>
             ))}
@@ -103,6 +104,24 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
         </Section>
       )}
 
+      <Section>
+        <SectionTitle>문서 근거</SectionTitle>
+        {!data.document_citations?.length && <p className='text-xs text-faint'>사용한 문서 발췌문이 없습니다.</p>}
+        {data.document_citations?.map(c => (
+          <details key={c.ref} className='mb-2 text-xs'>
+            <summary className='cursor-pointer'>
+              {c.title} · 버전 #{c.version_id}
+              {c.page ? ` · p.${c.page}` : ''}
+            </summary>
+            <p className='mt-1 text-faint'>
+              {c.filename}
+              {c.section ? ` · ${c.section}` : ''}
+              {c.as_of ? ` · 기준일 ${c.as_of}` : ''}
+            </p>
+            <p className='mt-2 whitespace-pre-wrap'>{c.text}</p>
+          </details>
+        ))}
+      </Section>
       <Section>
         <SectionTitle>조회한 레코드</SectionTitle>
         {Object.keys(refsByTool).length === 0 && <div className='text-xs text-faint'>조회된 레코드가 없습니다.</div>}

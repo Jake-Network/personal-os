@@ -21,7 +21,7 @@ RULES: tuple[tuple[tuple[str, ...], frozenset[Category]], ...] = (
       "portfolio", "stock", "invest"),
      frozenset({C.INVESTMENT, C.FINANCIAL})),
     (("면접", "interview"), frozenset({C.CAREER, C.CALENDAR, C.GOALS})),
-    (("커리어", "회사", "채용", "지원", "이직", "오퍼", "연봉", "직무", "포지션", "jd", "career", "job", "offer"),
+    (("이력서", "경력기술서", "자기소개서", "자소서", "resume", "curriculum vitae", "커리어", "회사", "채용", "지원", "이직", "오퍼", "연봉", "직무", "포지션", "jd", "career", "job", "offer"),
      frozenset({C.CAREER, C.GOALS})),
     (("일정", "스케줄", "다음 주", "다음주", "이번 주", "이번주", "내일", "오늘", "주말", "약속", "마감", "할 일",
       "할일", "작업", "병행", "시간", "calendar", "schedule", "week", "deadline", "task"),

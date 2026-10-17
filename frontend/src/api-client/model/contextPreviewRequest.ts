@@ -6,6 +6,7 @@
  */
 import type { ContextPreviewRequestCategories } from './contextPreviewRequestCategories';
 import type { Category } from './category';
+import type { ContextPreviewRequestDocumentIds } from './contextPreviewRequestDocumentIds';
 import type { ContextPreviewRequestConversationId } from './contextPreviewRequestConversationId';
 
 export interface ContextPreviewRequest {
@@ -16,5 +17,7 @@ export interface ContextPreviewRequest {
   message: string;
   categories?: ContextPreviewRequestCategories;
   exclude?: Category[];
+  document_search?: boolean;
+  document_ids?: ContextPreviewRequestDocumentIds;
   conversation_id?: ContextPreviewRequestConversationId;
 }

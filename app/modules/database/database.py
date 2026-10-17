@@ -1,5 +1,8 @@
 from collections.abc import Iterator
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -28,8 +31,19 @@ class Database:
         return self.engine
 
     def create_schema(self) -> None:
+        """Create model tables for isolated tests; runtime uses migrations."""
         assert self.engine is not None, "Database.init() not called"
         Base.metadata.create_all(self.engine)
+
+    def migrate_schema(self) -> None:
+        """Upgrade the configured database, including migration-only constraints."""
+        assert self.engine is not None, "Database.init() not called"
+        root = Path(__file__).resolve().parents[3]
+        config = Config(str(root / "alembic.ini"))
+        config.set_main_option("script_location", str(root / "migrations"))
+        with self.engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
 
     def session(self) -> Session:
         assert self._sessionmaker is not None, "Database.init() not called"

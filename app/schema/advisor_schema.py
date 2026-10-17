@@ -11,6 +11,8 @@ from app.enums.context_category import Category
 class AskOptions:
     categories: frozenset[Category] | None = None  # Context Inspector override
     exclude: frozenset[Category] = frozenset()  # per-request exclusions, on top of saved settings
+    document_search: bool = True
+    document_ids: tuple[int, ...] | None = None  # None inherits; empty clears pins
 
 
 ### Conversation
@@ -53,11 +55,15 @@ class AskRequest(BaseModel):
     # Context Inspector: override auto-routing and/or block categories for this request only.
     categories: list[Category] | None = None
     exclude: list[Category] = []
+    document_search: bool = True
+    document_ids: list[int] | None = Field(default=None, max_length=5)
 
     def options(self) -> AskOptions:
         return AskOptions(
             categories=frozenset(self.categories) if self.categories is not None else None,
             exclude=frozenset(self.exclude),
+            document_search=self.document_search,
+            document_ids=tuple(self.document_ids) if self.document_ids is not None else None,
         )
 
 

@@ -124,3 +124,8 @@ scope, and revoked-token errors each map to a distinct user message. None of the
 
 The API-key and Codex app-server providers exist behind the same interface. They become active only via
 `PUT /api/settings/ai-provider/selection`. The Codex app-server provider is a stub.
+
+## 개인 문서 상담
+
+PDF·Markdown·TXT를 주제별로 올리고 기존 DB 정보와 함께 상담할 수 있습니다.
+문서함, 로컬 임베딩, pgvector 설정과 공유·삭제 동작은 [문서 상담 가이드](docs/documents.md)를 참고하세요.

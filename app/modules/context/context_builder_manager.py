@@ -13,6 +13,7 @@ from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_curren
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext
+from app.modules.documents.retrieval import library_fingerprint, search as search_documents
 
 
 def _hash(value: dict) -> str:
@@ -59,12 +60,39 @@ class ContextBuilderManager:
         return data, refs, flags, freshness
 
     def build(self, session: Session, route: RouteDecision, conversation_id: int | None = None,
-              now: datetime | None = None) -> ContextPackage:
+              now: datetime | None = None, *, query: str = "", document_search: bool = True,
+              document_ids: tuple[int, ...] = (), excluded: frozenset[Category] = frozenset(),
+              inherited_citations: list[dict] | None = None,
+              inherited_dependencies: list[dict] | None = None) -> ContextPackage:
         now = now or datetime.now(UTC)
         data, refs, flags, freshness = self.collect(session, route.selected, now)
+        if document_search and query:
+            result = search_documents(session, query, route.selected, document_ids or None,
+                                      excluded_categories=excluded)
+            # Empty libraries keep the original stable structured-data snapshot.
+            if result.data.get("citations") or any(f["code"] != "no_matching_documents" for f in result.flags) or document_ids:
+                data["search_documents"] = result.data
+                refs += [{**r, "category": "documents", "tool": "search_documents"} for r in result.refs]
+                flags += result.flags
+                freshness["documents"] = result.source_updated_at.isoformat() if result.source_updated_at else None
         for category in sorted(route.excluded):
             flags.append({"code": "category_excluded_by_user", "category": category.value})
+        dependencies = {(d["document_id"], d["version_id"]): d for d in inherited_dependencies or []}
+        direct = data.get("search_documents", {}).get("citations", [])
+        for citation in [*direct, *(inherited_citations or [])]:
+            key = (citation["document_id"], citation["version_id"])
+            dependencies[key] = {"document_id": key[0], "version_id": key[1]}
+        if inherited_citations:
+            section = data.setdefault("search_documents", {"query": query, "citations": []})
+            combined = {c["ref"]: dict(c) for c in direct}
+            for citation in inherited_citations:
+                combined.setdefault(citation["ref"], dict(citation))
+            section["citations"] = list(combined.values())[:10]
+        self._fit_document_excerpts(data)
         body = self._fit({
+            "document_dependencies": list(dependencies.values()),
+            "document_scope": {"enabled": document_search, "document_ids": list(document_ids),
+                               "excluded_categories": sorted(str(c) for c in excluded)},
             "base_currency": base_currency(session),
             "categories": sorted(c.value for c in route.selected),
             "excluded_categories": sorted(c.value for c in route.excluded),
@@ -100,9 +128,27 @@ class ContextBuilderManager:
         selected = frozenset(Category(c) for c in snapshot.context_categories)
         current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC))
         past = snapshot.payload.get("data", {})
+        if "search_documents" in past:
+            scope = snapshot.payload.get("document_scope", {})
+            fingerprint = library_fingerprint(session, selected, scope.get("document_ids"),
+                                              scope.get("excluded_categories", []))
+            previous = past["search_documents"]
+            current["search_documents"] = previous if previous.get("source_fingerprint") == fingerprint else {
+                "source_fingerprint": fingerprint,
+            }
         changed = sorted(k for k in set(past) | set(current) if _hash(past.get(k) or {}) != _hash(current.get(k) or {}))
         unchanged = sorted(k for k in set(past) & set(current) if k not in changed)
         return changed, unchanged
+
+    def _fit_document_excerpts(self, data: dict) -> None:
+        citations = data.get("search_documents", {}).get("citations", [])
+        if not citations:
+            return
+        budget = min(10_000, max(0, self.char_limit // 2))
+        allowance = budget // len(citations)
+        for citation in citations:
+            if len(citation["text"]) > allowance:
+                citation["text"] = citation["text"][:allowance] + " …[truncated]"
 
     def _fit(self, body: dict) -> dict:
         """Enforce the context length budget by dropping bulky free text first, never numbers."""

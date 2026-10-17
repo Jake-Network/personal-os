@@ -2,13 +2,16 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 
 import { Markdown } from '@/components/markdown';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { documentsApi, documentsKey, type DocumentCitation } from '@/features/documents/api';
+
 import { Textarea } from '@/components/ui/textarea';
 
 import { errorMessage } from '@/api-client/api-error';
@@ -50,6 +53,10 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [documentSearch, setDocumentSearch] = useState(true);
+  const [documentIds, setDocumentIds] = useState<number[] | null>(null);
+  const [source, setSource] = useState<{ citation?: DocumentCitation; error?: string } | null>(null);
+  const documents = useQuery({ queryKey: documentsKey, queryFn: documentsApi.list });
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<InspectorData | null>(null);
@@ -81,6 +88,9 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     setLoadError(null);
     setForcedOn(new Set());
     setForcedOff(new Set());
+    setDocumentIds(null);
+    setDocumentSearch(true);
+    setSource(null);
     if (conversationId === null) {
       setMessages([]);
       return;
@@ -108,6 +118,8 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     [baseline, forcedOn, forcedOff],
   );
 
+  const documentOptions = useMemo(() => ({ document_search: documentSearch, document_ids: documentIds }), [documentSearch, documentIds]);
+
   // Debounced Context preview while typing (nothing is sent to the model).
   useEffect(() => {
     const text = input.trim();
@@ -120,11 +132,16 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     }
     const timer = setTimeout(async () => {
       try {
-        const base = (await previewContext({ message: text, conversation_id: conversationId })) as InspectorData;
+        const base = (await previewContext({ message: text, conversation_id: conversationId, ...documentOptions })) as InspectorData;
         setBaseline(base);
         const adjusted = forcedOn.size || forcedOff.size;
         const final = adjusted
-          ? ((await previewContext({ message: text, conversation_id: conversationId, ...optionsFor(base, forcedOn, forcedOff) })) as InspectorData)
+          ? ((await previewContext({
+              message: text,
+              conversation_id: conversationId,
+              ...optionsFor(base, forcedOn, forcedOff),
+              ...documentOptions,
+            })) as InspectorData)
           : base;
         setPreview(final);
         onInspectorRef.current?.(final, 'preview');
@@ -133,7 +150,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [input, conversationId, forcedOn, forcedOff, sending]);
+  }, [input, conversationId, forcedOn, forcedOff, sending, documentOptions]);
 
   function toggle(c: Category) {
     if (privacyBlocked.includes(c) || c === 'profile') return;
@@ -178,7 +195,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
       { key: botKey, role: 'assistant', content: '', status: 'complete', context_snapshot_id: null, model: null, streaming: true },
     ]);
     setInput('');
-    const body = textArg ? { message: text } : { message: text, ...requestOptions };
+    const body = { message: text, ...(textArg ? {} : requestOptions), ...documentOptions };
     setForcedOn(new Set());
     setForcedOff(new Set());
     setPreview(null);
@@ -197,7 +214,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             // eslint-disable-next-line @typescript-eslint/no-unused-vars -- drop the discriminator
             const { type: _type, ...data } = event;
             onInspectorRef.current?.(data, 'answer');
-            patchBot(m => ({ ...m, context_snapshot_id: data.context_snapshot_id }));
+            patchBot(m => ({ ...m, context_snapshot_id: data.context_snapshot_id, document_citations: data.document_citations }));
           } else if (event.type === 'delta') {
             patchBot(m => ({ ...m, content: m.content + event.text }));
           } else if (event.type === 'done') {
@@ -239,8 +256,22 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   async function showEvidence(snapshotId: string | null) {
     if (!snapshotId) return;
     onInspectorRef.current?.(null, 'snapshot', true);
-    const snapshot = await queryClient.fetchQuery(getGetSnapshotQueryOptions(snapshotId));
+    const snapshot = await queryClient.fetchQuery({ ...getGetSnapshotQueryOptions(snapshotId), staleTime: 0 });
     onInspectorRef.current?.(snapshotToInspector(snapshot), 'snapshot');
+  }
+
+  async function showDocument(message: ChatMessage, ref: string) {
+    setSource({ error: '근거를 불러오는 중…' });
+    try {
+      const snapshot = message.context_snapshot_id
+        ? await queryClient.fetchQuery({ ...getGetSnapshotQueryOptions(message.context_snapshot_id), staleTime: 0 })
+        : null;
+      const citations = snapshot ? snapshotToInspector(snapshot).document_citations : message.document_citations;
+      const citation = citations?.find(c => c.ref.replace(/^\[|\]$/g, '') === ref);
+      setSource(citation ? { citation } : { error: '이 답변의 근거가 삭제되었거나 보관된 발췌문이 없습니다.' });
+    } catch (e) {
+      setSource({ error: errorMessage(e) });
+    }
   }
 
   const suggestions = SUGGESTIONS[domain ?? 'general'] ?? SUGGESTIONS.general;
@@ -248,6 +279,28 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', compact ? 'bg-card' : 'bg-background')}>
       {header}
+      <Dialog
+        open={source !== null}
+        onOpenChange={open => {
+          if (!open) setSource(null);
+        }}>
+        <DialogContent>
+          <DialogTitle>{source?.citation?.title ?? '문서 근거'}</DialogTitle>
+          {source?.error && <p>{source.error}</p>}
+          {source?.citation && (
+            <>
+              <p className='text-xs text-faint'>
+                {source.citation.filename} · 버전 #{source.citation.version_id}
+                {source.citation.page ? ` · p.${source.citation.page}` : ''}
+                {source.citation.section ? ` · ${source.citation.section}` : ''}
+                {source.citation.as_of ? ` · 기준일 ${source.citation.as_of}` : ''}
+              </p>
+              <p className='text-xs text-faint'>이 답변에 사용한 당시의 발췌문입니다.</p>
+              <div className='max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm'>{source.citation.text}</div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
       <div className={cn('flex flex-1 flex-col overflow-y-auto', compact ? 'gap-3 p-3.5' : 'gap-4 px-[18px] py-5')} ref={scrollRef}>
         {loadError && <Alert variant='destructive'>{loadError}</Alert>}
         {messages.length === 0 && !loadError && (
@@ -273,7 +326,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
                 {m.role === 'assistant' ? (
                   m.content ? (
                     <div className={m.streaming ? 'typing' : undefined}>
-                      <Markdown text={m.streaming ? stripBlocks(m.content) : m.content} />
+                      <Markdown text={m.streaming ? stripBlocks(m.content) : m.content} onDocumentRef={ref => void showDocument(m, ref)} />
                     </div>
                   ) : (
                     <span className='typing text-xs text-faint'>개인 데이터를 조회하고 답변을 준비하는 중</span>
@@ -355,6 +408,38 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
               })}
             </div>
           )}
+          <details className='mb-2 text-xs'>
+            <summary className='cursor-pointer'>
+              문서 검색: {documentSearch ? (documentIds?.length ? `${documentIds.length}개 문서 지정` : '자동 · 이전 질문의 지정 문서 유지') : '끄기'}
+            </summary>
+            <div className='mt-2 grid gap-2'>
+              <label className='flex items-center gap-2'>
+                <input type='checkbox' checked={documentSearch} disabled={sending} onChange={e => setDocumentSearch(e.target.checked)} />
+                문서 검색 사용
+              </label>
+              <Button size='sm' disabled={sending || !documentSearch} onClick={() => setDocumentIds([])}>
+                지정 해제 · 주제에 맞게 자동 검색
+              </Button>
+              <p className='text-faint'>비교할 문서를 최대 5개 지정하세요. 공유가 허용된 문서에서 검색합니다.</p>
+              {documents.error && <p role='alert'>문서 목록을 불러오지 못했습니다.</p>}
+              {documents.data
+                ?.filter(d => d.sharing_enabled && d.active_version_id)
+                .map(d => (
+                  <label key={d.id} className='flex items-center gap-2'>
+                    <input
+                      type='checkbox'
+                      checked={documentIds?.includes(d.id) ?? false}
+                      disabled={sending || !documentSearch || (!documentIds?.includes(d.id) && (documentIds?.length ?? 0) >= 5)}
+                      onChange={e => setDocumentIds(ids => (e.target.checked ? [...(ids ?? []), d.id] : (ids ?? []).filter(id => id !== d.id)))}
+                    />
+                    {d.title}
+                  </label>
+                ))}
+              <Link className='underline' href='/documents'>
+                문서함에서 업로드·공유 관리
+              </Link>
+            </div>
+          </details>
           <div className='flex items-end gap-2'>
             <Textarea
               className='max-h-[200px] min-h-[52px]'

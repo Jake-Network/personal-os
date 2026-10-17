@@ -1,6 +1,8 @@
 """PRD AdvisorService: query → route → context snapshot → LLM → persisted, grounded answer (§3.1)."""
 
+import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -15,6 +17,7 @@ from app.modules.context.privacy_manager import privacy_manager
 from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
 from app.modules.crud.audit_log_handler import audit_log_handler
 from app.modules.database.model import AdvisorConversation
+from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
 from app.schema.advisor_schema import AskOptions
@@ -47,11 +50,67 @@ class AdvisorManager:
             domain=conversation.domain if conversation else None,
         )
 
+    def document_options(self, session: Session, conversation: AdvisorConversation | None,
+                         options: AskOptions) -> AskOptions:
+        if options.document_ids is not None:
+            return options
+        last = context_snapshot_handler.get_latest_for_conversation(session, conversation.id) if conversation else None
+        ids = last.payload.get("document_scope", {}).get("document_ids", []) if last else []
+        return replace(options, document_ids=tuple(ids))
+
+    def build_context(self, session, query, conversation, options, conversation_id=None):
+        options = self.document_options(session, conversation, options)
+        route = self.route(session, query, conversation, options)
+        excluded = privacy_manager.get_excluded(session) | options.exclude
+        if options.document_search and options.document_ids:
+            # Explicit documents supply their topics, but cannot bypass a sharing exclusion.
+            docs = visible_documents(session, document_ids=options.document_ids, excluded_categories=excluded)
+            topics = frozenset(Category(c) for d in docs for c in d.categories)
+            route = replace(route, requested=route.requested | topics,
+                            selected=(route.selected | topics) - excluded)
+        inherited_citations, dependencies = {}, {}
+        if conversation is not None:
+            for message in self.safe_history(session, conversation.id, 2**63 - 1, route, options):
+                snapshot = context_snapshot_handler.get(session, message.context_snapshot_id)
+                for citation in snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", []):
+                    inherited_citations[citation["ref"]] = citation
+                for dependency in snapshot.payload.get("document_dependencies", []):
+                    dependencies[(dependency["document_id"], dependency["version_id"])] = dependency
+        package = self.builder.build(session, route, conversation_id=conversation_id, query=query,
+                                     document_search=options.document_search,
+                                     document_ids=options.document_ids or (), excluded=excluded,
+                                     inherited_citations=list(inherited_citations.values()),
+                                     inherited_dependencies=list(dependencies.values()))
+        return route, package, options
+
+    def safe_history(self, session, conversation_id, before_id, route, options):
+        history = message_handler.get_history(session, conversation_id, before_id, self.history_limit)
+        allowed = {str(c) for c in route.selected}
+        visible = {d.id: d for d in visible_documents(session, categories=route.selected,
+                   excluded_categories=privacy_manager.get_excluded(session) | options.exclude)}
+        safe = []
+        for message in history:
+            snapshot = context_snapshot_handler.get(session, message.context_snapshot_id) if message.context_snapshot_id else None
+            # Missing provenance (including purged evidence) must not re-enter model context.
+            if snapshot is None or not set(snapshot.context_categories).issubset(allowed):
+                continue
+            citations = snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", [])
+            dependencies = snapshot.payload.get("document_dependencies", [])
+            evidence = citations + dependencies
+            if evidence and not options.document_search:
+                continue
+            if any(c["document_id"] not in visible or
+                   visible[c["document_id"]].active_version_id != c["version_id"] or
+                   (options.document_ids and c["document_id"] not in options.document_ids)
+                   for c in evidence):
+                continue
+            safe.append(message)
+        return safe
+
     def preview(self, session: Session, query: str, conversation: AdvisorConversation | None,
                 options: AskOptions) -> dict:
         """What would be shared for this question — nothing is persisted or sent."""
-        route = self.route(session, query, conversation, options)
-        package = self.builder.build(session, route, conversation_id=None)
+        route, package, _ = self.build_context(session, query, conversation, options)
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
@@ -86,8 +145,8 @@ class AdvisorManager:
     async def ask(self, session: Session, conversation: AdvisorConversation, query: str,
                   options: AskOptions | None = None) -> AsyncIterator[dict]:
         options = options or AskOptions()
-        route = self.route(session, query, conversation, options)
-        package = self.builder.build(session, route, conversation_id=conversation.id)
+        route, package, options = await asyncio.to_thread(
+            self.build_context, session, query, conversation, options, conversation.id)
         user_msg = message_handler.create(session, {
             "conversation_id": conversation.id, "role": "user", "content": query,
             "context_snapshot_id": package.snapshot_id,
@@ -101,7 +160,13 @@ class AdvisorManager:
         settled = False
         try:
             model = await self.gateway.resolve_model(session)
-            history = message_handler.get_history(session, conversation.id, user_msg.id, self.history_limit)
+            history = self.safe_history(session, conversation.id, user_msg.id, route, options)
+            available_refs = {c["ref"] for c in package.payload.get("data", {}).get("search_documents", {}).get("citations", [])}
+            # Replay only turns whose entire document evidence fits this request's budget.
+            # Otherwise old source refs could be repeated without a resolvable citation.
+            history = [m for m in history if all(c["ref"] in available_refs for c in
+                       context_snapshot_handler.get(session, m.context_snapshot_id).payload.get("data", {})
+                       .get("search_documents", {}).get("citations", []))]
             request = LLMRequest(
                 model=model,
                 instructions=SYSTEM_PROMPT,

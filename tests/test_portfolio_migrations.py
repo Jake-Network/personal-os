@@ -28,3 +28,36 @@ def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
     command.upgrade(config, "head")
     command.check(config)
     engine.dispose()
+
+
+@pytest.mark.parametrize('previous_revision', [None, '0004_portfolio_identity', 'head'])
+def test_startup_applies_committed_revisions_and_preserves_existing_rows(tmp_path, monkeypatch, previous_revision):
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+    from app.modules.database import Database
+    from app.modules.database.model import Base
+    import app.main as main
+
+    url = f"sqlite:///{tmp_path / 'startup.db'}"
+    config = Config('alembic.ini')
+    config.attributes['database_url'] = url
+    if previous_revision:
+        command.upgrade(config, previous_revision)
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.execute(text("INSERT INTO app_settings (key, value, updated_at) VALUES ('preserved', '{}', '2026-10-18')"))
+        engine.dispose()
+    database = Database()
+    monkeypatch.setattr(main, 'db', database)
+    monkeypatch.setattr(main, 'settings', replace(main.settings, database_url=url, data_dir=tmp_path))
+    monkeypatch.chdir(tmp_path)
+    try:
+        with TestClient(main.app):
+            assert set(inspect(database.engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
+            with database.engine.connect() as connection:
+                assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '6581e3048ce0'
+                if previous_revision:
+                    assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
+    finally:
+        if database.engine is not None:
+            database.engine.dispose()

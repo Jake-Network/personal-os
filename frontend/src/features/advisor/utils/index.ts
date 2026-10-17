@@ -19,6 +19,8 @@ export function snapshotToInspector(s: SnapshotResponse): InspectorData {
   return {
     context_snapshot_id: s.context_snapshot_id,
     context_reused: false,
+    document_citations:
+      (s.payload as { data?: { search_documents?: { citations?: InspectorData['document_citations'] } } }).data?.search_documents?.citations ?? [],
     categories: s.context_categories,
     excluded_categories: s.excluded_categories,
     source_updated_at: s.source_updated_at as InspectorData['source_updated_at'],
