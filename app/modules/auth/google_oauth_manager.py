@@ -2,9 +2,10 @@
 import base64
 import hashlib
 import secrets
+from ipaddress import ip_address
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from google.auth.exceptions import RefreshError
@@ -73,6 +74,29 @@ class GoogleOAuthManager:
         conn = self.current(session)
         return f"oauth:{conn.subject or 'disconnected'}:{self.settings.google_oauth_client_id}" if conn else "adc"
 
+    def setup(self) -> dict:
+        """Public setup diagnostics, never client secrets or issued tokens."""
+        frontend = urlsplit(self.settings.frontend_url)
+        redirect = urlsplit(self.settings.google_oauth_redirect_uri)
+        hostname = redirect.hostname
+        try:
+            loopback = bool(hostname and ip_address(hostname).is_loopback)
+            raw_ip = True
+        except ValueError:
+            loopback, raw_ip = hostname == "localhost", False
+        supported = bool(hostname and (redirect.scheme == "https" or (redirect.scheme == "http" and loopback))
+                         and (not raw_ip or loopback) and not redirect.username and not redirect.password
+                         and not redirect.query and not redirect.fragment
+                         and redirect.path == "/api/finance/google/callback")
+        return {"missing_fields": [name for name, value in (
+                    ("GOOGLE_OAUTH_CLIENT_ID", self.settings.google_oauth_client_id),
+                    ("GOOGLE_OAUTH_CLIENT_SECRET", self.settings.google_oauth_client_secret)) if not value],
+                "frontend_url": self.settings.frontend_url,
+                "login_url": f"{self.settings.frontend_url.rstrip('/')}/finance",
+                "redirect_uri": self.settings.google_oauth_redirect_uri,
+                "redirect_uri_supported": supported,
+                "callback_host_matches_frontend": bool(hostname and hostname == frontend.hostname)}
+
     def status(self, session: Session) -> dict:
         conn = session.get(GoogleOAuthConnection, 1)
         return {"configured": self.configured, "connected": bool(conn and conn.status == "connected"),
@@ -81,11 +105,16 @@ class GoogleOAuthManager:
                 "access_expires_at": conn.access_expires_at.isoformat() if conn and conn.access_expires_at else None,
                 "last_error_code": conn.last_error_code if conn else None,
                 "credential_source": "oauth" if conn and conn.status == "connected" else (
-                    "none" if conn else "application_default")}
+                    "none" if conn else "application_default"), "setup": self.setup()}
 
     def start_login(self, session: Session) -> tuple[str, str]:
         if not self.configured:
             raise GoogleOAuthError("not_configured")
+        setup = self.setup()
+        if not setup["redirect_uri_supported"]:
+            raise GoogleOAuthError("unsupported_redirect_uri")
+        if not setup["callback_host_matches_frontend"]:
+            raise GoogleOAuthError("callback_host_mismatch")
         state, binding, nonce, verifier = (secrets.token_urlsafe(48) for _ in range(4))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         session.execute(delete(GoogleOAuthPending).where(GoogleOAuthPending.expires_at < datetime.now(UTC)))

@@ -8,8 +8,18 @@ export type FinanceSettings = {
   last_error: string | null;
 };
 
+export type GoogleOAuthSetup = {
+  missing_fields: string[];
+  frontend_url: string;
+  redirect_uri: string;
+  login_url: string;
+  redirect_uri_supported: boolean;
+  callback_host_matches_frontend: boolean;
+};
+
 export type GoogleConnection = {
   configured: boolean;
+  setup?: GoogleOAuthSetup;
   connected: boolean;
   status: 'not_connected' | 'connected' | 'needs_reauth' | 'disconnected';
   email: string | null;

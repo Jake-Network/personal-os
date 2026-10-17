@@ -21,16 +21,28 @@ cannot reach Google, remove the grant using your Google Account's
 
 ### One-time server setup
 
-1. Enable **Google Sheets API** in your Google Cloud project.
+If `/api/finance/google/status` reports `configured: false`, the app has no Google
+OAuth client credentials yet. A Google account alone does not supply an application
+client ID and secret. The `/finance` setup panel shows the missing environment settings
+and the exact callback URI to register; no Google tokens or client secret are displayed.
+
+1. Select or create a project in [Google Cloud Console](https://console.cloud.google.com/),
+   then enable [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com).
 2. Configure Google Auth Platform branding, audience and data access. For an External
    application in Testing, add your own Google account as a test user. Request
    `https://www.googleapis.com/auth/spreadsheets.readonly` plus the identity scopes
    `openid` and `email` used to display the connected account.
-3. Create an OAuth client with application type **Web application**. Add the authorized
+3. In [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients),
+   create an OAuth client with application type **Web application**. Add the authorized
    redirect URI `http://127.0.0.1:8000/api/finance/google/callback` for native local
    development. The redirect URI must exactly match the server setting, including host,
    port and path. If using a different local port or Docker's frontend port, register
    that browser-accessible callback URL and set the same value below.
+   For Docker, put these variables in `docker/.env` (see `docker/env.sample`) and
+   rebuild and recreate the backend to load both dependencies and credentials:
+   `docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build --force-recreate app`.
+   This also starts the database dependency. `restart` alone does not load changed
+   environment settings, and recreating an old image does not install the Google SDK.
    Use the same hostname as the browser's Personal OS URL so the callback receives the
    login cookie: `localhost` and `127.0.0.1` are different hosts. A callback through the
    frontend `/api/finance/google/callback` proxy can keep the same origin.
@@ -47,6 +59,18 @@ cannot reach Google, remove the grant using your Google Account's
    setting. Environment variables must be passed to the running server; `.env` is not
    automatically loaded in native development. In Docker, pass the Google variables to
    the backend container and persist its data directory.
+
+### WSL IP access
+
+You may view the dashboard at a WSL address such as `http://172.18.224.169:5173/finance`,
+but start Google linking at the **login URL** shown in the setup panel. By default this
+is `http://127.0.0.1:5173/finance`. It must be reachable from the Windows browser as well
+as from WSL. If Windows localhost forwarding is unavailable, restore localhost forwarding
+or configure a registered HTTPS domain before attempting OAuth. Changing the redirect
+URI to the raw WSL IP will not solve this: [Google's redirect validation](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
+requires HTTPS and disallows raw IP hosts except loopback addresses. Cookies set for
+the WSL IP also cannot bind a callback to `127.0.0.1`. The server keeps rejecting login
+requests from unexpected origins rather than weakening the browser binding.
 
 The authorization flow asks for offline access so the server can refresh tokens. For
 External applications in Testing, refresh tokens for Sheets access normally expire after

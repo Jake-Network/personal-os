@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,8 +12,105 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-import { financeApi, type Portfolio } from './api';
+import { financeApi, type GoogleConnection, type Portfolio } from './api';
+import { googleEnvironmentTemplate, googleOriginMismatch } from './google-setup';
 import { allocationPercent, money, timestamp } from './presentation';
+
+// An origin cannot change within this document; a navigation creates a new document.
+const subscribeToOrigin = () => () => undefined;
+const browserOrigin = () => window.location.origin;
+const serverOrigin = () => '';
+
+function GoogleSetupGuidance({ data, originMismatch }: { data: GoogleConnection; originMismatch: boolean }) {
+  const setup = data.setup;
+  return (
+    <div className='space-y-3'>
+      {originMismatch && setup && (
+        <Alert variant='warning'>
+          <p>
+            현재 접속 주소가 서버의 Google 로그인 주소와 다릅니다. 연결은{' '}
+            <a className='underline' href={setup.login_url}>
+              {setup.login_url}
+            </a>
+            에서 진행하세요. 127.0.0.1은 브라우저를 실행한 컴퓨터를 가리킵니다. 다른 기기에서는 HTTPS 도메인을 서버 주소로 설정해야 합니다.
+          </p>
+        </Alert>
+      )}
+      {setup && (!setup.redirect_uri_supported || !setup.callback_host_matches_frontend) && (
+        <Alert variant='warning'>
+          Google 콜백 주소 설정을 수정해야 합니다. HTTP 사설 IP 주소는 Google 콜백으로 사용할 수 없습니다. 로컬에서는 127.0.0.1 또는 localhost를
+          사용하고, 외부 접속에는 HTTPS 도메인을 사용하세요. 프론트엔드와 콜백의 호스트도 같아야 합니다.
+        </Alert>
+      )}
+      {!data.configured && (
+        <div className='space-y-3 rounded-lg border p-4 text-sm'>
+          <p className='font-medium'>Google 계정 연결을 위한 초기 설정이 필요합니다</p>
+          <p>Google Cloud에서 앱의 OAuth 클라이언트를 먼저 발급해야 로그인할 수 있습니다. 개인 Google 계정으로 발급할 수 있습니다.</p>
+          {setup && setup.missing_fields.length > 0 && (
+            <p>
+              서버에 없는 설정: <code className='break-all'>{setup.missing_fields.join(', ')}</code>
+            </p>
+          )}
+          <ol className='list-decimal space-y-2 pl-5'>
+            <li>
+              <a href='https://console.cloud.google.com/apis/library/sheets.googleapis.com' target='_blank' rel='noreferrer' className='underline'>
+                Google Cloud Console
+              </a>
+              에서 프로젝트를 선택하거나 만들고 Google Sheets API를 사용 설정하세요.
+            </li>
+            <li>
+              <a href='https://console.cloud.google.com/auth/branding' target='_blank' rel='noreferrer' className='underline'>
+                Google Auth Platform
+              </a>
+              에서 앱 이름과 지원 이메일을 설정하세요. 대상은 외부(External)로 설정하고, 테스트 모드라면{' '}
+              <a href='https://console.cloud.google.com/auth/audience' target='_blank' rel='noreferrer' className='underline'>
+                테스트 사용자
+              </a>
+              에 본인 Google 이메일을 추가하세요.
+            </li>
+            <li>
+              <a href='https://console.cloud.google.com/auth/clients' target='_blank' rel='noreferrer' className='underline'>
+                클라이언트
+              </a>
+              에서 OAuth 클라이언트를 만들고 유형을 웹 애플리케이션으로 선택하세요. 승인된 리디렉션 URI에 아래 주소를 정확히 등록하세요.
+              {setup ? (
+                <input
+                  aria-label='Google 승인된 리디렉션 URI'
+                  readOnly
+                  value={setup.redirect_uri}
+                  onFocus={event => event.target.select()}
+                  className='mt-2 w-full rounded border bg-muted p-2 font-mono text-xs'
+                />
+              ) : (
+                <p className='mt-1'>서버의 GOOGLE_OAUTH_REDIRECT_URI 값을 확인하세요. 서버 업데이트 후 여기에서도 주소를 확인할 수 있습니다.</p>
+              )}
+            </li>
+            <li>
+              발급한 클라이언트 ID와 보안 비밀번호를 서버에 설정하세요. Docker Compose는 docker/.env를 사용하고, 직접 실행할 때는 서버를 시작하는
+              셸에서 환경 변수를 export하세요. 보안 비밀번호는 브라우저에 입력하거나 공유하지 마세요.
+            </li>
+            <li>환경 설정을 적용해 서버를 다시 시작하고 이 페이지를 새로고침한 뒤 Google 계정으로 연결하세요.</li>
+          </ol>
+          {setup && (
+            <div>
+              <label htmlFor='google-oauth-env' className='mb-1 block'>
+                서버 환경 설정 템플릿 (클라이언트 값은 서버에서 입력)
+              </label>
+              <textarea
+                id='google-oauth-env'
+                readOnly
+                rows={4}
+                value={googleEnvironmentTemplate(setup)}
+                onFocus={event => event.target.select()}
+                className='w-full rounded border bg-muted p-2 font-mono text-xs'
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GoogleConnectionControls() {
   const client = useQueryClient();
@@ -28,8 +125,11 @@ function GoogleConnectionControls() {
     onSettled: () => client.invalidateQueries({ queryKey: ['finance'] }),
   });
   const data = connection.data;
+  const origin = useSyncExternalStore(subscribeToOrigin, browserOrigin, serverOrigin);
+  const originMismatch = googleOriginMismatch(origin, data?.setup);
   const error = connection.error ?? login.error ?? disconnect.error;
   const busy = connection.isPending || login.isPending || disconnect.isPending;
+  const invalidCallback = !!data?.setup && (!data.setup.redirect_uri_supported || !data.setup.callback_host_matches_frontend);
   return (
     <div className='space-y-2'>
       <p className='text-sm'>
@@ -45,13 +145,17 @@ function GoogleConnectionControls() {
                   ? 'Google 계정을 연결해 비공개 시트를 읽어오세요. 서버 인증정보 설정도 사용할 수 있습니다.'
                   : 'Google 계정을 연결해 비공개 시트를 읽어오세요.'}
       </p>
-      {data && !data.configured && (
-        <p className='text-xs text-muted-foreground'>Google 로그인 설정이 필요합니다. 서버의 Google OAuth 설정 안내를 확인하세요.</p>
-      )}
+      {data && <GoogleSetupGuidance data={data} originMismatch={originMismatch} />}
       <div className='flex flex-wrap gap-2'>
-        <Button type='button' disabled={busy || !data?.configured} onClick={() => login.mutate()}>
-          {data?.connected || data?.status === 'needs_reauth' ? 'Google 다시 연결' : 'Google 계정으로 연결'}
-        </Button>
+        {data?.configured && originMismatch && data.setup && !busy && !invalidCallback ? (
+          <Button asChild>
+            <a href={data.setup.login_url}>Google 로그인 주소로 이동</a>
+          </Button>
+        ) : (
+          <Button type='button' disabled={busy || !data?.configured || originMismatch || invalidCallback} onClick={() => login.mutate()}>
+            {data?.connected || data?.status === 'needs_reauth' ? 'Google 다시 연결' : 'Google 계정으로 연결'}
+          </Button>
+        )}
         {(data?.connected || data?.status === 'needs_reauth') && (
           <Button type='button' disabled={busy} onClick={() => disconnect.mutate()}>
             Google 연결 해제

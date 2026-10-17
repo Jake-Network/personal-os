@@ -20,7 +20,7 @@ def _check_origin(request: Request) -> None:
     frontend = urlsplit(settings.frontend_url)
     allowed = {f"{frontend.scheme}://{frontend.netloc}", str(request.base_url).rstrip("/")}
     if origin and origin not in allowed:
-        raise HTTPException(403, "Origin is not allowed")
+        raise HTTPException(403, f"Google 로그인은 {settings.frontend_url.rstrip('/')}/finance 에서 시작하세요.")
     if request.headers.get("sec-fetch-site") == "cross-site":
         raise HTTPException(403, "Cross-site request is not allowed")
 
