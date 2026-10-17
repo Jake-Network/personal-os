@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -15,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
+import { financeApi } from '@/features/finance/api';
 
 import { RESOURCE_API, type Row } from '../api/resource-api';
 import { RESOURCES, enumLabel, fieldLabel } from '../consts/resources';
@@ -50,6 +52,9 @@ export function DataTableView({ resource }: { resource: string }) {
   const api = RESOURCE_API[resource];
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Row | 'new' | null>(null);
+  const sheetResource = ['accounts', 'holdings', 'fx-rates', 'other-assets', 'liabilities'].includes(resource);
+  const sheets = useQuery({ queryKey: ['finance', 'settings'], queryFn: financeApi.settings, enabled: sheetResource });
+  const readOnly = sheetResource && (sheets.isPending || !!sheets.error || !!sheets.data?.spreadsheet_id);
 
   const fields = useSchemaFields(resource);
   const rows = useQuery({ queryKey: api?.queryKey ?? ['unknown', resource], queryFn: () => api.list(), enabled: !!api });
@@ -72,7 +77,7 @@ export function DataTableView({ resource }: { resource: string }) {
     );
   }
   const fieldMap = Object.fromEntries((fields.data ?? []).map(f => [f.name, f]));
-  const loadError = fields.error ?? rows.error;
+  const loadError = fields.error ?? rows.error ?? (sheetResource ? sheets.error : null);
 
   return (
     <PageContainer>
@@ -85,11 +90,21 @@ export function DataTableView({ resource }: { resource: string }) {
             : 'AI 상담이 이 데이터를 조회해 답변합니다.'
         }
         actions={
-          <Button variant='primary' disabled={!fields.data} onClick={() => setEditing('new')}>
+          <Button variant='primary' disabled={!fields.data || readOnly} onClick={() => setEditing('new')}>
             추가
           </Button>
         }
       />
+      {readOnly && (
+        <Alert className='mb-3'>
+          {sheets.data?.spreadsheet_id
+            ? 'Google Sheets 연결 상태에서는 시트에서 수정하세요. 이 화면의 기존 수동 데이터는 포트폴리오 평가에 사용하지 않습니다. '
+            : 'Google Sheets 연결 상태를 확인할 때까지 편집을 잠시 제한합니다. '}
+          <Link href='/finance' className='underline'>
+            동기화된 포트폴리오 보기
+          </Link>
+        </Alert>
+      )}
 
       {loadError && (
         <Alert variant='destructive' className='mb-3'>
@@ -118,12 +133,13 @@ export function DataTableView({ resource }: { resource: string }) {
                   </TableCell>
                 ))}
                 <TableCell className='whitespace-nowrap text-right'>
-                  <Button size='sm' variant='ghost' onClick={() => setEditing(row)}>
+                  <Button size='sm' variant='ghost' disabled={readOnly} onClick={() => setEditing(row)}>
                     수정
                   </Button>
                   <Button
                     size='sm'
                     variant='ghost-destructive'
+                    disabled={readOnly}
                     onClick={() => confirm(`이 ${meta.label} 항목을 삭제할까요?`) && remove.mutate(row.id)}>
                     삭제
                   </Button>
@@ -136,7 +152,7 @@ export function DataTableView({ resource }: { resource: string }) {
         {rows.isPending && <EmptyState>불러오는 중…</EmptyState>}
       </Card>
 
-      <Dialog open={!!editing && !!fields.data} onOpenChange={open => !open && setEditing(null)}>
+      <Dialog open={!!editing && !!fields.data && !readOnly} onOpenChange={open => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>

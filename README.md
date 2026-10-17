@@ -50,7 +50,23 @@ generated from the backend's OpenAPI schemas, so the frontend has no second copy
 
 The server binds loopback only; there is no authentication or TLS. Do not expose it.
 Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
-Schema is created with `create_all` on startup (Alembic migrations not set up yet).
+Native development creates missing tables on startup. For managed databases, run
+`uv run alembic upgrade head` before starting the app (see the migration notes in
+[Finance setup](docs/finance.md)).
+
+## Portfolio and monthly history
+
+`/finance` connects your Google account with OAuth and reads a private Google spreadsheet
+through the official, read-only Sheets API. After one-time Google Cloud client setup,
+choose **Google 계정으로 연결**, approve access, and enter your spreadsheet ID. Google tokens
+stay encrypted on the server; existing server credentials remain an optional alternative.
+It shows synchronized holdings, prices, recorded FX, KRW valuations, unrealized gains and
+allocation. `/finance/history` charts monthly assets, liabilities and net worth with
+reviewable, append-only corrections. Both pages preserve unavailable values as missing.
+
+Follow [Finance setup](docs/finance.md) for credentials, worksheet columns, GOOGLEFINANCE
+verification, month-end evidence and migration commands. Existing ChatGPT OAuth is
+independent of Google credentials. No brokerage or paid market-data APIs are used.
 
 ## Layout (router → manager → handler)
 

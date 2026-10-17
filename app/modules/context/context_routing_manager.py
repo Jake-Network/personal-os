@@ -13,7 +13,7 @@ C = Category
 RULES: tuple[tuple[tuple[str, ...], frozenset[Category]], ...] = (
     (("퇴사", "퇴직", "쉬어도", "쉬면", "그만두", "quit", "sabbatical"),
      frozenset({C.FINANCIAL, C.CAREER, C.GOALS})),
-    (("순자산", "net worth"), frozenset({C.FINANCIAL, C.INVESTMENT})),
+    (("순자산", "net worth", "wealth", "assets", "지난달", "자산 이력"), frozenset({C.FINANCIAL, C.INVESTMENT})),
     (("돈", "재정", "재무", "잔고", "예금", "적금", "현금", "자산", "부채", "대출", "빚", "지출", "생활비", "저축",
       "비상금", "비상자금", "수입", "소득", "월급", "cash", "savings", "budget", "debt", "expense", "money"),
      frozenset({C.FINANCIAL})),

@@ -24,7 +24,7 @@ class DashboardManager:
         """Months of liquid assets at the recent average spend; None when either input is missing."""
         worth = data.get("get_accounts_summary", {}).get("computed", {}).get("net_worth")
         expense = data.get("get_cashflow_summary", {}).get("monthly_expense", {})
-        if not worth or not expense.get("available"):
+        if not worth or worth.get("liquid_assets") is None or not expense.get("available"):
             return None
         return financial_calculator.runway(Decimal(worth["liquid_assets"]), Decimal(expense["monthly_average"]))
 
