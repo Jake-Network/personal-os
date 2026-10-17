@@ -74,6 +74,23 @@ class HoldingItem(_Item, HoldingCreate):
     pass
 
 
+class ValueChangeItem(BaseModel):
+    """One append-only manual edit. Differences between rows are edits, not realized returns."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    table_name: str
+    record_id: int
+    field: str
+    old_value: Decimal | None
+    new_value: Decimal | None
+    currency: str
+    as_of: date
+    change_kind: str
+    recorded_at: datetime
+
+
 class FxRateCreate(BaseModel):
     base: str = Field(min_length=3, max_length=3)
     quote: str = Field(min_length=3, max_length=3)

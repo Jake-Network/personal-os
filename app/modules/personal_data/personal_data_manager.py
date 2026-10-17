@@ -22,6 +22,7 @@ from app.modules.crud.finance_handler import (
     planned_expense_handler,
 )
 from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
+from app.modules.finance.value_history_manager import value_history_manager
 from app.schema import domain_schema as s
 
 
@@ -64,19 +65,26 @@ class PersonalDataManager:
 
     def create(self, session: Session, name: str, resource: Resource, body: BaseModel):
         obj = resource.handler.create(session, body)
+        if value_history_manager.tracks(name):
+            value_history_manager.record(session, name, obj, None, "create")
         self._audit(session, name, resource, "create", obj.id)
         session.commit()
         return obj
 
     def update(self, session: Session, name: str, resource: Resource, item_id: int, body: BaseModel):
         obj = self.get(session, resource, item_id)
+        before = value_history_manager.capture(name, obj) if value_history_manager.tracks(name) else None
         resource.handler.update(session, obj, body)
+        if before is not None:
+            value_history_manager.record(session, name, obj, before, "update")
         self._audit(session, name, resource, "update", obj.id)
         session.commit()
         return obj
 
     def delete(self, session: Session, name: str, resource: Resource, item_id: int) -> None:
         obj = self.get(session, resource, item_id)
+        if value_history_manager.tracks(name):
+            value_history_manager.record(session, name, obj, value_history_manager.capture(name, obj), "delete")
         resource.handler.delete(session, obj)
         self._audit(session, name, resource, "delete", item_id)
         session.commit()
