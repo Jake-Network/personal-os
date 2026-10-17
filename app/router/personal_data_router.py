@@ -4,7 +4,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.modules.database import get_session
+from app.modules.finance.value_history_manager import value_history_manager
 from app.modules.personal_data.personal_data_manager import RESOURCES, Resource, personal_data_manager
+from app.schema import domain_schema as s
 
 router = APIRouter(prefix="/api/data", tags=["personal-data"])
 
@@ -41,6 +43,13 @@ def _register(name: str, res: Resource) -> None:
         _check_sheet_ownership(session, name)
         _get(session, item_id)
         return personal_data_manager.update(session, name, res, item_id, body)
+
+    if value_history_manager.tracks(name):
+        @router.get(f"/{name}/{{item_id}}/history", response_model=list[s.ValueChangeItem],
+                    operation_id=f"history_{name}")
+        def item_history(item_id: int, session: Session = Depends(get_session)):
+            """Append-only manual edit history; kept even after the record itself is deleted."""
+            return value_history_manager.list(session, name, item_id)
 
     @router.delete(f"/{name}/{{item_id}}", status_code=204, operation_id=f"delete_{name}")
     def delete_item(item_id: int, session: Session = Depends(get_session)):

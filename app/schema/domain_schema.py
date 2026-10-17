@@ -68,10 +68,29 @@ class HoldingCreate(BaseModel):
     avg_cost: Decimal | None = None
     last_price: Decimal | None = None
     price_as_of: datetime | None = None
+    # Not stored on holdings (the schema stays as-is): it only dates this edit in the value history.
+    trade_date: date | None = Field(None, description="Trade date of this quantity / average-cost change")
 
 
 class HoldingItem(_Item, HoldingCreate):
     pass
+
+
+class ValueChangeItem(BaseModel):
+    """One append-only manual edit. Differences between rows are edits, not realized returns."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    table_name: str
+    record_id: int
+    field: str
+    old_value: Decimal | None
+    new_value: Decimal | None
+    currency: str
+    as_of: date
+    change_kind: str
+    recorded_at: datetime
 
 
 class FxRateCreate(BaseModel):

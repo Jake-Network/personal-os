@@ -11,6 +11,7 @@ import type { HoldingItemAssetClass } from './holdingItemAssetClass';
 import type { HoldingItemAvgCost } from './holdingItemAvgCost';
 import type { HoldingItemLastPrice } from './holdingItemLastPrice';
 import type { HoldingItemPriceAsOf } from './holdingItemPriceAsOf';
+import type { HoldingItemTradeDate } from './holdingItemTradeDate';
 
 export interface HoldingItem {
   account_id?: HoldingItemAccountId;
@@ -27,5 +28,7 @@ export interface HoldingItem {
   avg_cost?: HoldingItemAvgCost;
   last_price?: HoldingItemLastPrice;
   price_as_of?: HoldingItemPriceAsOf;
+  /** Trade date of this quantity / average-cost change */
+  trade_date?: HoldingItemTradeDate;
   id: number;
 }

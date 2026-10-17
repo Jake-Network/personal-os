@@ -24,6 +24,7 @@ import { RESOURCES, enumLabel, fieldLabel } from '../consts/resources';
 import { useSchemaFields } from '../hooks/use-schema-fields';
 import type { FieldSpec } from '../utils/schema-fields';
 import { DataForm } from './data-form';
+import { HISTORY_RESOURCES, ValueHistoryDialog } from './value-history-dialog';
 
 const MONEY_FIELDS = new Set(['balance', 'value', 'amount', 'monthly_payment', 'avg_cost', 'last_price']);
 const NUMERIC_FIELDS = new Set([
@@ -57,6 +58,7 @@ function LegacyDataTableView({ resource }: { resource: string }) {
   const api = RESOURCE_API[resource];
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Row | 'new' | null>(null);
+  const [historyOf, setHistoryOf] = useState<Row | null>(null);
   const sheetResource = ['accounts', 'holdings', 'fx-rates', 'other-assets', 'liabilities'].includes(resource);
   const sheets = useQuery({ queryKey: ['finance', 'settings'], queryFn: financeApi.settings, enabled: sheetResource });
   const readOnly = sheetResource && (sheets.isPending || !!sheets.error || !!sheets.data?.spreadsheet_id);
@@ -138,6 +140,11 @@ function LegacyDataTableView({ resource }: { resource: string }) {
                   </TableCell>
                 ))}
                 <TableCell className='whitespace-nowrap text-right'>
+                  {HISTORY_RESOURCES.has(resource) && (
+                    <Button size='sm' variant='ghost' onClick={() => setHistoryOf(row)}>
+                      이력
+                    </Button>
+                  )}
                   <Button size='sm' variant='ghost' disabled={readOnly} onClick={() => setEditing(row)}>
                     수정
                   </Button>
@@ -176,6 +183,15 @@ function LegacyDataTableView({ resource }: { resource: string }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {historyOf && (
+        <ValueHistoryDialog
+          resource={resource}
+          id={historyOf.id}
+          label={String(historyOf.name ?? historyOf.symbol ?? meta.label)}
+          onClose={() => setHistoryOf(null)}
+        />
+      )}
     </PageContainer>
   );
 }

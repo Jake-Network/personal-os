@@ -43,6 +43,14 @@ function ListRow({ className, children }: { className?: string; children: ReactN
   return <li className={`flex items-baseline gap-2.5 border-b px-4 py-2 last:border-0 ${className ?? ''}`}>{children}</li>;
 }
 
+function runwaySub(runway: DashboardSummary['computed']['runway'] | undefined): string {
+  if (runway?.available && runway.months) return `월 지출 기준 약 ${runway.months}개월${runway.understated ? ' (일부 계좌 환산 불가)' : ''}`;
+  if (runway?.available) return '지출이 수입 이하';
+  if (runway?.reason === 'monthly_expense_insufficient_coverage') return '최근 3개월 지출 기록이 부족해 계산하지 않음';
+  if (runway?.reason === 'spendable_liquidity_unknown') return '현금성 자산을 판단할 수 없음';
+  return '월 지출 데이터 없음';
+}
+
 export function DashboardView() {
   const { data, error, isPending } = useSummary({ query: { select: d => d as DashboardSummary } });
   const [panelConversation, setPanelConversation] = useState<number | null>(null);
@@ -62,7 +70,7 @@ export function DashboardView() {
   const health = d.get_health_summary;
 
   const expense = cash?.monthly_expense;
-  const runwayMonths = data?.computed?.runway?.months ?? null;
+  const runway = data?.computed?.runway;
   const importantFlags = (data?.data_quality_flags ?? []).filter(f => IMPORTANT_FLAGS.includes(f.code));
   const upcoming = [
     ...interviews.map(i => ({ t: i.starts_at as string, title: `${i.company} ${i.stage}`, tag: '면접' })),
@@ -118,15 +126,19 @@ export function DashboardView() {
                 }
               />
               <StatCard
-                label='유동 자산'
-                value={worth ? moneyShort(worth.liquid_assets) : '—'}
-                sub={runwayMonths ? `월 지출 기준 약 ${runwayMonths}개월` : '월 지출 데이터 없음'}
+                label='생활비로 쓸 수 있는 현금'
+                value={worth?.spendable_liquidity != null ? moneyShort(worth.spendable_liquidity) : '—'}
+                sub={runwaySub(runway)}
               />
               <StatCard
                 label='월평균 지출'
                 value={expense?.available ? moneyShort(expense.monthly_average) : '—'}
                 sub={
-                  expense?.available ? `최근 ${expense.months_considered}개월${expense.partial ? ' · 일부 달만 기록' : ''}` : '수입·지출을 기록하세요'
+                  expense?.available
+                    ? `최근 ${expense.months_considered}개월`
+                    : expense?.reason === 'insufficient_coverage'
+                      ? `기록 부족 (${expense.months_with_data}/${expense.months_considered}개월)`
+                      : '수입·지출을 기록하세요'
                 }
               />
               <StatCard

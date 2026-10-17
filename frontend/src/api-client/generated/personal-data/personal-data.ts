@@ -51,6 +51,7 @@ import type {
   PlannedExpenseItem,
   TaskCreate,
   TaskItem,
+  ValueChangeItem,
   WorkoutLogCreate,
   WorkoutLogItem
 } from '../../model';
@@ -345,6 +346,99 @@ export const useDeleteAccounts = <TError = ErrorType<HTTPValidationError>,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Append-only manual edit history; kept even after the record itself is deleted.
+ * @summary Item History
+ */
+export const historyAccounts = (
+    itemId: number,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<ValueChangeItem[]>(
+      {url: `/api/data/accounts/${itemId}/history`, method: 'GET', signal
+    },
+      options);
+    }
+  
+
+
+
+export const getHistoryAccountsQueryKey = (itemId?: number,) => {
+    return [
+    `/api/data/accounts/${itemId}/history`
+    ] as const;
+    }
+
+    
+export const getHistoryAccountsQueryOptions = <TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getHistoryAccountsQueryKey(itemId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof historyAccounts>>> = ({ signal }) => historyAccounts(itemId, requestOptions, signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(itemId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type HistoryAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof historyAccounts>>>
+export type HistoryAccountsQueryError = ErrorType<HTTPValidationError>
+
+
+export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof historyAccounts>>,
+          TError,
+          Awaited<ReturnType<typeof historyAccounts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof historyAccounts>>,
+          TError,
+          Awaited<ReturnType<typeof historyAccounts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Item History
+ */
+
+export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getHistoryAccountsQueryOptions(itemId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+/**
  * @summary List Items
  */
 export const listOtherAssets = (
@@ -1188,6 +1282,99 @@ export const useDeleteHoldings = <TError = ErrorType<HTTPValidationError>,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Append-only manual edit history; kept even after the record itself is deleted.
+ * @summary Item History
+ */
+export const historyHoldings = (
+    itemId: number,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<ValueChangeItem[]>(
+      {url: `/api/data/holdings/${itemId}/history`, method: 'GET', signal
+    },
+      options);
+    }
+  
+
+
+
+export const getHistoryHoldingsQueryKey = (itemId?: number,) => {
+    return [
+    `/api/data/holdings/${itemId}/history`
+    ] as const;
+    }
+
+    
+export const getHistoryHoldingsQueryOptions = <TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getHistoryHoldingsQueryKey(itemId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof historyHoldings>>> = ({ signal }) => historyHoldings(itemId, requestOptions, signal);
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(itemId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type HistoryHoldingsQueryResult = NonNullable<Awaited<ReturnType<typeof historyHoldings>>>
+export type HistoryHoldingsQueryError = ErrorType<HTTPValidationError>
+
+
+export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof historyHoldings>>,
+          TError,
+          Awaited<ReturnType<typeof historyHoldings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof historyHoldings>>,
+          TError,
+          Awaited<ReturnType<typeof historyHoldings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Item History
+ */
+
+export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(
+ itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getHistoryHoldingsQueryOptions(itemId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+/**
  * @summary List Items
  */
 export const listFxRates = (

@@ -7,5 +7,6 @@ export interface DashboardSummary {
   data: Record<string, any>;
   data_quality_flags: DataFlag[];
   source_updated_at: Record<string, string | null>;
-  computed: { runway: { months: string | null } | null };
+  /** Cash runway from spendable liquidity only; `available: false` carries the reason instead of a guess. */
+  computed: { runway: { available: boolean; months: string | null; reason?: string; understated?: boolean } | null };
 }

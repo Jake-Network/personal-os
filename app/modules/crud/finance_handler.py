@@ -9,6 +9,7 @@ from app.modules.database.model import (
     FxRate,
     Holding,
     Liability,
+    ManualValueChange,
     OtherAsset,
     PlannedExpense,
 )
@@ -74,6 +75,20 @@ class PlannedExpenseHandler(BaseCRUDHandler[PlannedExpense]):
         return self.get_multiple_with_filters(session, [PlannedExpense.due_on >= today], [PlannedExpense.due_on])
 
 
+class ManualValueChangeHandler(BaseCRUDHandler[ManualValueChange]):
+    """Insert and read only; the model rejects updates and deletes."""
+
+    def __init__(self):
+        super().__init__(ManualValueChange)
+
+    def get_for_record(self, session: Session, table: str, record_id: int,
+                       field: str | None = None, limit: int | None = None) -> list[ManualValueChange]:
+        filters = [ManualValueChange.table_name == table, ManualValueChange.record_id == record_id]
+        if field is not None:
+            filters.append(ManualValueChange.field == field)
+        return self.get_multiple_with_filters(session, filters, [ManualValueChange.id], limit)
+
+
 account_handler = AccountHandler()
 other_asset_handler = OtherAssetHandler()
 liability_handler = LiabilityHandler()
@@ -81,3 +96,4 @@ holding_handler = HoldingHandler()
 fx_rate_handler = FxRateHandler()
 cashflow_entry_handler = CashflowEntryHandler()
 planned_expense_handler = PlannedExpenseHandler()
+manual_value_change_handler = ManualValueChangeHandler()

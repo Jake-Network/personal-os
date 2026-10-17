@@ -240,11 +240,20 @@ read-only history tool makes this distinction and respects financial/investment 
 
 ## Database upgrades
 
-Back up an existing database before migrations. For a new database, run
-`uv run alembic upgrade head` with the same `DATABASE_URL` used by the app. For an existing
-database created by the previous app, first verify that its schema matches the legacy
-baseline, then run `uv run alembic stamp 0001_baseline` followed by
-`uv run alembic upgrade head`. Do not stamp a database whose schema has not been checked.
-Native development still creates missing tables
-for convenience; migration files are the managed upgrade path. Use a dedicated disposable
+The app never migrates an existing database on startup; it uses the database as it is and only
+creates tables that are missing. Upgrading is an explicit command run with the same
+`DATABASE_URL` / `PERSONAL_OS_DATA_DIR` as the app:
+
+```bash
+uv run python -m app.modules.database.migration_manager          # show the plan, change nothing
+uv run python -m app.modules.database.migration_manager --apply  # back up, then migrate
+```
+
+For a database created by an earlier version (no `alembic_version` table), its tables and columns
+are compared with the schema of every migration revision. Only an exact match is stamped; the
+append-only triggers that startup never installs are then added and the remaining migrations run.
+If nothing matches exactly, the command lists the differences and changes nothing. SQLite files are
+copied to `<file>.bak-<UTC timestamp>` before any change; back up PostgreSQL yourself
+(`pg_dump`). Migrations only add tables, columns, indexes, triggers and history rows; existing rows
+are never rewritten. `uv run alembic upgrade head` still works for databases already under Alembic. Use a dedicated disposable
 database for tests because the test fixtures drop application tables.
