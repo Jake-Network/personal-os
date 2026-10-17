@@ -8,9 +8,20 @@ export type FinanceSettings = {
   last_error: string | null;
 };
 
+export type GoogleOAuthSetup = {
+  missing_fields: string[];
+  frontend_url: string;
+  redirect_uri: string;
+  login_url: string;
+  redirect_uri_supported: boolean;
+  callback_host_matches_frontend: boolean;
+};
+
 export type GoogleConnection = {
   configured: boolean;
+  setup?: GoogleOAuthSetup;
   connected: boolean;
+  can_write?: boolean;
   status: 'not_connected' | 'connected' | 'needs_reauth' | 'disconnected';
   email: string | null;
   scopes: string[];
@@ -65,7 +76,12 @@ export type Snapshot = Portfolio & {
 
 export const financeApi = {
   googleStatus: () => customInstance<GoogleConnection>({ url: '/api/finance/google/status' }),
-  googleLogin: () => customInstance<{ authorize_url: string }>({ url: '/api/finance/google/login', method: 'POST' }),
+  googleLogin: (writeAccess = false, returnTo?: 'holdings') =>
+    customInstance<{ authorize_url: string }>({
+      url: '/api/finance/google/login',
+      method: 'POST',
+      params: writeAccess || returnTo ? { write_access: writeAccess, return_to: returnTo } : undefined,
+    }),
   googleDisconnect: () => customInstance<void>({ url: '/api/finance/google/disconnect', method: 'POST' }),
   settings: () => customInstance<FinanceSettings>({ url: '/api/finance/settings' }),
   save: (spreadsheet_id: string) => customInstance<FinanceSettings>({ url: '/api/finance/settings', method: 'PUT', data: { spreadsheet_id } }),

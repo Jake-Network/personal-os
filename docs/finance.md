@@ -21,16 +21,30 @@ cannot reach Google, remove the grant using your Google Account's
 
 ### One-time server setup
 
-1. Enable **Google Sheets API** in your Google Cloud project.
+If `/api/finance/google/status` reports `configured: false`, the app has no Google
+OAuth client credentials yet. A Google account alone does not supply an application
+client ID and secret. The `/finance` setup panel shows the missing environment settings
+and the exact callback URI to register; no Google tokens or client secret are displayed.
+
+1. Select or create a project in [Google Cloud Console](https://console.cloud.google.com/),
+   then enable [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com).
 2. Configure Google Auth Platform branding, audience and data access. For an External
    application in Testing, add your own Google account as a test user. Request
    `https://www.googleapis.com/auth/spreadsheets.readonly` plus the identity scopes
-   `openid` and `email` used to display the connected account.
-3. Create an OAuth client with application type **Web application**. Add the authorized
+   `openid` and `email` used to display the connected account. To enter holdings from
+   Personal OS, also configure `https://www.googleapis.com/auth/spreadsheets`;
+   the holdings page requests this write permission only when you choose to reconnect.
+3. In [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients),
+   create an OAuth client with application type **Web application**. Add the authorized
    redirect URI `http://127.0.0.1:8000/api/finance/google/callback` for native local
    development. The redirect URI must exactly match the server setting, including host,
    port and path. If using a different local port or Docker's frontend port, register
    that browser-accessible callback URL and set the same value below.
+   For Docker, put these variables in `docker/.env` (see `docker/env.sample`) and
+   rebuild and recreate the backend to load both dependencies and credentials:
+   `docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build --force-recreate app`.
+   This also starts the database dependency. `restart` alone does not load changed
+   environment settings, and recreating an old image does not install the Google SDK.
    Use the same hostname as the browser's Personal OS URL so the callback receives the
    login cookie: `localhost` and `127.0.0.1` are different hosts. A callback through the
    frontend `/api/finance/google/callback` proxy can keep the same origin.
@@ -47,6 +61,18 @@ cannot reach Google, remove the grant using your Google Account's
    setting. Environment variables must be passed to the running server; `.env` is not
    automatically loaded in native development. In Docker, pass the Google variables to
    the backend container and persist its data directory.
+
+### WSL IP access
+
+You may view the dashboard at a WSL address such as `http://172.18.224.169:5173/finance`,
+but start Google linking at the **login URL** shown in the setup panel. By default this
+is `http://127.0.0.1:5173/finance`. It must be reachable from the Windows browser as well
+as from WSL. If Windows localhost forwarding is unavailable, restore localhost forwarding
+or configure a registered HTTPS domain before attempting OAuth. Changing the redirect
+URI to the raw WSL IP will not solve this: [Google's redirect validation](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
+requires HTTPS and disallows raw IP hosts except loopback addresses. Cookies set for
+the WSL IP also cannot bind a callback to `127.0.0.1`. The server keeps rejecting login
+requests from unexpected origins rather than weakening the browser binding.
 
 The authorization flow asks for offline access so the server can refresh tokens. For
 External applications in Testing, refresh tokens for Sheets access normally expire after
@@ -72,8 +98,36 @@ Open `/finance`, save the spreadsheet ID (the part between `/d/` and `/edit` in 
 verify current GOOGLEFINANCE retrieval, then synchronize. Manual prices work without
 GOOGLEFINANCE verification. A failed synchronization retains the previous successful
 import, records the error and attempt time, and warns that displayed data may be stale.
-Changing spreadsheet IDs resets verification. Synchronization is an explicit action;
+Changing spreadsheet IDs resets verification. The holdings page refreshes while visible;
 there is no background scheduler or brokerage connection.
+
+## Enter holdings in Personal OS
+
+Open `/data/holdings` at the configured login origin (normally
+`http://127.0.0.1:5173`). Choose the Google write-permission connection and approve it
+with an account that has **Editor** access to the spreadsheet. Existing read-only
+connections and ADC credentials cannot write holdings. Save the private spreadsheet ID
+on `/finance`, then use the holdings page's worksheet preparation action if needed.
+Preparation creates missing tabs, headers and verification formulas; it does not fill
+historical records or declare account coverage complete.
+
+Enter an exchange-qualified ticker such as `NASDAQ:AAPL`, its currency, quantity and
+optional average cost. Saving writes to the authoritative `Holdings` sheet and installs
+current-price and trade-date GOOGLEFINANCE formulas. Foreign currencies receive a current
+KRW FX formula unless a usable current rate is already present. Unsupported tickers can
+use an explicit manual price and its actual date instead.
+
+The visible page synchronizes every 60 seconds; Google recalculates its own formulas,
+and quotes can be delayed up to 20 minutes. Verification must succeed before automatic
+quotes or FX values contribute to valuations. Formula errors and missing values remain
+unavailable; a successful holding save can show a pending quote. Refresh after calculation
+or supply a manual price. Closing the page stops polling.
+
+Stable IDs and audited request IDs make retries safe, and version checks reject stale
+app edits. App writes are serialized, but Sheets has no conditional row-update transaction:
+avoid sorting, inserting or editing spreadsheet rows simultaneously with an app save.
+The editor does not create monthly history from today's holdings or overwrite historical
+closes and FX evidence. Review `Coverage` separately before treating totals as complete.
 
 ## Worksheet format
 
@@ -107,8 +161,9 @@ such as `manual:exchange-close`; use `googlefinance` for current formula values.
 `as_of` in a live holding is the date of the quantity record; `price_as_of` is the market
 date of its quote. A fresh synchronization does not make an old quote fresh. Enter
 unsupported tickers with literal manual prices and their actual price dates. Edit
-synchronized records in Sheets, then synchronize again. Once a spreadsheet is configured,
-legacy account/holding/FX/liability/other-asset editing APIs and forms are read-only.
+synchronized records in Sheets, then synchronize again, or use `/data/holdings` to write
+holdings directly to Sheets. Once a spreadsheet is configured, legacy local
+account/holding/FX/liability/other-asset editing APIs and forms are read-only.
 Existing local records are preserved, but are excluded from Sheets valuations.
 
 For current data, put `current,TRUE,TRUE,TRUE,TRUE` in `Coverage` only after checking that

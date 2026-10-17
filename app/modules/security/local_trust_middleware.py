@@ -79,7 +79,8 @@ class LocalTrustMiddleware:
             cross_site = headers.get("sec-fetch-site") == "cross-site"
             if (origin is not None and not self.origin_allowed(origin, forwarded or host)) \
                     or (origin is None and cross_site):
-                await JSONResponse({"detail": "cross-origin request refused"}, status_code=403)(
-                    scope, receive, send)
+                # Name the configured frontend so a user on another origin (e.g. a WSL IP) knows where to go.
+                detail = f"cross-origin request refused; open the app at {self.frontend_origin}"
+                await JSONResponse({"detail": detail}, status_code=403)(scope, receive, send)
                 return
         await self.app(scope, receive, send)

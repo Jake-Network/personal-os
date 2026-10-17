@@ -175,7 +175,7 @@ def _calculate(rows, coverage, end, verified, historical=False):
         line.setdefault("currency", "")
         for field in ("balance", "quantity", "avg_cost", "price"):
             parsed = _decimal(row.get(field))
-            line[field] = str(parsed) if parsed is not None else None
+            line[field] = format(parsed, "f") if parsed is not None else None
         kind = row.get("kind")
         problems = []
         if kind not in KINDS:
@@ -243,7 +243,7 @@ def _calculate(rows, coverage, end, verified, historical=False):
                     asset_class = "unknown"
                 classes[asset_class] = classes.get(asset_class, Decimal(0)) + value
         line.update(value_krw=_string(value), unrealized_gain_krw=_string(gain),
-                    fx_rate=str(fx) if fx is not None else None,
+                    fx_rate=format(fx, "f") if fx is not None else None,
                     fx_as_of=fx_date.isoformat() if fx_date else None, issues=problems)
         lines.append(line)
     assets_complete = all(complete[k] for k in ("cash", "holding", "other"))
@@ -280,7 +280,11 @@ def _enrich(rows, tables, end, historical):
     result = []
     for original in rows:
         row = dict(original)
-        fx = _latest_evidence(tables.get("FX", []), "currency", row.get("currency"), end)
+        rates = tables.get("FX", [])
+        if historical:
+            # Current formula rates are observations, never historical close evidence.
+            rates = [rate for rate in rates if rate.get("source") != "googlefinance"]
+        fx = _latest_evidence(rates, "currency", row.get("currency"), end)
         row.update(fx_rate=fx.get("rate"), fx_as_of=fx.get("as_of"), fx_source=fx.get("source"))
         if historical and row.get("kind") == "holding":
             closes = [c for c in tables.get("Closes", []) if c.get("currency") == row.get("currency")]
