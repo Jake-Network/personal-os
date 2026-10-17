@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { financeApi } from '@/features/finance/api';
+import { SheetsHoldingsView } from '@/features/holdings/holdings-view';
 
 import { RESOURCE_API, type Row } from '../api/resource-api';
 import { RESOURCES, enumLabel, fieldLabel } from '../consts/resources';
@@ -48,6 +49,10 @@ function cell(row: Row, col: string, field?: FieldSpec): string {
 }
 
 export function DataTableView({ resource }: { resource: string }) {
+  return resource === 'holdings' ? <SheetsHoldingsView /> : <LegacyDataTableView resource={resource} />;
+}
+
+function LegacyDataTableView({ resource }: { resource: string }) {
   const meta = RESOURCES.find(r => r.name === resource);
   const api = RESOURCE_API[resource];
   const queryClient = useQueryClient();
