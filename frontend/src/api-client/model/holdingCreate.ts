@@ -12,6 +12,7 @@ import type { HoldingCreateQuantity } from './holdingCreateQuantity';
 import type { HoldingCreateAvgCost } from './holdingCreateAvgCost';
 import type { HoldingCreateLastPrice } from './holdingCreateLastPrice';
 import type { HoldingCreatePriceAsOf } from './holdingCreatePriceAsOf';
+import type { HoldingCreateTradeDate } from './holdingCreateTradeDate';
 
 export interface HoldingCreate {
   account_id?: HoldingCreateAccountId;
@@ -28,4 +29,6 @@ export interface HoldingCreate {
   avg_cost?: HoldingCreateAvgCost;
   last_price?: HoldingCreateLastPrice;
   price_as_of?: HoldingCreatePriceAsOf;
+  /** Trade date of this quantity / average-cost change */
+  trade_date?: HoldingCreateTradeDate;
 }

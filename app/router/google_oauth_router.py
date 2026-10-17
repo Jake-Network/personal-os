@@ -25,13 +25,13 @@ def _check_origin(request: Request) -> None:
         raise HTTPException(403, "Cross-site request is not allowed")
 
 
-@router.get("/status")
+@router.get("/status", operation_id="get_google_status")
 def get_status(response: Response, session: Session = Depends(get_session)):
     response.headers["Cache-Control"] = "no-store"
     return google_oauth_manager.status(session)
 
 
-@router.post("/login")
+@router.post("/login", operation_id="start_google_login")
 def start_login(request: Request, response: Response, session: Session = Depends(get_session)):
     _check_origin(request)
     try:
@@ -61,7 +61,7 @@ async def callback(request: Request, session: Session = Depends(get_session)):
     return response
 
 
-@router.post("/disconnect", status_code=204)
+@router.post("/disconnect", status_code=204, operation_id="disconnect_google")
 async def disconnect(request: Request, response: Response, session: Session = Depends(get_session)):
     _check_origin(request)
     await google_oauth_manager.disconnect(session)
