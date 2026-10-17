@@ -67,7 +67,8 @@ def fake_provider(monkeypatch):
 def client(session):
     from app.main import app
 
-    with TestClient(app) as c:
+    # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
+    with TestClient(app, base_url="http://127.0.0.1:8000") as c:
         yield c
 
 
