@@ -5,8 +5,11 @@ description = "Personal OS — personal data dashboard and AI advisor backend"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.16",
     "cryptography>=44",
     "fastapi>=0.143.3",
+    "google-api-python-client>=2.180",
+    "google-auth>=2.40",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pyjwt[crypto]>=2.10",

@@ -9,6 +9,15 @@ from app.modules.personal_data.personal_data_manager import RESOURCES, Resource,
 router = APIRouter(prefix="/api/data", tags=["personal-data"])
 
 
+def _check_sheet_ownership(session: Session, name: str) -> None:
+    if name not in {"accounts", "holdings", "fx-rates", "liabilities", "other-assets"}:
+        return
+    from app.modules.portfolio.portfolio_manager import settings_dict
+
+    if settings_dict(session)["spreadsheet_id"]:
+        raise HTTPException(409, "Google Sheets is authoritative. Edit these fields in the spreadsheet and synchronize.")
+
+
 def _register(name: str, res: Resource) -> None:
     Create, Item = res.create_schema, res.item_schema
 
@@ -24,15 +33,18 @@ def _register(name: str, res: Resource) -> None:
 
     @router.post(f"/{name}", response_model=Item, status_code=201, operation_id=f"create_{name}")
     def create_item(body: Create = Body(...), session: Session = Depends(get_session)):  # type: ignore[valid-type]
+        _check_sheet_ownership(session, name)
         return personal_data_manager.create(session, name, res, body)
 
     @router.put(f"/{name}/{{item_id}}", response_model=Item, operation_id=f"update_{name}")
     def update_item(item_id: int, body: Create = Body(...), session: Session = Depends(get_session)):  # type: ignore[valid-type]
+        _check_sheet_ownership(session, name)
         _get(session, item_id)
         return personal_data_manager.update(session, name, res, item_id, body)
 
     @router.delete(f"/{name}/{{item_id}}", status_code=204, operation_id=f"delete_{name}")
     def delete_item(item_id: int, session: Session = Depends(get_session)):
+        _check_sheet_ownership(session, name)
         _get(session, item_id)
         personal_data_manager.delete(session, name, res, item_id)
 

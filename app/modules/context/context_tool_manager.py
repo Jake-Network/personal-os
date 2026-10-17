@@ -29,6 +29,9 @@ from app.modules.database.model import CalendarEvent, FxRate, Holding
 from app.modules.finance.financial_calculator import financial_calculator
 from app.schema.context_schema import ToolContext, ToolResult
 from app.schema.finance_schema import FxTable, Position, q2
+from app.modules.context.portfolio_tools import (
+    get_monthly_asset_history, sheets_enabled, sheets_accounts, sheets_portfolio, sheets_market,
+)
 
 STALE_PRICE_DAYS = 3
 STALE_BALANCE_DAYS = 45
@@ -99,6 +102,8 @@ def _holding_positions(ctx: ToolContext) -> tuple[list[Position], list[Holding],
 
 
 def get_accounts_summary(ctx: ToolContext) -> ToolResult:
+    if sheets_enabled(ctx):
+        return sheets_accounts(ctx)
     s = ctx.session
     accounts = account_handler.get_all(s)
     others = other_asset_handler.get_all(s)
@@ -210,6 +215,8 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
 
 
 def get_portfolio_summary(ctx: ToolContext) -> ToolResult:
+    if sheets_enabled(ctx):
+        return sheets_portfolio(ctx)
     fx, _ = fx_table(ctx.session)
     positions, holdings, flags = _holding_positions(ctx)
     if not holdings:
@@ -260,6 +267,8 @@ def get_portfolio_summary(ctx: ToolContext) -> ToolResult:
 
 
 def get_market_data(ctx: ToolContext) -> ToolResult:
+    if sheets_enabled(ctx):
+        return sheets_market(ctx)
     _, fx_rows = fx_table(ctx.session)
     holdings = holding_handler.get_priced(ctx.session)
     return ToolResult(
@@ -438,7 +447,8 @@ Tool = Callable[[ToolContext], ToolResult]
 
 # Which read-only tools serve each context category.
 CATEGORY_TOOLS: dict[Category, tuple[tuple[str, Tool], ...]] = {
-    Category.FINANCIAL: (("get_accounts_summary", get_accounts_summary), ("get_cashflow_summary", get_cashflow_summary)),
+    Category.FINANCIAL: (("get_accounts_summary", get_accounts_summary), ("get_cashflow_summary", get_cashflow_summary),
+                         ("get_monthly_asset_history", get_monthly_asset_history)),
     Category.INVESTMENT: (("get_portfolio_summary", get_portfolio_summary), ("get_market_data", get_market_data),
                           ("get_relevant_news", get_relevant_news)),
     Category.CAREER: (("get_job_applications", get_job_applications), ("get_interview_schedule", get_interview_schedule)),

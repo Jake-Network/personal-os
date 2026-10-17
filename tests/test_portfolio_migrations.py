@@ -1,0 +1,30 @@
+"""Exercise the managed schema path, including database-level immutability."""
+import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import DatabaseError
+
+
+def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
+    config = Config("alembic.ini")
+    url = f"sqlite:///{tmp_path / 'migration.db'}"
+    config.attributes["database_url"] = url
+    command.upgrade(config, "head")
+    command.check(config)
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("""INSERT INTO monthly_snapshots
+            (id, month, revision, created_at, reason, payload)
+            VALUES (1, '2026-09-01', 1, '2026-10-01', 'Initial', '{}')"""))
+    for statement in ("UPDATE monthly_snapshots SET reason='rewrite' WHERE id=1",
+                      "DELETE FROM monthly_snapshots WHERE id=1"):
+        with pytest.raises(DatabaseError, match="append-only"):
+            with engine.begin() as connection:
+                connection.execute(text(statement))
+    command.downgrade(config, "0001_baseline")
+    assert "monthly_snapshots" not in inspect(engine).get_table_names()
+    assert "holdings" in inspect(engine).get_table_names()
+    command.upgrade(config, "head")
+    command.check(config)
+    engine.dispose()

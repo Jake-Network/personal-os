@@ -40,6 +40,13 @@ export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink href='/memory' onNavigate={onNavigate}>
         기억 · 의사결정
       </NavLink>
+      <SectionLabel>자산</SectionLabel>
+      <NavLink href='/finance' end onNavigate={onNavigate}>
+        포트폴리오
+      </NavLink>
+      <NavLink href='/finance/history' onNavigate={onNavigate}>
+        월별 순자산 기록
+      </NavLink>
 
       <SectionLabel>데이터</SectionLabel>
       {GROUPS.map(g =>

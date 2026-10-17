@@ -31,6 +31,12 @@ class Settings:
     openai_api_base: str = "https://api.openai.com/v1"
     default_model: str = field(default_factory=lambda: _env("ADVISOR_DEFAULT_MODEL", ""))
 
+    # Private Google Sheets connection; separate from ChatGPT OAuth.
+    google_oauth_client_id: str = field(default_factory=lambda: _env("GOOGLE_OAUTH_CLIENT_ID", ""))
+    google_oauth_client_secret: str = field(default_factory=lambda: _env("GOOGLE_OAUTH_CLIENT_SECRET", ""))
+    google_oauth_redirect_uri: str = field(default_factory=lambda: _env(
+        "GOOGLE_OAUTH_REDIRECT_URI", "http://127.0.0.1:8000/api/finance/google/callback"))
+
     # Context / history budgets.
     history_message_limit: int = 20
     context_char_limit: int = 24_000

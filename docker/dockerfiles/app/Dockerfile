@@ -15,6 +15,8 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY app ./app
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 # data/ holds the generated token-encryption key when PERSONAL_OS_SECRET_KEY is unset.
 RUN useradd --create-home --uid 1000 app && mkdir -p /project/data && chown app:app /project/data

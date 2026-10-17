@@ -18,6 +18,8 @@ from app.router import (
     personal_data_router,
     privacy_router,
     proposal_router,
+    portfolio_router,
+    google_oauth_router,
 )
 
 
@@ -45,5 +47,5 @@ async def advisor_error_handler(_request: Request, exc: AdvisorError):
 
 
 for module in (health_router, oauth_callback_router, ai_provider_router, privacy_router, advisor_router,
-               proposal_router, memory_router, personal_data_router, dashboard_router):
+               proposal_router, memory_router, personal_data_router, dashboard_router, portfolio_router, google_oauth_router):
     app.include_router(module.router)
