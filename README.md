@@ -1,0 +1,101 @@
+# Personal OS — backend (v0.2 Personal AI Advisor skeleton)
+
+Local, single-user FastAPI backend. The advisor answers from your own Personal OS data and calls
+models through **Sign in with ChatGPT** (ChatGPT plan usage via the Responses API). It never falls
+back to paid API billing.
+
+## Run with Docker (backend + PostgreSQL)
+
+```bash
+cp docker/env.sample docker/.env        # set POSTGRES_PASSWORD
+docker compose -f docker/docker-compose.yml up -d --build
+cd frontend && pnpm install && pnpm dev # FE runs on the host, proxies /api to 127.0.0.1:8000
+```
+
+- `app` mounts `./app` and runs uvicorn with `--reload`. Polling is forced, because a WSL `/mnt/c` mount sends no file events.
+- Volumes: `db_data` (PostgreSQL) and `app_data` (generated token-encryption key, `0600`). `down -v` deletes both.
+- Ports bind to `127.0.0.1` only. If you change `API_PORT`, the OAuth redirect follows it (`http://127.0.0.1:${API_PORT}/auth/callback`).
+- Tests against the compose DB use a dedicated database, because the suite drops tables:
+  `createdb personal_os_test` inside the db container, then
+  `TEST_DATABASE_URL=postgresql+psycopg://personal_os:<pw>@127.0.0.1:5432/personal_os_test uv run pytest`
+
+## Run natively (SQLite)
+
+```bash
+uv sync
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000   # port must equal OAUTH_CALLBACK_PORT
+uv run pytest
+```
+
+Frontend (React 19 + Vite, Korean UI). It proxies `/api` to `PERSONAL_OS_API` (default `http://127.0.0.1:8000`):
+
+```bash
+cd frontend
+pnpm install
+pnpm dev          # http://127.0.0.1:5173  (FRONTEND_URL must match for the OAuth redirect back)
+pnpm build        # typecheck + production build
+```
+
+Screens: dashboard with an advisor side panel, the AI 상담 page (conversation list, streaming chat,
+per-request sharing toggles, Context Inspector, snapshot comparison), approvals, memory and decision
+journal, data management, Settings → AI Provider, and data-sharing settings. Data-entry forms are
+generated from the backend's OpenAPI schemas, so the frontend has no second copy of field definitions.
+
+The server binds loopback only; there is no authentication or TLS. Do not expose it.
+Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
+Schema is created with `create_all` on startup (Alembic migrations not set up yet).
+
+## Layout (router → manager → handler)
+
+```
+app/
+  router/            FastAPI routers (HTTP only)
+  modules/<domain>/  *_manager.py  business logic, module-level singletons
+  modules/crud/      *_handler.py  ORM access only (BaseCRUDHandler)
+  modules/database/  engine/session, model/ (SQLAlchemy models)
+  schema/            *_schema.py  pydantic API models + internal value objects
+  enums/
+frontend/src/
+  api/          fetch + SSE client, OpenAPI-driven form specs, response types
+  components/   AdvisorChat, ContextInspector, ProposalCard, DataForm, Markdown, Layout
+  pages/        one file per screen
+  lib/          Korean labels, formatting, resource metadata
+```
+
+| PRD component | Code |
+|---|---|
+| OAuthAuthService | `modules/auth/oauth_manager.py` |
+| ChatGPTPlanProvider / LLMGateway | `modules/llm/providers.py`, `modules/llm/llm_gateway_manager.py` |
+| ContextRouter / ContextBuilder | `modules/context/context_routing_manager.py`, `context_builder_manager.py` |
+| Read-only agent tools | `modules/context/context_tool_manager.py` |
+| AdvisorService | `modules/advisor/advisor_manager.py` |
+| FinancialCalculator | `modules/finance/financial_calculator.py` |
+| DecisionJournalService | `modules/advisor/memory_manager.py` |
+| ConversationRepository | `modules/crud/advisor_handler.py` |
+
+## How a question is answered
+
+1. `ContextRoutingManager` maps the question to categories with deterministic keyword rules
+   (e.g. 퇴사 → Financial + Career + Goals), with no LLM call. A follow-up with no keywords reuses the previous turn's categories.
+2. Categories the user excluded (saved in `/api/settings/privacy` or set for one request) are removed before any data is read.
+3. Read-only tools query the DB through handlers. Numbers (net worth, monthly spending, weights,
+   calendar conflicts) are computed in the backend with Decimal. Missing or stale data becomes a `data_quality_flags` entry, never a guessed value.
+4. The package is frozen as a `context_snapshots` row (refs, source freshness, exact payload). If
+   nothing changed since the previous turn, that snapshot is reused.
+5. The request goes to `POST /v1/responses` with `store:false, stream:true`. The answer streams back
+   as SSE (`context` → `delta`* → `done` | `error`).
+6. ```` ```proposal ```` / ```` ```memory ```` blocks in the answer become pending items. Nothing is applied
+   until `/api/proposals/{id}/approve` or `/api/memories/{id}/confirm`. Financial tables have no proposal path.
+
+## Sign in with ChatGPT
+
+`POST /api/settings/ai-provider/chatgpt/login` returns the authorize URL. It uses dynamic client registration on first
+sign-in, PKCE S256, state + nonce, `resource=https://api.openai.com/v1`, and requests the scopes
+`openid profile email offline_access resource.invoke chatgpt.tokens.use.direct`. The callback at
+`http://127.0.0.1:<port>/auth/callback` exchanges the code and verifies the ID token against OpenAI's JWKS.
+It enables plan usage only if `chatgpt.tokens.use.direct` was granted. Tokens are Fernet-encrypted in
+`oauth_credentials` and never returned by any endpoint. Quota (`subscription_sharing_usage_limit_exceeded`),
+scope, and revoked-token errors each map to a distinct user message. None of them switches provider.
+
+The API-key and Codex app-server providers exist behind the same interface. They become active only via
+`PUT /api/settings/ai-provider/selection`. The Codex app-server provider is a stub.

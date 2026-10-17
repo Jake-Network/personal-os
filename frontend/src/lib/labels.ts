@@ -1,0 +1,121 @@
+import type { Category } from '../api/types';
+
+export const CATEGORY_LABEL: Record<Category, string> = {
+  financial: '재무',
+  investment: '투자',
+  career: '커리어',
+  calendar: '일정',
+  health: '건강',
+  goals: '목표',
+  profile: '개인 프로필',
+};
+
+export const CATEGORY_HINT: Record<Category, string> = {
+  financial: '계좌 잔고, 부채, 자산, 지출',
+  investment: '보유 종목, 수량, 비중, 가격',
+  career: '채용 상태, JD, 면접, 평가 기준',
+  calendar: '일정, 약속, 마감일, 할 일',
+  health: '운동 이력',
+  goals: '단기·장기 목표와 진행률',
+  profile: '확인된 선호·제약·우선순위',
+};
+
+export const ALL_CATEGORIES: Category[] = ['financial', 'investment', 'career', 'calendar', 'health', 'goals', 'profile'];
+
+export const ROUTE_REASON: Record<string, string> = {
+  keyword: '질문 키워드로 자동 선택',
+  override: '직접 선택',
+  previous_turn: '직전 질문의 영역을 이어서 사용',
+  domain: '상담 분야 기본값',
+  fallback: '해당 키워드 없음, 목표만 사용',
+};
+
+const FLAG_TEXT: Record<string, string> = {
+  no_accounts: '등록된 계좌가 없습니다',
+  no_liabilities_recorded: '부채가 기록되지 않았습니다 (0인지 미입력인지 알 수 없음)',
+  stale_balance: '잔고 기준일이 오래되었습니다',
+  stale_price: '시세 기준일이 오래되었습니다',
+  investment_excluded_from_net_worth: '투자 영역이 공유 제외되어 순자산에서 증권이 빠졌습니다',
+  net_worth_incomplete: '순자산 계산에서 빠진 항목이 있습니다',
+  cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
+  monthly_expense_unknown: '월평균 지출 데이터가 없습니다',
+  monthly_expense_partial: '최근 3개월 중 일부 달만 지출 기록이 있습니다',
+  no_holdings: '보유 종목이 없습니다',
+  missing_fx: '환율이 없어 원화 환산을 못한 항목이 있습니다',
+  news_source_not_configured: '뉴스 소스가 연결되지 않았습니다',
+  no_active_applications: '진행 중인 채용이 없습니다',
+  no_career_criteria: '커리어 평가 기준이 설정되지 않았습니다',
+  no_upcoming_interviews: '예정된 면접이 없습니다',
+  no_upcoming_events: '예정된 일정이 없습니다',
+  no_goals: '진행 중인 목표가 없습니다',
+  no_workout_logs: '최근 운동 기록이 없습니다',
+  category_excluded_by_user: '사용자가 공유를 제외한 영역입니다',
+  context_text_trimmed: '길이 제한으로 긴 텍스트 일부를 줄였습니다',
+  context_over_budget: 'Context가 길이 제한을 넘었습니다',
+};
+
+// Their backend `detail` is guidance for the model (English); the Korean text above says it all.
+const MODEL_ONLY_DETAIL = new Set([
+  'monthly_expense_unknown', 'investment_excluded_from_net_worth', 'no_liabilities_recorded', 'no_career_criteria',
+]);
+
+export function flagDetail(code: string, detail?: string): string | undefined {
+  return detail && !MODEL_ONLY_DETAIL.has(code) ? detail : undefined;
+}
+
+export function flagText(code: string): string {
+  return FLAG_TEXT[code] ?? code;
+}
+
+export const TABLE_LABEL: Record<string, string> = {
+  accounts: '계좌',
+  other_assets: '기타 자산',
+  liabilities: '부채',
+  holdings: '보유 종목',
+  fx_rates: '환율',
+  cashflow_entries: '수입·지출',
+  planned_expenses: '예정 지출',
+  job_applications: '채용 지원',
+  interviews: '면접',
+  career_criteria: '평가 기준',
+  calendar_events: '일정',
+  tasks: '할 일',
+  goals: '목표',
+  workout_logs: '운동 기록',
+  personal_memories: '기억',
+};
+
+export const TOOL_LABEL: Record<string, string> = {
+  get_accounts_summary: '계좌·자산·부채',
+  get_cashflow_summary: '현금흐름',
+  get_portfolio_summary: '포트폴리오',
+  get_market_data: '시세·환율',
+  get_relevant_news: '뉴스',
+  get_job_applications: '채용 지원',
+  get_interview_schedule: '면접 일정',
+  get_calendar_events: '일정',
+  get_tasks: '할 일',
+  get_goals: '목표',
+  get_health_summary: '운동',
+  get_profile: '개인 프로필',
+};
+
+export const ACTION_LABEL: Record<string, string> = {
+  create_task: '할 일 추가',
+  calendar_update: '일정 변경',
+  goal_update: '목표 수정',
+};
+
+export const MEMORY_KIND_LABEL: Record<string, string> = {
+  profile: '프로필',
+  preference: '선호',
+  constraint: '제약',
+  priority: '우선순위',
+};
+
+export const ERROR_HINT: Record<string, { action: string; to: string }> = {
+  not_connected: { action: 'ChatGPT 연결하기', to: '/settings/ai-provider' },
+  reauth_required: { action: '다시 로그인', to: '/settings/ai-provider' },
+  plan_usage_not_authorized: { action: '권한 포함해 재연결', to: '/settings/ai-provider' },
+  plan_usage_limit_exceeded: { action: '사용량 상태 보기', to: '/settings/ai-provider' },
+};

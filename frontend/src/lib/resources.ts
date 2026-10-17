@@ -1,0 +1,65 @@
+export interface ResourceMeta {
+  name: string; // API path segment
+  label: string;
+  group: '재무' | '투자' | '커리어' | '일정·목표' | '건강';
+  columns: string[];
+  financial?: boolean;
+}
+
+export const RESOURCES: ResourceMeta[] = [
+  { name: 'accounts', label: '계좌', group: '재무', financial: true,
+    columns: ['name', 'institution', 'kind', 'balance', 'balance_as_of', 'is_liquid'] },
+  { name: 'liabilities', label: '부채', group: '재무', financial: true,
+    columns: ['name', 'kind', 'balance', 'interest_rate', 'monthly_payment', 'balance_as_of'] },
+  { name: 'other-assets', label: '기타 자산', group: '재무', financial: true,
+    columns: ['name', 'kind', 'value', 'value_as_of', 'is_liquid'] },
+  { name: 'cashflow-entries', label: '수입·지출', group: '재무', financial: true,
+    columns: ['occurred_on', 'kind', 'amount', 'category', 'description'] },
+  { name: 'planned-expenses', label: '예정 지출', group: '재무', financial: true,
+    columns: ['name', 'amount', 'due_on'] },
+  { name: 'holdings', label: '보유 종목', group: '투자', financial: true,
+    columns: ['symbol', 'name', 'asset_class', 'quantity', 'avg_cost', 'last_price', 'price_as_of'] },
+  { name: 'fx-rates', label: '환율', group: '투자', financial: true, columns: ['base', 'quote', 'rate', 'as_of'] },
+  { name: 'job-applications', label: '채용 지원', group: '커리어',
+    columns: ['company', 'role', 'status', 'applied_on', 'next_step'] },
+  { name: 'interviews', label: '면접', group: '커리어', columns: ['application_id', 'stage', 'starts_at', 'location'] },
+  { name: 'career-criteria', label: '평가 기준', group: '커리어', columns: ['name', 'weight', 'description'] },
+  { name: 'calendar-events', label: '일정', group: '일정·목표', columns: ['title', 'kind', 'starts_at', 'ends_at', 'location'] },
+  { name: 'tasks', label: '할 일', group: '일정·목표', columns: ['title', 'status', 'priority', 'due_on', 'estimate_minutes'] },
+  { name: 'goals', label: '목표', group: '일정·목표',
+    columns: ['title', 'category', 'horizon', 'current_value', 'target_value', 'target_date', 'status'] },
+  { name: 'workout-logs', label: '운동 기록', group: '건강', columns: ['performed_on', 'activity', 'duration_minutes', 'intensity'] },
+];
+
+export const FIELD_LABEL: Record<string, string> = {
+  name: '이름', institution: '기관', kind: '종류', currency: '통화', balance: '잔액', balance_as_of: '기준일',
+  is_liquid: '즉시 현금화 가능', value: '평가액', value_as_of: '기준일', interest_rate: '금리(%)',
+  monthly_payment: '월 상환액', account_id: '계좌 ID', symbol: '종목코드', market: '시장', asset_class: '자산군',
+  quantity: '수량', avg_cost: '평균단가', last_price: '최근 가격', price_as_of: '가격 기준시각', base: '기준 통화',
+  quote: '표시 통화', rate: '환율', as_of: '기준시각', occurred_on: '날짜', amount: '금액', category: '분류',
+  description: '설명', due_on: '마감일', company: '회사', role: '직무', status: '상태', applied_on: '지원일',
+  jd_text: 'JD', compensation_note: '보상 메모', next_step: '다음 단계', notes: '메모', application_id: '지원 ID',
+  stage: '단계', starts_at: '시작', ends_at: '종료', location: '장소', prep_notes: '준비 메모', weight: '가중치',
+  title: '제목', horizon: '기간', target_value: '목표값', current_value: '현재값', unit: '단위',
+  target_date: '목표일', priority: '우선순위', estimate_minutes: '예상 시간(분)', goal_id: '목표 ID',
+  performed_on: '날짜', activity: '운동', duration_minutes: '시간(분)', intensity: '강도',
+};
+
+export const ENUM_LABEL: Record<string, string> = {
+  checking: '입출금', savings: '적금', deposit: '예금', brokerage_cash: '증권 예수금', cash: '현금', pension: '연금',
+  other: '기타', real_estate: '부동산', vehicle: '차량', severance_estimate: '예상 퇴직금', mortgage: '주택담보대출',
+  jeonse_loan: '전세대출', credit: '신용대출', card: '카드', equity: '주식', etf: 'ETF', bond: '채권', crypto: '가상자산',
+  income: '수입', expense: '지출', interested: '관심', applied: '지원', screening: '서류', interviewing: '면접 중',
+  offer: '오퍼', rejected: '불합격', withdrawn: '철회', personal: '개인', work: '업무', interview: '면접',
+  workout: '운동', deadline: '마감', financial: '재무', career: '커리어', health: '건강', short: '단기', long: '장기',
+  active: '진행 중', done: '완료', dropped: '중단', todo: '할 일', doing: '진행 중', low: '낮음', normal: '보통',
+  high: '높음', easy: '가벼움', moderate: '보통', hard: '강함',
+};
+
+export function fieldLabel(name: string): string {
+  return FIELD_LABEL[name] ?? name;
+}
+
+export function enumLabel(value: unknown): string {
+  return typeof value === 'string' ? (ENUM_LABEL[value] ?? value) : String(value ?? '');
+}
