@@ -188,8 +188,10 @@ class ChatGPTPlanProvider:
         # Refresh may await a network request while the user revokes sharing or
         # switches accounts. Recheck immediately before the personal payload leaves.
         from app.modules.llm.transfer_policy import account_binding, require_confirmation, TransferNotConfirmed
-        from app.modules.advisor.memory_history_manager import require_live_request_sources
+        from app.modules.context.source_policy import require_live_request_sources
         session.expire_all()
+        from app.modules.llm.run_policy import require
+        require(session, request.authorization)
         if not expected_account or account_binding(session, self.name) != expected_account:
             raise TransferNotConfirmed()
         require_confirmation(session, self.name)
@@ -216,8 +218,10 @@ class ApiKeyProvider:
 
     async def stream(self, session: Session, request: LLMRequest) -> AsyncIterator[StreamEvent]:
         from app.modules.llm.transfer_policy import require_confirmation
-        from app.modules.advisor.memory_history_manager import require_live_request_sources
+        from app.modules.context.source_policy import require_live_request_sources
         session.expire_all()
+        from app.modules.llm.run_policy import require
+        require(session, request.authorization)
         require_confirmation(session, self.name)
         require_live_request_sources(session, request)
         async for event in self.client.stream(self._key(session), request):

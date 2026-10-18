@@ -438,7 +438,7 @@ def get_health_summary(ctx: ToolContext, days: int = 28) -> ToolResult:
 
 
 def get_profile(ctx: ToolContext) -> ToolResult:
-    from app.modules.advisor.memory_history_manager import relevant_memories
+    from app.modules.context.memory_selection import relevant_memories
     import re
     from datetime import datetime
     historical_date = re.search(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", ctx.query)

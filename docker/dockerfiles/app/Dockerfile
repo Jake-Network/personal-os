@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY app ./app
 COPY alembic.ini ./
 COPY migrations ./migrations
+COPY docker/entrypoint.sh /usr/local/bin/personal-os-entrypoint.sh
 
 # data/ holds the generated token-encryption key when PERSONAL_OS_SECRET_KEY is unset.
 RUN useradd --create-home --uid 1000 app && mkdir -p /project/data && chown app:app /project/data
@@ -26,4 +27,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
 
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/personal-os-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

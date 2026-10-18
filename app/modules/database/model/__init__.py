@@ -9,3 +9,4 @@ from app.modules.database.model.market_data import *  # noqa: F401,F403
 from app.modules.database.model.memory_history import *  # noqa: F401,F403
 from app.modules.database.model.review_jobs import *  # noqa: F401,F403
 from app.modules.database.model.security import *  # noqa: F401,F403
+from app.modules.database.model.advisor_runtime import *  # noqa: F401,F403

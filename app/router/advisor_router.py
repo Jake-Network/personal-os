@@ -1,4 +1,3 @@
-import json
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -80,13 +79,13 @@ def search_messages(q: str = Query(min_length=1, max_length=200), limit: int = Q
 @router.post("/conversations/{conversation_id}/messages")
 async def ask(conversation_id: int, body: AskRequest, session: Session = Depends(get_session)):
     """Server-sent events: context → delta* → done | error."""
-    conv = _conversation(session, conversation_id)
-
-    async def events():
-        async for event in advisor_manager.ask(session, conv, body.message, body.options()):
-            yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
-
-    return StreamingResponse(events(), media_type="text/event-stream",
+    from uuid import uuid4
+    from app.modules.advisor.runtime.service import conversation_runtime
+    from app.schema.advisor_runtime_schema import RunCreate
+    from app.router.advisor_runtime_router import subscribe
+    run = await conversation_runtime.create(session, conversation_id,
+        RunCreate(**body.model_dump(), request_id=str(uuid4())), single_response=True)
+    return StreamingResponse(subscribe(run.id, compatibility=True), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -128,9 +127,27 @@ def delete_snapshot(snapshot_id: str, session: Session = Depends(get_session)):
     if snap is None:
         raise HTTPException(404, "snapshot not found")
     from sqlalchemy import update
-    from app.modules.database.model import AdvisorMessage
-    session.execute(update(AdvisorMessage).where(AdvisorMessage.context_snapshot_id == snapshot_id).values(context_purged=True))
-    context_snapshot_handler.delete(session, snap)
+    from app.modules.database.model import AdvisorMessage, ContextSnapshot
+    from app.modules.database.model.advisor_runtime import AdvisorRun
+    from app.modules.advisor.runtime.checkpoints import delete_run_checkpoints
+    from sqlalchemy import select
+    from app.modules.documents.evidence import _purge_runtime_copies, dependent_snapshot_ids
+    snapshot_ids = dependent_snapshot_ids(session, snapshot_id)
+    _purge_runtime_copies(session, select(ContextSnapshot.id).where(ContextSnapshot.id.in_(snapshot_ids)))
+    affected = list(session.scalars(select(AdvisorRun).where(AdvisorRun.conversation_id == snap.conversation_id)))
+    # A checkpoint may contain derived text from any earlier snapshot in this conversation.
+    # Invalidate unfinished analyses conservatively before deleting their captured evidence.
+    for run in affected:
+        if run.status not in {'completed', 'cancelled', 'failed'}:
+            run.status = 'blocked'
+            run.error = '근거가 삭제되었습니다. 공유 범위를 확인한 뒤 새 분석을 시작하세요.'
+            run.lease_generation += 1
+            run.lease_owner, run.lease_until = None, None
+            run.revision += 1
+    delete_run_checkpoints(session, [run.id for run in affected])
+    session.execute(update(AdvisorMessage).where(AdvisorMessage.context_snapshot_id.in_(snapshot_ids)).values(context_purged=True))
+    from sqlalchemy import delete
+    session.execute(delete(ContextSnapshot).where(ContextSnapshot.id.in_(snapshot_ids)))
     audit_log_handler.record(session, "user", "snapshot.delete", f"context_snapshots:{snapshot_id}")
     session.commit()
 

@@ -25,14 +25,16 @@ def legacy_at(tmp_path, revision: str) -> str:
     return url
 
 
-def test_create_all_database_is_stamped_at_head_and_gets_triggers(tmp_path):
+def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_path):
     url = url_for(tmp_path)
     engine = create_engine(url)
     Base.metadata.create_all(engine)  # what native startup produces: no triggers, no version
     plan = mm.plan(url)
-    assert plan.action == "stamp" and plan.stamp == plan.head
+    assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
+    assert plan.head == "0011_advisor_checkpoints"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
+    assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())
     with engine.begin() as c:
         c.execute(text("""INSERT INTO monthly_snapshots (id, month, revision, created_at, reason, payload)
             VALUES (1, '2026-09-01', 1, '2026-10-01', 'x', '{}')"""))

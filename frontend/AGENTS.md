@@ -61,7 +61,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## 상담·문서·승인 UI
 
-- `src/app/(main)/advisor/layout.tsx`가 `AdvisorWorkspace`를 유지하는 구조를 보호한다. `/advisor`에서 `/advisor/[id]`로 이동할 때 새 답변 스트림이 재마운트로 사라지지 않아야 한다.
+- `src/app/(main)/advisor/layout.tsx`가 `AdvisorWorkspace`를 유지하는 구조를 보호한다. 상담 실행은 서버가 소유하며 `useWorkspace`가 저장 상태와 순번이 있는 이벤트를 관찰한다. `/advisor`에서 `/advisor/[id]`로 이동하거나 화면을 떠나도 실행을 중복 생성하거나 취소하지 않는다.
+- 실행 생성과 질문 응답은 별도 요청이다. 대기 질문에는 질문 ID·실행 revision·요청 ID를 전달한다. 구독 해제는 실행 중지가 아니며, 중지 요청 후 서버의 `cancelled` 상태를 확인한다. 대안 조건 변경은 부모 revision을 가진 새 버전과 새 분석을 생성한다.
 - SSE의 `context` → `delta` → `done` 또는 `error`, 사용자 중단과 연결 종료를 구분한다. 전송 중 중복 제출, 취소 후 늦게 도착한 이벤트, 대화 전환 시 상태 혼입을 검토한다.
 - `next.config.ts`의 압축 비활성화와 긴 proxy timeout은 스트리밍을 위한 설정이다. 변경 시 답변이 완료 전부터 표시되는지 실제로 확인한다.
 - Context Inspector의 전송 미리보기와 답변 당시 스냅샷을 구별한다. 공유 토글·문서 선택과 요청 payload를 일치시키며 서버의 공유 정책을 UI만으로 대체하지 않는다.
@@ -83,7 +84,7 @@ corepack yarn test
 corepack yarn build
 ```
 
-- 최소 검증은 변경 영향에 맞춰 선택한다. SSE는 `src/api-client/event-stream.test.ts`, 오류는 `src/api-client/api-error.test.ts`, 재무 표시는 `src/features/finance/presentation.test.ts`, Sheets 입력은 `src/features/holdings/api.test.ts`, 스키마 폼은 `src/features/personal-data/utils/schema-fields.test.ts`를 출발점으로 삼는다.
+- 최소 검증은 변경 영향에 맞춰 선택한다. SSE는 `src/api-client/event-stream.test.ts`, 실행 이벤트 재연결은 `src/features/advisor/run-events.test.ts`, 오류는 `src/api-client/api-error.test.ts`, 재무 표시는 `src/features/finance/presentation.test.ts`, Sheets 입력은 `src/features/holdings/api.test.ts`, 스키마 폼은 `src/features/personal-data/utils/schema-fields.test.ts`를 출발점으로 삼는다.
 - 화면을 변경했다면 가능한 환경에서 데스크톱·좁은 화면, 데이터 없음·로딩·실패, 긴 한국어 제목·큰 금액·중복 제출 등 관련 상태를 확인한다. 정적 검사와 단위 테스트 통과를 브라우저 검증으로 보고하지 않는다.
 - 실시간 LLM·OAuth·Google Sheets 검증과 모킹된 테스트를 구별한다. 문서만 수정한 경우에는 링크·경로·명령과 코드의 일치 및 diff를 확인한다.
 - 루트에는 공통 제품·보안·데이터 원칙을, 이 파일에는 프런트엔드 구조·화면 동작·실행 방법을 관리한다. 라우팅·공용 클라이언트·API 생성·주요 UX 변경 시 두 문서의 관련 항목을 함께 확인하고 오래된 지침을 수정한다.

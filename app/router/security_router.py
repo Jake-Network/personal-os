@@ -51,6 +51,9 @@ def unlock_security(body: PasswordInput, response: Response, session: Session = 
 
 @router.post("/lock", status_code=204)
 def lock_security(response: Response, session: Session = Depends(get_session)):
+    from app.modules.advisor.runtime.authorization import revoke
+    auth._serialize_owner_access(session)
+    revoke(session)
     auth.revoke_all(session)
     response.delete_cookie(auth.COOKIE, path="/", httponly=True, samesite="lax")
     response.headers["Cache-Control"] = "no-store"

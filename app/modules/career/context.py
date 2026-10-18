@@ -2,7 +2,7 @@
 import re
 
 from app.enums.context_category import ALL_CATEGORIES, Category
-from app.modules.advisor.memory_history_manager import source_allowed
+from app.modules.context.source_policy import source_allowed
 from app.modules.context.records import latest_of, quality_flag, record_ref
 from app.modules.context.types import ToolContext, ToolResult
 from app.modules.crud.career_record_handler import career_record_handler

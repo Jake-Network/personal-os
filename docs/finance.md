@@ -37,7 +37,11 @@ GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:5173/api/finance/google/callback
 
 ## Database upgrades
 
-기존 DB는 시작 시 변경하거나 stamp하지 않습니다. 앱과 worker의 쓰기를 중지하고 DB·문서·키·설정을 함께 백업한 뒤 실행합니다.
+Docker 컨테이너는 서버 실행 전에 DB 준비와 migration 잠금을 기다리고 이미지에 포함된 Alembic `head`까지 자동 업그레이드합니다. 실패하면 서버를 시작하지 않습니다. 기존 설치의 이미지를 교체하기 전에 앱과 worker의 쓰기를 중지하고 DB·문서·키·설정을 함께 백업하세요. PostgreSQL 백업은 자동으로 생성되지 않습니다.
+
+DB 준비·잠금 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기본 `60`초)로 설정합니다. 정비 명령에서 자동 업그레이드를 건너뛰려면 `PERSONAL_OS_AUTO_MIGRATE=0`을 지정합니다. 이력이 없는 기존 DB는 [명시적 전환](documents.md#기존-create_all-db의-명시적-전환)이 필요하며, 이미지가 모르는 revision도 시작을 거부합니다. 자동 stamp나 downgrade는 수행하지 않습니다.
+
+네이티브 `uvicorn` 실행은 빈 DB만 초기화합니다. 기존 DB를 수동으로 확인·업그레이드할 때는 다음 명령을 사용합니다.
 
 ```bash
 uv run python -m app.modules.database.migration_manager

@@ -84,13 +84,14 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - 프런트엔드: Next.js App Router, React, TypeScript, TanStack Query, Tailwind/shadcn, React Hook Form/Zod, Orval, Yarn. 라우트는 `frontend/src/app/`, 도메인 UI는 `features/`, 공용 UI는 `components/`, 셸은 `widgets/`에 둔다. 작업 전 [frontend/AGENTS.md](frontend/AGENTS.md)와 해당 버전의 로컬 Next.js 문서를 읽는다.
 - API 계약의 원본은 백엔드 OpenAPI다. `frontend/src/api-client/generated/`와 `model/`은 수작업 수정하지 않고 재생성한다. 공용 전송·오류·SSE 처리는 기존 클라이언트를 사용한다. 데이터 입력 폼의 스키마를 프런트엔드에 중복 정의하지 않는다.
 - 상담의 SSE 계약(`context`, `delta`, `done`, `error`), 취소·오류 표시와 대화 이동 중 스트림 수명을 보호한다. 기능 변경 시 관련 Query 캐시 무효화도 확인한다.
+- 상담 실행의 공개 진입점은 `app/modules/advisor/runtime/service.py`의 `ConversationRuntime`이다. 모델 호출은 `ContextAssembler`와 기존 Gateway를 거친다. HTTP 구독 해제로 서버 run을 취소하지 않는다. 앱 전체 1개 실행·대화당 미종결 1개, 질문 ID·revision 기반 재개, 명시적 중지·재시도와 답변 revision을 유지한다. lease·세대 검사와 checkpoint 쓰기 권한을 함께 보호하고 외부 호출 완료가 불명확한 복구는 자동 재호출하지 않는다. 체크포인터 DDL은 Alembic migration 경로에서만 실행한다.
 - 한국어 UI를 기본으로 하고 기존 라벨·포맷 유틸리티를 재사용한다. 데이터 없음, 공유 제외, 연결 필요, 오래된 데이터, 부분 성공과 실패를 서로 다른 상태로 표시하고 다음 행동을 제공한다.
 - 문서 인덱싱 변경 시 버전 활성화, lease·heartbeat·작업 소유권·재시도 상한·중복 완료 방지를 함께 검토한다. 파생 데이터 처리 실패가 기존 검색 가능한 버전을 없애지 않게 한다.
 
 ## DB와 운영 데이터 보호
 
 - SQLite와 PostgreSQL 모두 지원 대상이다. 모델 변경에는 Alembic revision을 포함하고 기존 DB의 업그레이드·데이터 보존을 검증한다. `create_all()` 통과는 마이그레이션 검증이 아니다.
-- 빈 DB는 커밋된 migration으로 초기화한다. 기존 DB는 시작 시 자동으로 변경하거나 stamp하지 않는다. 명시적 업그레이드는 `app.modules.database.migration_manager`와 기존 운영 절차를 따른다.
+- Docker entrypoint는 DB 준비와 migration 잠금을 기다린 뒤 커밋된 Alembic `head`까지 자동 업그레이드하고, 실패하면 서버를 시작하지 않는다. 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기본 60초), 정비 명령의 자동 적용 우회는 `PERSONAL_OS_AUTO_MIGRATE=0`이다. 기존 설치는 이미지 교체 전에 백업한다. 이력이 없는 기존 DB의 명시적 채택과 알 수 없는 revision 검증을 유지하며 자동 stamp·downgrade하지 않는다. 네이티브 앱 시작은 빈 DB만 초기화하며 기존 DB 업그레이드는 `app.modules.database.migration_manager`와 기존 운영 절차를 따른다.
 - 스키마 불일치를 `alembic stamp head`, 테이블 재생성, 볼륨 삭제로 덮지 않는다. 실제 DB 변경·복원·이미지 전환은 백업과 호환성 확인을 선행한다. 토큰 암호화 키와 개인 데이터 볼륨도 함께 보호한다.
 - **pytest fixture는 테이블을 삭제한다.** `TEST_DATABASE_URL`에는 폐기 가능한 전용 테스트 DB만 사용한다. 개인 운영 DB를 테스트 대상으로 지정하지 않는다.
 

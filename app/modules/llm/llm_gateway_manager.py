@@ -60,6 +60,7 @@ class LLMGatewayManager:
     async def stream(
         self, session: Session, request: LLMRequest, conversation_id: int | None = None
     ) -> AsyncIterator[StreamEvent]:
+        session.expire_all()
         provider = self.provider(session)
         started = time.monotonic()
         record: dict = {
@@ -69,8 +70,10 @@ class LLMGatewayManager:
         }
         try:
             session.expire_all()
+            from app.modules.llm.run_policy import require
+            require(session, request.authorization)
             transfer_policy.require_confirmation(session, provider.name)
-            from app.modules.advisor.memory_history_manager import require_live_request_sources
+            from app.modules.context.source_policy import require_live_request_sources
             require_live_request_sources(session, request)
             async for chunk in provider.stream(session, request):
                 if chunk.type == "completed":

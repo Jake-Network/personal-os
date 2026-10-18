@@ -61,7 +61,7 @@ def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, mo
             if previous_revision == '0004_portfolio_identity':  # existing databases are never migrated at startup
                 assert version == previous_revision and 'documents' not in tables
             else:
-                assert tables == set(Base.metadata.tables) | {'alembic_version'}
+                assert tables == set(Base.metadata.tables) | {'alembic_version', 'checkpoints', 'writes'}
                 assert version == expected_head
             with database.engine.connect() as connection:
                 if previous_revision:

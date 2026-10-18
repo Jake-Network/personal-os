@@ -12,7 +12,7 @@ from app.modules.security import session_manager as auth
 
 
 @pytest.fixture
-def locked_client(session, monkeypatch):
+def locked_client(session, monkeypatch, checkpoint_schema):
     from app.main import app
     from app.modules.documents import document_manager
 

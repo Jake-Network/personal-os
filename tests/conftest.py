@@ -47,8 +47,14 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 
 
 @pytest.fixture
-def session():
-    db.init(TEST_DATABASE_URL)
+def session(request, tmp_path):
+    url = TEST_DATABASE_URL
+    if url in {'sqlite://', 'sqlite:///:memory:'} and {'client', 'locked_client'} & set(request.fixturenames):
+        # HTTP subscribers, authentication checks and the server worker own separate
+        # transactions. Sharing one StaticPool connection can roll back another
+        # coroutine's uncommitted evidence; use independent disposable connections.
+        url = f"sqlite:///{tmp_path / 'api.db'}"
+    db.init(url)
     Base.metadata.drop_all(db.engine)
     db.create_schema()
     with db.session() as s:
@@ -69,7 +75,22 @@ def fake_provider(monkeypatch, session):
 
 
 @pytest.fixture
-def client(session, monkeypatch):
+def checkpoint_schema(session):
+    import importlib
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+
+    # Official saver tables belong to explicit migrations, outside ORM create_all.
+    # Only this disposable test fixture installs them; application startup never does.
+    with db.engine.begin() as connection:
+        if "checkpoints" not in inspect(connection).get_table_names():
+            with Operations.context(MigrationContext.configure(connection)):
+                importlib.import_module("migrations.versions.0011_advisor_checkpoints").upgrade()
+
+
+@pytest.fixture
+def client(session, monkeypatch, checkpoint_schema):
     from app.main import app
     from app.modules.documents import document_manager
     from app.modules.jobs import job_manager
@@ -77,8 +98,8 @@ def client(session, monkeypatch):
     async def idle_worker(_database, stop):
         await stop.wait()
 
-    # The lifespan worker would share the single in-memory SQLite connection with the test session
-    # from another thread; tests drive indexing explicitly with process_one instead.
+    # Tests drive document indexing and scheduled jobs explicitly. The consultation
+    # worker remains active so legacy SSE tests exercise durable server execution.
     monkeypatch.setattr(document_manager, "process_pending", idle_worker)
     monkeypatch.setattr(job_manager, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".

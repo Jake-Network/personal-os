@@ -13,6 +13,7 @@ cd frontend && corepack yarn install && corepack yarn dev # FE runs on the host,
 ```
 
 - `app` mounts `./app` and runs uvicorn with `--reload`. Polling is forced, because a WSL `/mnt/c` mount sends no file events.
+- Before starting the server, the container waits for the database, acquires a migration lock, and upgrades it to the image's Alembic `head`. A failed migration prevents server startup. Back up an existing installation before deploying a newer image.
 - Volumes: `db_data` (PostgreSQL) and `app_data` (generated token-encryption key, `0600`). `down -v` deletes both.
 - Ports bind to `127.0.0.1` only. If you change `API_PORT`, the OAuth redirect follows it (`http://127.0.0.1:${API_PORT}/auth/callback`).
 - Tests against the compose DB use a dedicated database, because the suite drops tables:
@@ -54,17 +55,17 @@ per-request sharing toggles, Context Inspector, snapshot comparison), approvals,
 journal, data management, Settings → AI Provider, and data-sharing settings. Data-entry forms are
 generated from the backend's OpenAPI schemas, so the frontend has no second copy of field definitions.
 
-The owner sets a password on first use. Server-side sessions, HttpOnly cookies, CSRF and exact Origin checks protect personal APIs. The app locks at startup, after 15 minutes without user activity, or from the lock button. Polling does not renew the idle deadline. Locking clears browser caches in every tab and cancels active advisor streams. Approved local workers continue. This lock does not remove database decryption keys; OS disk encryption remains a separate control.
+The owner sets a password on first use. Server-side sessions, HttpOnly cookies, CSRF and exact Origin checks protect personal APIs. The app locks at startup, after 15 minutes without user activity, or from the lock button. Polling does not renew the idle deadline. Locking clears browser caches in every tab and closes advisor subscriptions. Explicitly pressing the lock button also revokes consultation execution authority; an expired browser session alone does not cancel an authorized server run. Approved document-indexing workers continue. This lock does not remove database decryption keys; OS disk encryption remains a separate control.
 
 Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
 Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
-Startup builds an empty database from the committed migrations and uses an existing database as it
-is: it never alters, migrates or stamps one that already has tables (it logs a warning when the
-schema is behind the Alembic head). Schema upgrades are an explicit step:
+Docker startup upgrades empty and versioned databases to the committed Alembic `head` before starting the server. Database readiness and migration-lock waits are bounded by `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS` (default `60`). Set `PERSONAL_OS_AUTO_MIGRATE=0` for maintenance commands that must bypass this startup step. Databases with tables but no Alembic history, or with a revision unknown to the image, require explicit intervention; startup never stamps or downgrades them. Native `uvicorn` startup initializes empty databases only; existing databases still use the explicit upgrade command:
 `uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
 performs it, after backing up a SQLite file (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
 it never modifies existing rows.
+
+Before upgrading an existing installation, back up the database, documents and token-encryption key and stop application writes. Start the updated Docker container to apply migrations automatically, or run `uv run python -m app.modules.database.migration_manager --apply` for a native installation. Revisions `0010_advisor_runtime` and `0011_advisor_checkpoints` add persisted runs, events, scenarios and graph checkpoints while retaining existing conversation and memory IDs. Checkpoint tables are created by Alembic migrations; graph execution and ordinary requests do not create them.
 
 Financial figures distinguish net worth, investable assets, cash and cash equivalents, and
 *spendable liquidity* (cash-kind accounts marked liquid). Cash runway uses spendable liquidity only
@@ -72,6 +73,18 @@ and is reported as unavailable when the last three full months of expenses are n
 
 CI (`.github/workflows/ci.yml`, Linux) runs pytest on SQLite and PostgreSQL (plus Alembic
 upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), Vitest and build.
+
+## 지속되는 상담 워크스페이스
+
+`/advisor`에서 질문을 보내면 서버가 분석을 실행하고 채팅과 상담 패널에 저장된 상태를 표시합니다. 다른 화면으로 이동하거나 브라우저를 닫아도 **서버가 실행 중이면** 분석을 계속합니다. 다시 열면 완료된 답변 또는 같은 확인 질문을 불러옵니다. 앱 전체에서 한 번에 하나의 분석을 실행하며, 각 상담에는 확인 질문 대기·확인 필요 상태를 포함해 미종결 실행을 하나만 둡니다. 분석 중에도 다음 질문의 초안은 작성할 수 있습니다.
+
+- **자동 / 깊게 분석:** 모델 호출·도구 조회·재계획 한도는 각각 6회·12회·2회와 12회·24회·3회입니다. 요약·검증·구조화된 출력의 수정 요청도 모델 호출 한도에 포함합니다. 긴 대화의 요약은 원문 출처를 보존한 과거 맥락이며 현재 잔고·일정을 대신하지 않습니다. 한도나 근거 부족은 결과의 한계 또는 오류로 표시합니다.
+- **답변 필요:** 확인 질문의 선택지나 입력창으로 같은 분석에 답합니다. 대기하는 동안 다른 상담의 분석은 실행할 수 있습니다.
+- **분석 중지 / 재시도:** 브라우저 연결 종료와 중지 요청은 별개입니다. `중지 요청 중`은 완료 확인 전 상태입니다. 실패·확인 필요 상태의 재시도는 명시적으로 요청하며 새 답변 버전을 만듭니다. 서버가 중단돼 모델 호출의 완료 여부가 불명확하면 자동 재호출하지 않고 확인 필요로 둡니다.
+- **상담 패널:** 목적·가정·제약과 저장된 대안을 확인합니다. `조건 바꿔 비교`는 원래 결과를 보존하는 새 버전의 분석이며, `이 대안으로 이어가기`는 후속 상담의 기준을 선택합니다. 한 분석에서 생성하는 대안은 최대 3개입니다. 재무·시간 결과는 필요한 입력이 있는 경우 서버가 계산하며, 미확인 값은 그대로 표시합니다.
+- **근거·기억 / 실행:** 선택한 답변 당시의 근거와 승인 대기 행동을 확인합니다. 행동과 장기 기억은 사용자 확인 후 반영합니다. 제안 뒤 일정·목표가 바뀌면 승인은 충돌로 끝나며 새 제안이 필요합니다. 결정·회고는 기존 결정 기록에서 관리합니다.
+
+LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 공유 검사를 사용합니다. 외부 추적 전송이나 외부 임베딩 자동 전환은 활성화하지 않습니다. 합성 데이터와 가짜 제공자 회귀 검증은 실제 제공자의 답변 품질·OAuth 연결 성공·실제 문서의 검색 품질 평가를 대신하지 않습니다.
 
 ## Portfolio and monthly history
 
@@ -135,7 +148,8 @@ frontend/src/
 | ChatGPTPlanProvider / LLMGateway | `modules/llm/providers.py`, `modules/llm/llm_gateway_manager.py` |
 | ContextRouter / ContextBuilder | `modules/context/routing.py`, `context_builder_manager.py` |
 | Read-only agent tools | `modules/context/context_tool_manager.py` |
-| AdvisorService | `modules/advisor/advisor_manager.py` |
+| ConversationRuntime / 상담 그래프·worker | `modules/advisor/runtime/` |
+| 상담 이력·공유·미리보기 | `modules/advisor/advisor_manager.py`, `modules/advisor/runtime/context.py` |
 | FinancialCalculator | `modules/finance/financial_calculator.py` |
 | DecisionJournalService | `modules/advisor/memory_manager.py` |
 | ConversationRepository | `modules/crud/conversation_handler.py` |

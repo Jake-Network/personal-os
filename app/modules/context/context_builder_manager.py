@@ -51,7 +51,7 @@ class ContextBuilderManager:
                     continue
                 result = tool(ctx)
                 if document_scope and name in {"get_profile", "get_career_records"}:
-                    from app.modules.advisor.memory_history_manager import source_allowed
+                    from app.modules.context.source_policy import source_allowed
                     if any(not source_allowed(session, [ref], frozenset(ALL_CATEGORIES) - selected,
                                               document_scope=document_scope) for ref in result.refs):
                         flags.append({"code": "source_sharing_scope_excluded", "category": category.value,

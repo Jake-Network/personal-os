@@ -25,6 +25,20 @@ export function parseEventBlocks(buffer: string): { events: string[]; rest: stri
  * axios cannot stream response bodies in the browser, so this one call uses fetch.
  */
 export async function postEventStream<E>(path: string, body: unknown, onEvent: (event: E) => void, signal?: AbortSignal): Promise<void> {
+  return requestEventStream(path, { method: 'POST', body: JSON.stringify(body) }, onEvent, signal);
+}
+
+/** Observing a saved run never creates a new model request. Aborting only unsubscribes. */
+export async function getEventStream<E>(path: string, onEvent: (event: E) => void, signal?: AbortSignal): Promise<void> {
+  return requestEventStream(path, { method: 'GET' }, onEvent, signal);
+}
+
+async function requestEventStream<E>(
+  path: string,
+  request: Pick<RequestInit, 'method' | 'body'>,
+  onEvent: (event: E) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   const controller = new AbortController();
   const unregister = registerPrivateStream(controller);
   const abort = () => controller.abort();
@@ -33,9 +47,8 @@ export async function postEventStream<E>(path: string, body: unknown, onEvent: (
   try {
     const token = getCsrfToken();
     const res = await fetch(path, {
-      method: 'POST',
+      ...request,
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { 'X-CSRF-Token': token } : {}) },
-      body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (res.status === 401) notifySessionExpired();

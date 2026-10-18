@@ -19,6 +19,10 @@ dependencies = [
     "sqlalchemy>=2.1.5",
     "uvicorn>=0.34",
     "tzdata>=2026.5",
+    "langchain-core==1.2.7",
+    "langgraph==1.0.7",
+    "langgraph-checkpoint-sqlite==3.0.3",
+    "langgraph-checkpoint-postgres==3.0.4",
 ]
 
 [dependency-groups]
