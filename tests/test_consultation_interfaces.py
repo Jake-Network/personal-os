@@ -48,7 +48,7 @@ def test_graph_uses_store_and_retrievers_once_per_selected_context(session, monk
     class Gateway:
         def __init__(self):
             self.requests = []
-            self.outputs = deque([{'objective': '제약 확인'}, {'valid': True}, {'answer': '제약에 따른 답변'}])
+            self.outputs = deque([{'answer': '제약에 따른 답변'}])
 
         async def stream(self, session, request, conversation_id=None):
             self.requests.append(request)
@@ -62,7 +62,7 @@ def test_graph_uses_store_and_retrievers_once_per_selected_context(session, monk
     result = asyncio.run(graph.ainvoke(initial_state('내 필수 제약은 무엇인가요?'),
         {'configurable': {'thread_id': 'interface-test'}}, durability='sync'))
     assert result['answer'] == '제약에 따른 답변'
-    assert observed == {'store': 3, 'history': 3, 'documents': 3}
+    assert observed == {'store': 1, 'history': 1, 'documents': 1}
     assert isinstance(graph.store, ConfirmedMemoryStore)
     assert all(json.dumps(request.input, ensure_ascii=False).count('고유 합성 제약') == 1 for request in gateway.requests)
 
@@ -136,9 +136,9 @@ def test_real_graph_summarizes_overflow_once_with_source_range(session):
 
     async def execute():
         first = build_conversation_graph(session, manager, conversation, AskOptions(), 'fake')
-        result = await first.ainvoke(initial_state('면접 계획을 검토해 주세요'))
+        result = await first.ainvoke(initial_state('면접 계획을 검토해 주세요', depth='deep'))
         second = build_conversation_graph(session, manager, conversation, AskOptions(), 'fake')
-        again = await second.ainvoke(initial_state('면접 후속 계획을 검토해 주세요'))
+        again = await second.ainvoke(initial_state('면접 후속 계획을 검토해 주세요', depth='deep'))
         return result, again
 
     result, again = asyncio.run(execute())
