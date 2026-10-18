@@ -5,4 +5,4 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalCreateCurrentValue = number | string | null;
+export type GoalCreateCurrentValue = string | null;

@@ -80,8 +80,11 @@ def _validate_payload(action: str, payload: dict) -> dict:
                 raise ProposalError("goal changes required")
             if "status" in p and p["status"] not in ("active", "done", "dropped"):
                 raise ProposalError("invalid status")
-            if "current_value" in p and not Decimal(str(p["current_value"])).is_finite():
-                raise ProposalError("current_value must be finite")
+            if "current_value" in p:
+                value = p["current_value"]
+                if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                    raise ProposalError("current_value must be text or a number")
+                p["current_value"] = str(value)
     except (TypeError, ValueError, InvalidOperation) as exc:
         raise ProposalError(str(exc)) from exc
     return p
@@ -247,7 +250,7 @@ class ProposalManager:
             goal = target
             changes: dict = {}
             if "current_value" in p:
-                changes["current_value"] = Decimal(str(p["current_value"]))
+                changes["current_value"] = str(p["current_value"])
             if "target_date" in p:
                 changes["target_date"] = parse_date(p["target_date"])
             if "status" in p:

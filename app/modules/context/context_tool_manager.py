@@ -404,13 +404,9 @@ def get_goals(ctx: ToolContext) -> ToolResult:
     goals = goal_handler.get_active(ctx.session)
     rows = []
     for g in goals:
-        progress = None
-        if g.target_value and g.current_value is not None:
-            progress = str((g.current_value / g.target_value * 100).quantize(Decimal("0.1")))
         rows.append({"ref": f"goals:{g.id}", "title": g.title, "category": g.category, "horizon": g.horizon,
-                     "target_value": str(g.target_value) if g.target_value is not None else None,
-                     "current_value": str(g.current_value) if g.current_value is not None else None,
-                     "unit": g.unit, "target_date": iso_or_none(g.target_date), "progress_pct": progress})
+                     "target_value": g.target_value, "current_value": g.current_value,
+                     "unit": g.unit, "target_date": iso_or_none(g.target_date)})
     return ToolResult(
         data={"active_goals": rows},
         refs=[record_ref("goals", g) for g in goals],

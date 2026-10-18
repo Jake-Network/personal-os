@@ -5,4 +5,4 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalCreateTargetValue = number | string | null;
+export type GoalCreateTargetValue = string | null;

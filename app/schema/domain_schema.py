@@ -196,8 +196,8 @@ class GoalCreate(BaseModel):
     title: str
     category: Literal["financial", "career", "health", "personal"]
     horizon: Literal["short", "long"] = "short"
-    target_value: Decimal | None = None
-    current_value: Decimal | None = None
+    target_value: str | None = None
+    current_value: str | None = None
     unit: str | None = None
     target_date: date | None = None
     status: Literal["active", "done", "dropped"] = "active"

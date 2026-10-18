@@ -181,8 +181,8 @@ class Goal(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(32))  # financial | career | health | personal
     horizon: Mapped[str] = mapped_column(String(16), default="short")  # short | long
-    target_value: Mapped[Decimal | None] = mapped_column(Money)
-    current_value: Mapped[Decimal | None] = mapped_column(Money)
+    target_value: Mapped[str | None] = mapped_column(Text)
+    current_value: Mapped[str | None] = mapped_column(Text)
     unit: Mapped[str | None] = mapped_column(String(32))
     target_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | done | dropped

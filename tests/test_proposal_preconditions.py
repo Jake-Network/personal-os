@@ -1,7 +1,5 @@
 """Approval binds the exact target reviewed when the proposal was recorded."""
 from datetime import UTC, datetime
-from decimal import Decimal
-
 import pytest
 
 from app.modules.advisor.errors import ProposalError
@@ -24,7 +22,7 @@ def test_stale_target_rejects_and_rolls_back_claim(session, action):
         target = CalendarEvent(title="기존 일정", starts_at=datetime(2026, 10, 18, tzinfo=UTC))
         payload = {"event_id": 1, "title": "제안 일정"}
     else:
-        target = Goal(title="기존 목표", category="personal", current_value=Decimal("1"))
+        target = Goal(title="기존 목표", category="personal", current_value="1")
         payload = {"goal_id": 1, "current_value": "2"}
     session.add(target)
     session.commit()
@@ -39,12 +37,12 @@ def test_stale_target_rejects_and_rolls_back_claim(session, action):
 
 
 def test_unchanged_target_applies_once(session):
-    goal = Goal(title="목표", category="personal", current_value=Decimal("1"))
+    goal = Goal(title="목표", category="personal", current_value="1")
     session.add(goal)
     session.commit()
-    proposal_id = record(session, "goal_update", {"goal_id": goal.id, "current_value": "2.5"})
+    proposal_id = record(session, "goal_update", {"goal_id": goal.id, "current_value": "하프 마라톤 1시간 35분"})
     proposal_manager.approve(session, proposal_id)
-    assert session.get(Goal, goal.id).current_value == Decimal("2.5")
+    assert session.get(Goal, goal.id).current_value == "하프 마라톤 1시간 35분"
     with pytest.raises(ProposalError, match="already approved"):
         proposal_manager.approve(session, proposal_id)
 
@@ -66,7 +64,7 @@ def test_legacy_target_update_requires_a_new_proposal(session):
     ("delete_goal", {"goal_id": 1}),
     ("create_task", {"title": "작업", "status": "done"}),
     ("create_task", {"title": "작업", "estimate_minutes": -1}),
-    ("goal_update", {"goal_id": 1, "current_value": "NaN"}),
+    ("goal_update", {"goal_id": 1, "current_value": {"unexpected": "object"}}),
     ("calendar_update", {"event_id": 1, "title": "일정", "_precondition": "forged"}),
 ])
 def test_invalid_model_payload_is_not_recorded(session, action, payload):
@@ -89,7 +87,7 @@ def test_invalid_calendar_range_rolls_back_approval(session):
 
 def test_audit_failure_rolls_back_applied_change(session, monkeypatch):
     from app.modules.advisor import proposal_manager as module
-    goal = Goal(title="목표", category="personal", current_value=Decimal("1"))
+    goal = Goal(title="목표", category="personal", current_value="1")
     session.add(goal)
     session.commit()
     proposal_id = record(session, "goal_update", {"goal_id": goal.id, "current_value": "2"})
@@ -100,5 +98,5 @@ def test_audit_failure_rolls_back_applied_change(session, monkeypatch):
     monkeypatch.setattr(module.audit_log_handler, "record", fail_audit)
     with pytest.raises(RuntimeError, match="audit failure"):
         proposal_manager.approve(session, proposal_id)
-    assert session.get(Goal, goal.id).current_value == Decimal("1")
+    assert session.get(Goal, goal.id).current_value == "1"
     assert session.get(ProposedAction, proposal_id).status == "pending"

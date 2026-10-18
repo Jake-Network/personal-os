@@ -28,6 +28,21 @@ def test_data_entry_and_advisor_sse_flow(client, fake_provider):
     assert client.get(f"/api/advisor/snapshots/{snap_id}").status_code == 404
 
 
+def test_goal_values_accept_and_preserve_free_form_text(client):
+    payload = {
+        "title": "하프 마라톤 목표",
+        "category": "personal",
+        "target_value": "1시간 35분 이내",
+        "current_value": "1시간 48분",
+        "unit": "기록",
+    }
+    created = client.post("/api/data/goals", json=payload)
+    assert created.status_code == 201
+    assert created.json()["target_value"] == payload["target_value"]
+    assert created.json()["current_value"] == payload["current_value"]
+    assert client.get("/api/data/goals").json()[0]["target_value"] == payload["target_value"]
+
+
 def test_ai_provider_status_never_exposes_tokens(client):
     r = client.get("/api/settings/ai-provider").json()
     assert r["connected"] is False and r["provider"] == "chatgpt_plan"
