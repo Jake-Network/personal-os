@@ -16,7 +16,6 @@ rewritten: migrations only add tables, columns, indexes, triggers and backfilled
 import argparse
 import shutil
 import tempfile
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -28,8 +27,10 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 
+from app.modules.database.schema_diff import schema_differences
+from app.modules.database.types import MigrationPlan, Schema
+
 ROOT = Path(__file__).resolve().parents[3]
-Schema = dict[str, frozenset[str]]
 
 # Append-only tables guarded by triggers in migrations 0002 and 0005 (same names, so downgrades work).
 APPEND_ONLY = {
@@ -66,34 +67,7 @@ def schema_at(revision: str) -> Schema:
             engine.dispose()
 
 
-@dataclass
-class Plan:
-    current: str | None
-    head: str
-    stamp: str | None = None  # legacy create_all database: revision its schema matches
-    differences: list[str] = field(default_factory=list)  # legacy database without an exact match
-
-    @property
-    def action(self) -> str:
-        if self.differences:
-            return "refuse"
-        if self.stamp:
-            return "stamp"
-        return "none" if self.current == self.head else "upgrade"
-
-    def describe(self) -> str:
-        if self.action == "refuse":
-            return ("No migration revision matches this database's schema, so nothing will be changed.\n  "
-                    + "\n  ".join(self.differences))
-        if self.action == "none":
-            return f"Already at {self.head}; nothing to do."
-        steps = [f"stamp {self.stamp} (schema verified), add missing append-only triggers"] if self.stamp else []
-        if self.stamp != self.head:
-            steps.append(f"upgrade {self.stamp or self.current or 'empty database'} → {self.head}")
-        return "Plan: " + "; ".join(steps)
-
-
-def plan(url: str) -> Plan:
+def plan(url: str) -> MigrationPlan:
     config = alembic_config(url)
     script = ScriptDirectory.from_config(config)
     head = script.get_current_head()
@@ -104,7 +78,7 @@ def plan(url: str) -> Plan:
         tables = schema_of(engine)
     finally:
         engine.dispose()
-    result = Plan(current=current, head=head)
+    result = MigrationPlan(current=current, head=head)
     if current is not None or not tables:
         return result
     closest: tuple[int, str, list[str]] | None = None
@@ -113,21 +87,12 @@ def plan(url: str) -> Plan:
         if expected == tables:
             result.stamp = rev.revision
             return result
-        diff = _differences(expected, tables)
+        diff = schema_differences(expected, tables)
         if closest is None or len(diff) < closest[0]:
             closest = (len(diff), rev.revision, diff)
     assert closest is not None
     result.differences = [f"closest revision {closest[1]}:"] + closest[2]
     return result
-
-
-def _differences(expected: Schema, actual: Schema) -> list[str]:
-    out = [f"missing table {t}" for t in sorted(expected.keys() - actual.keys())]
-    out += [f"unexpected table {t}" for t in sorted(actual.keys() - expected.keys())]
-    for t in sorted(expected.keys() & actual.keys()):
-        out += [f"{t}: missing column {c}" for c in sorted(expected[t] - actual[t])]
-        out += [f"{t}: unexpected column {c}" for c in sorted(actual[t] - expected[t])]
-    return out
 
 
 def backup_sqlite(url: str, now: datetime | None = None) -> Path | None:
@@ -160,7 +125,7 @@ def ensure_append_only_triggers(engine: Engine) -> None:
                         FOR EACH ROW EXECUTE FUNCTION {function}()"""))
 
 
-def apply(url: str, migration_plan: Plan) -> Path | None:
+def apply(url: str, migration_plan: MigrationPlan) -> Path | None:
     if migration_plan.action == "refuse":
         raise RuntimeError(migration_plan.describe())
     if migration_plan.action == "none":

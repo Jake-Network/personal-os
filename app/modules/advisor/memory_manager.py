@@ -8,8 +8,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.modules.crud.advisor_handler import decision_journal_handler, personal_memory_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
+from app.modules.crud import audit_log_handler, decision_journal_handler, personal_memory_handler
 from app.modules.database.model import DecisionJournalEntry, PersonalMemory
 from app.schema.advisor_schema import DecisionCreate, DecisionReview, MemoryCreate
 

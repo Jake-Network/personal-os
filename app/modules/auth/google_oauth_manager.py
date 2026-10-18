@@ -1,11 +1,8 @@
 """Private Sheets OAuth: browser-bound PKCE, encrypted tokens, and server-side refresh."""
-import base64
-import hashlib
 import secrets
-from ipaddress import ip_address
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode
 from typing import Literal
 
 import httpx
@@ -18,26 +15,16 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
 from app.modules.auth.crypto import TokenCipher, load_or_create_key
-from app.modules.crud.audit_log_handler import audit_log_handler
+from app.modules.auth.errors import GoogleOAuthError
+from app.modules.auth.google_checks import READ_SCOPE, WRITE_SCOPE, check_identity, granted_scopes, setup_diagnostics
+from app.modules.auth.pkce import pkce_challenge, sha256_hex
+from app.modules.crud import audit_log_handler
 from app.modules.database.model.google_oauth import GoogleOAuthConnection, GoogleOAuthPending
 
-READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
-WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 SCOPES = ("openid", "email", READ_SCOPE)
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 PENDING_TTL = 600
-
-
-class GoogleOAuthError(ValueError):
-    """Only a fixed safe error code may cross the API boundary."""
-    def __init__(self, code: str):
-        self.code = code
-        super().__init__(code)
-
-
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def verify_google_id_token(token: str, audience: str, nonce: str) -> dict:
@@ -78,27 +65,7 @@ class GoogleOAuthManager:
         return f"oauth:{conn.subject or 'disconnected'}:{self.settings.google_oauth_client_id}" if conn else "adc"
 
     def setup(self) -> dict:
-        """Public setup diagnostics, never client secrets or issued tokens."""
-        frontend = urlsplit(self.settings.frontend_url)
-        redirect = urlsplit(self.settings.google_oauth_redirect_uri)
-        hostname = redirect.hostname
-        try:
-            loopback = bool(hostname and ip_address(hostname).is_loopback)
-            raw_ip = True
-        except ValueError:
-            loopback, raw_ip = hostname == "localhost", False
-        supported = bool(hostname and (redirect.scheme == "https" or (redirect.scheme == "http" and loopback))
-                         and (not raw_ip or loopback) and not redirect.username and not redirect.password
-                         and not redirect.query and not redirect.fragment
-                         and redirect.path == "/api/finance/google/callback")
-        return {"missing_fields": [name for name, value in (
-                    ("GOOGLE_OAUTH_CLIENT_ID", self.settings.google_oauth_client_id),
-                    ("GOOGLE_OAUTH_CLIENT_SECRET", self.settings.google_oauth_client_secret)) if not value],
-                "frontend_url": self.settings.frontend_url,
-                "login_url": f"{self.settings.frontend_url.rstrip('/')}/finance",
-                "redirect_uri": self.settings.google_oauth_redirect_uri,
-                "redirect_uri_supported": supported,
-                "callback_host_matches_frontend": bool(hostname and hostname == frontend.hostname)}
+        return setup_diagnostics(self.settings)
 
     def status(self, session: Session) -> dict:
         conn = session.get(GoogleOAuthConnection, 1)
@@ -125,9 +92,9 @@ class GoogleOAuthManager:
         required_scope = WRITE_SCOPE if write_access else READ_SCOPE
         requested_scopes = ("openid", "email", required_scope)
         state, binding, nonce, verifier = (secrets.token_urlsafe(48) for _ in range(4))
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        challenge = pkce_challenge(verifier)
         session.execute(delete(GoogleOAuthPending).where(GoogleOAuthPending.expires_at < datetime.now(UTC)))
-        session.add(GoogleOAuthPending(state_hash=_hash(state), binding_hash=_hash(binding),
+        session.add(GoogleOAuthPending(state_hash=sha256_hex(state), binding_hash=sha256_hex(binding),
                     ciphertext=self.cipher.encrypt({"verifier": verifier, "nonce": nonce,
                                                     "required_scope": required_scope, "return_to": return_to}),
                     expires_at=datetime.now(UTC) + timedelta(seconds=PENDING_TTL)))
@@ -143,15 +110,15 @@ class GoogleOAuthManager:
             raise GoogleOAuthError("invalid_state")
         # DELETE RETURNING atomically consumes the state across workers and restarts.
         pending = session.execute(delete(GoogleOAuthPending).where(
-            GoogleOAuthPending.state_hash == _hash(params["state"]),
-            GoogleOAuthPending.binding_hash == _hash(browser_binding),
+            GoogleOAuthPending.state_hash == sha256_hex(params["state"]),
+            GoogleOAuthPending.binding_hash == sha256_hex(browser_binding),
             GoogleOAuthPending.expires_at > datetime.now(UTC),
         ).returning(GoogleOAuthPending.ciphertext)).scalar_one_or_none()
         # Keep a different, non-authorizable marker while the network exchange is in
         # flight. Disconnect removes it, cancelling an already consumed callback.
         marker = secrets.token_hex(32)  # No browser-known preimage can authorize this marker.
         if pending is not None and not params.get("error") and params.get("code"):
-            session.add(GoogleOAuthPending(state_hash=marker, binding_hash=_hash(browser_binding),
+            session.add(GoogleOAuthPending(state_hash=marker, binding_hash=sha256_hex(browser_binding),
                         ciphertext=pending, expires_at=datetime.now(UTC) + timedelta(seconds=PENDING_TTL)))
         session.commit()
         if pending is None:
@@ -167,18 +134,8 @@ class GoogleOAuthManager:
             response.raise_for_status()
             tokens = response.json()
             claims = self.verify_id_token(tokens["id_token"], self.settings.google_oauth_client_id, secret["nonce"])
-            if (claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}
-                    or claims.get("aud") != self.settings.google_oauth_client_id
-                    or claims.get("email_verified") is not True or not claims.get("sub")
-                    or not secrets.compare_digest(str(claims.get("nonce", "")), secret["nonce"])):
-                raise GoogleOAuthError("invalid_identity")
-            # OAuth permits omitting scope when it matches the requested grant.
-            required_scope = secret.get("required_scope", READ_SCOPE)
-            scopes = tokens.get("scope", f"openid email {required_scope}").split()
-            normalized = {"email" if scope == "https://www.googleapis.com/auth/userinfo.email" else scope for scope in scopes}
-            allowed_sheets = {WRITE_SCOPE} if required_scope == WRITE_SCOPE else {READ_SCOPE, WRITE_SCOPE}
-            if not {"openid", "email"}.issubset(normalized) or not allowed_sheets.intersection(normalized):
-                raise GoogleOAuthError("missing_scope")
+            check_identity(claims, self.settings.google_oauth_client_id, secret["nonce"])
+            scopes = granted_scopes(tokens, secret.get("required_scope", READ_SCOPE))
             if not tokens.get("access_token") or not tokens.get("refresh_token"):
                 raise GoogleOAuthError("missing_refresh_token")
             expires = datetime.now(UTC) + timedelta(seconds=int(tokens["expires_in"]))

@@ -8,43 +8,20 @@ before this table existed) first gets a `baseline` row holding the value being r
 """
 
 from datetime import UTC, date, datetime
-from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.modules.crud.finance_handler import manual_value_change_handler
+from app.modules.crud import manual_value_change_handler
 from app.modules.database.model import ManualValueChange
-
-# resource name -> (table name, as-of attribute on the row, tracked fields)
-TRACKED: dict[str, tuple[str, str | None, tuple[str, ...]]] = {
-    "accounts": ("accounts", "balance_as_of", ("balance",)),
-    "holdings": ("holdings", None, ("quantity", "avg_cost")),
-}
-# Request fields that only date the history row and are not columns of the current-state table.
-HISTORY_ONLY_FIELDS: dict[str, frozenset[str]] = {"holdings": frozenset({"trade_date"})}
-
-
-def _dec(value) -> Decimal | None:
-    return None if value is None else Decimal(str(value))
-
+from app.modules.finance.value_history import TRACKED, capture, history_row
 
 class ValueHistoryManager:
-    @staticmethod
-    def tracks(resource: str) -> bool:
-        return resource in TRACKED
-
-    @staticmethod
-    def capture(resource: str, obj) -> dict:
-        """Tracked values and as-of date of `obj` before an edit."""
-        _, as_of, fields = TRACKED[resource]
-        return {"as_of": getattr(obj, as_of) if as_of else None, **{f: _dec(getattr(obj, f)) for f in fields}}
-
     def record(self, session: Session, resource: str, obj, before: dict | None, verb: str,
                today: date | None = None, trade_date: date | None = None) -> list[ManualValueChange]:
         """Append one row per tracked field that changed. `before` is None on create."""
         table, as_of_attr, fields = TRACKED[resource]
         today = today or datetime.now(UTC).date()
-        after = None if verb == "delete" else self.capture(resource, obj)
+        after = None if verb == "delete" else capture(resource, obj)
         if after is not None and trade_date is not None:
             after["as_of"] = trade_date
         rows = []
@@ -60,8 +37,8 @@ class ValueHistoryManager:
             if verb == "create" and new is None:
                 continue
             if verb != "create" and old is not None and not self._has_history(session, table, obj.id, field):
-                rows.append(self._row(table, obj.id, field, None, old, obj.currency, old_as_of, "baseline"))
-            rows.append(self._row(table, obj.id, field, old, new, obj.currency,
+                rows.append(history_row(table, obj.id, field, None, old, obj.currency, old_as_of, "baseline"))
+            rows.append(history_row(table, obj.id, field, old, new, obj.currency,
                                   today if verb == "delete" else new_as_of, verb))
         return [manual_value_change_handler.create(session, row) for row in rows]
 
@@ -73,11 +50,5 @@ class ValueHistoryManager:
     @staticmethod
     def _has_history(session: Session, table: str, record_id: int, field: str) -> bool:
         return bool(manual_value_change_handler.get_for_record(session, table, record_id, field, limit=1))
-
-    @staticmethod
-    def _row(table, record_id, field, old, new, currency, as_of, kind) -> dict:
-        return {"table_name": table, "record_id": record_id, "field": field, "old_value": old, "new_value": new,
-                "currency": currency, "as_of": as_of, "change_kind": kind}
-
 
 value_history_manager = ValueHistoryManager()

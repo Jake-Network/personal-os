@@ -3,8 +3,7 @@
 from sqlalchemy.orm import Session
 
 from app.enums.context_category import Category
-from app.modules.crud.app_setting_handler import app_setting_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
+from app.modules.crud import app_setting_handler, audit_log_handler
 
 PRIVACY_KEY = "privacy.excluded_categories"
 

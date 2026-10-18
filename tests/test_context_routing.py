@@ -1,5 +1,5 @@
 from app.enums.context_category import Category as C
-from app.modules.context.context_routing_manager import context_routing_manager as router
+from app.modules.context.routing import context_router as router
 
 
 def test_prd_examples():

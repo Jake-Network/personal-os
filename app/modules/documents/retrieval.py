@@ -9,7 +9,8 @@ from app.config import settings
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.database.model import Document, DocumentVersion, DocumentChunk
 from app.modules.documents import embedding
-from app.schema.context_schema import ToolResult
+from app.modules.context.types import ToolResult
+from app.modules.documents.types import DocumentCitation
 
 
 def _tokens(text):
@@ -39,7 +40,7 @@ def _overlapping_chunks(left, right):
     return len(overlap) >= 80 and later.text.startswith(overlap)
 
 
-def citation(chunk, version, document):
+def citation(chunk, version, document) -> DocumentCitation:
     return {"ref": f"document_chunks:{chunk.id}", "document_id": document.id, "version_id": version.id,
             "chunk_id": chunk.id, "title": document.title, "filename": version.filename, "page": chunk.page,
             "section": chunk.section, "text": chunk.text, "as_of": version.as_of.isoformat() if version.as_of else None}

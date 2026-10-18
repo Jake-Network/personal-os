@@ -9,6 +9,7 @@ from app.enums.context_category import Category
 from app.modules.database import get_session
 from app.modules.database.model import Document, DocumentVersion, DocumentChunk, JobApplication, Goal
 from app.modules.documents import document_manager as manager
+from app.modules.documents.parsing import MAX_BYTES
 from app.modules.documents.retrieval import citation, visible_documents
 from app.schema.document_schema import DocumentItem, DocumentPatch
 
@@ -47,7 +48,7 @@ async def upload_document(file: UploadFile = File(...), title: str = Form(..., m
         if value is not None and session.get(model, value) is None:
             raise HTTPException(422, "linked_record_not_found")
     document = Document(title=title, categories=cats, kind=kind, application_id=application_id, goal_id=goal_id)
-    content = await file.read(manager.MAX_BYTES + 1)
+    content = await file.read(MAX_BYTES + 1)
     try:
         session.add(document)
         session.flush()
@@ -62,7 +63,7 @@ async def upload_version(document_id: int, file: UploadFile = File(...), as_of: 
                          session: Session = Depends(get_session)):
     document = _get(session, document_id)
     try:
-        return manager.add_version(session, document, file.filename or "", await file.read(manager.MAX_BYTES + 1), as_of)
+        return manager.add_version(session, document, file.filename or "", await file.read(MAX_BYTES + 1), as_of)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

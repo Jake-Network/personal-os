@@ -7,7 +7,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.modules.auth.google_oauth_manager import GoogleOAuthError, PENDING_TTL, google_oauth_manager
+from app.modules.auth.errors import GoogleOAuthError
+from app.modules.auth.google_oauth_manager import PENDING_TTL, google_oauth_manager
 from app.modules.database import get_session
 
 router = APIRouter(prefix="/api/finance/google", tags=["google-sheets"])

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
+from typing import NotRequired, TypedDict
 
 from app.modules.finance.liquidity_policy import POLICY_ID
 
@@ -10,6 +11,33 @@ ZERO = Decimal("0")
 
 def q2(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+class ExcludedPosition(TypedDict):
+    """A position left out of net worth because it could not be valued in the base currency."""
+
+    ref: str
+    label: str
+    reason: str  # unavailable_reason, "no_value" or "missing_fx_<from>_<base>"
+    spendable: NotRequired[bool]  # present (True) only for spendable cash
+
+
+class NetWorthDict(TypedDict):
+    """NetWorth as served to the model: amounts are 2-decimal strings in the base currency."""
+
+    base_currency: str
+    total_assets: str
+    total_liabilities: str
+    net_worth: str
+    cash_and_equivalents: str
+    spendable_liquidity: str
+    spendable_liquidity_complete: bool
+    investable_assets: str
+    restricted_retirement_assets: str
+    other_assets: str
+    liquidity_policy: str
+    complete: bool
+    excluded_positions: list[ExcludedPosition]
 
 
 @dataclass(frozen=True)
@@ -49,7 +77,7 @@ class NetWorth:
     liabilities: Decimal
     by_bucket: dict[str, Decimal]  # cash | investment | retirement | other
     spendable_liquidity: Decimal
-    excluded: list[dict]  # positions left out, with reason
+    excluded: list[ExcludedPosition]
 
     @property
     def net_worth(self) -> Decimal:
@@ -64,7 +92,7 @@ class NetWorth:
         """False when a spendable cash position could not be valued, so liquidity is understated."""
         return not any(e.get("spendable") for e in self.excluded)
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> NetWorthDict:
         bucket = {k: str(q2(v)) for k, v in self.by_bucket.items()}
         return {
             "base_currency": self.base_currency,

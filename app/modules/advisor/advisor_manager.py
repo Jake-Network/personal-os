@@ -2,9 +2,8 @@
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -12,50 +11,28 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.enums.context_category import ALL_CATEGORIES, Category
-from app.modules.advisor.prompts import SYSTEM_PROMPT
+from app.modules.advisor.history import inherited_evidence, replay_safe_messages
 from app.modules.advisor.proposal_manager import proposal_manager
+from app.modules.advisor.proposals import extract_blocks
+from app.modules.advisor.requests import build_request
+from app.modules.advisor.types import AskOptions, PreparedHistory
 from app.modules.context.context_builder_manager import ContextBuilderManager, context_builder_manager
-from app.modules.context.context_routing_manager import ContextRoutingManager, context_routing_manager
-from app.modules.context.history_privacy_manager import HistoryDecision, history_privacy_manager
+from app.modules.context.routing import ContextRouter, context_router
+from app.modules.context.history_privacy_manager import history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
+from app.modules.context.types import RouteDecision, payload_evidence
 from app.modules.context.entity_routing import matched_investment_terms
-from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.database.model import AdvisorConversation, AdvisorMessage, ContextSnapshot, DocumentVersion
+from app.modules.crud import audit_log_handler, context_snapshot_handler, conversation_handler, message_handler
+from app.modules.database.model import AdvisorConversation, ContextSnapshot, DocumentVersion
 from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
-from app.schema.advisor_schema import AskOptions
-from app.schema.context_schema import ContextPackage, RouteDecision, payload_citations, payload_evidence
-from app.schema.llm_schema import LLMRequest
 
 logger = logging.getLogger(__name__)
 
-DOCUMENT_REFERENCE_PATTERN = re.compile(r"\[(document_chunks:\d+)\]")
-HISTORICAL_EVIDENCE_RULES = (
-    "\n- historical=true 문서 발췌와 과거 대화는 당시 맥락입니다. 현재 사실이나 숫자로 재사용하지 말고, "
-    "최신 구조화 데이터와 현재 검색 결과를 우선하며 과거 근거임을 밝히세요. 과거 대화의 [과거 문서 근거 생략]은 "
-    "예산 때문에 원문 근거를 생략했다는 뜻입니다. 현재 제공된 ref만 인용하고 생략된 근거로 현재 사실을 단정하지 마세요."
-)
-
-
-@dataclass
-class PreparedHistory:
-    messages: list[AdvisorMessage]
-    snapshots: dict[str, ContextSnapshot]
-    withheld_ids: list[int] = field(default_factory=list)
-    withheld_categories: list[str] = field(default_factory=list)
-
-    def decision(self) -> HistoryDecision:
-        return HistoryDecision(self.messages, self.withheld_ids, self.withheld_categories)
-
-    def citations(self, message):
-        snapshot = self.snapshots.get(message.context_snapshot_id)
-        return payload_citations(snapshot.payload) if snapshot else []
-
 
 class AdvisorManager:
-    def __init__(self, gateway: LLMGatewayManager, router: ContextRoutingManager, builder: ContextBuilderManager,
+    def __init__(self, gateway: LLMGatewayManager, router: ContextRouter, builder: ContextBuilderManager,
                  history_limit: int):
         self.gateway = gateway
         self.router = router
@@ -119,28 +96,15 @@ class AdvisorManager:
             route = replace(route, requested=route.requested | topics,
                             selected=(route.selected | topics) - excluded)
         prepared = self.prepare_history(session, conversation.id, None, options, excluded) if conversation else PreparedHistory([], {})
-        inherited_citations, dependencies, history_categories = {}, {}, set()
-        inherited_unknown = False
-        for message in prepared.messages:
-            snapshot = prepared.snapshots.get(message.context_snapshot_id)
-            inherited_unknown |= snapshot is None or bool(snapshot.payload.get("history_provenance_unknown"))
-            for citation in prepared.citations(message):
-                # Old excerpts explain past turns; they never become freshly retrieved facts.
-                inherited_citations[citation["ref"]] = {**citation, "historical": True}
-            if snapshot:
-                history_categories.update(snapshot.context_categories)
-                history_categories.update(snapshot.payload.get("history_categories", []))
-                for dependency in snapshot.payload.get("document_dependencies", []):
-                    dependencies[(dependency["document_id"], dependency["version_id"])] = dependency
+        inherited = inherited_evidence(prepared)
         package = self.builder.build(session, route, conversation_id=conversation_id, query=query,
                                      document_search=options.document_search,
                                      document_ids=options.document_ids or (), excluded=excluded,
-                                     inherited_citations=list(inherited_citations.values()),
-                                     inherited_dependencies=list(dependencies.values()),
-                                     inherited_categories=sorted(history_categories),
-                                     inherited_unknown=inherited_unknown,
-                                     history_document_refs={ref for message in prepared.messages
-                                                            for ref in DOCUMENT_REFERENCE_PATTERN.findall(message.content)})
+                                     inherited_citations=inherited.citations,
+                                     inherited_dependencies=inherited.dependencies,
+                                     inherited_categories=inherited.categories,
+                                     inherited_unknown=inherited.unknown,
+                                     history_document_refs=inherited.document_refs)
         return route, package, options, prepared
 
     def prepare_history(self, session, conversation_id, before_id, options, excluded=None):
@@ -158,30 +122,7 @@ class AdvisorManager:
                    excluded_categories=excluded)} if document_ids else {}
         version_ids = {c["version_id"] for c in evidence_rows}
         versions = set(session.scalars(select(DocumentVersion.id).where(DocumentVersion.id.in_(version_ids)))) if version_ids else set()
-        safe = []
-        for message in history:
-            if getattr(message, "context_purged", False):
-                continue
-            snapshot = snapshots.get(message.context_snapshot_id)
-            if snapshot is None:
-                # Legacy user conversations have no captured provenance. Preserve normal
-                # continuity, but cannot prove them safe under a new sharing restriction.
-                if not message.context_snapshot_id and not excluded and options.document_search and not options.document_ids:
-                    safe.append(message)
-                continue
-            if snapshot.payload.get("history_provenance_unknown") and (excluded or not options.document_search or options.document_ids):
-                continue
-            if (set(snapshot.context_categories) | set(snapshot.payload.get("history_categories", []))
-                    | set(snapshot.payload.get("document_categories", []))).intersection(str(c) for c in excluded):
-                continue
-            evidence = payload_evidence(snapshot.payload)
-            if evidence and not options.document_search:
-                continue
-            if any(c["document_id"] not in visible or c["version_id"] not in versions or
-                   (options.document_ids and c["document_id"] not in options.document_ids)
-                   for c in evidence):
-                continue
-            safe.append(message)
+        safe = replay_safe_messages(history, snapshots, excluded, options, set(visible), versions)
         return PreparedHistory(safe, snapshots, decision.withheld_ids, decision.withheld_categories)
 
     def preview(self, session: Session, query: str, conversation: AdvisorConversation | None,
@@ -192,37 +133,6 @@ class AdvisorManager:
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
         return {"route": route.as_dict(), **inspector, **prepared.decision().as_dict()}
-
-    @staticmethod
-    def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
-                      excluded: frozenset[Category]) -> LLMRequest:
-        """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
-        leaked = excluded & {Category(c) for c in [*package.categories,
-                                                   *package.payload.get("document_categories", [])]}
-        if leaked:  # a builder bug must fail closed, never send
-            raise AdvisorError("context package contains an excluded category", provider_code="privacy_violation")
-        notes = []
-        if history.withheld_ids:
-            notes.append({"role": "developer", "content": (
-                f"이전 대화 메시지 {len(history.withheld_ids)}개는 사용자가 현재 공유를 막은 범주"
-                f"({', '.join(history.withheld_categories)})의 정보를 포함할 수 있어 전달하지 않았습니다. "
-                "그 내용을 기억하거나 추측하지 말고, 필요하면 사용자에게 다시 물어보세요.")})
-        available_refs = {c["ref"] for c in payload_citations(package.payload)}
-        # Keep dialogue continuity while omitting citations outside the excerpt budget.
-        replayed = ({"role": m.role, "content": DOCUMENT_REFERENCE_PATTERN.sub(
-            lambda match: match.group(0) if match.group(1) in available_refs else "[과거 문서 근거 생략]",
-            m.content)} for m in history.kept)
-        return LLMRequest(
-            model=model,
-            instructions=SYSTEM_PROMPT + HISTORICAL_EVIDENCE_RULES,
-            input=[
-                *notes,
-                *replayed,
-                {"role": "developer",
-                 "content": "Context Package (JSON, 사용자 데이터의 유일한 출처):\n" + package.text},
-                {"role": "user", "content": query},
-            ],
-        )
 
     # --- conversations -------------------------------------------------------------------
 
@@ -274,7 +184,7 @@ class AdvisorManager:
         settled = False
         try:
             model = await self.gateway.resolve_model(session)
-            request = self.build_request(model, prepared.decision(), package, query, excluded)
+            request = build_request(model, prepared.decision(), package, query, excluded)
             async for event in self.gateway.stream(session, request, conversation_id=conversation.id):
                 if event.type == "delta" and event.text:
                     parts.append(event.text)
@@ -296,7 +206,7 @@ class AdvisorManager:
             if not settled:  # client went away mid-stream (generator closed)
                 self._settle_unanswered(session, conversation.id, user_msg, parts, package.snapshot_id, model)
 
-        display, proposals, memories = proposal_manager.extract_blocks("".join(parts))
+        display, proposals, memories = extract_blocks("".join(parts))
         reply = message_handler.create(session, {
             "conversation_id": conversation.id, "role": "assistant", "content": display,
             "context_snapshot_id": package.snapshot_id, "model": model,
@@ -328,7 +238,7 @@ class AdvisorManager:
 
 advisor_manager = AdvisorManager(
     gateway=llm_gateway_manager,
-    router=context_routing_manager,
+    router=context_router,
     builder=context_builder_manager,
     history_limit=settings.history_message_limit,
 )

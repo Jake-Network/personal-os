@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.modules.portfolio.portfolio_manager import _enrich, _value
+from app.modules.portfolio.valuation import enrich_rows, value_positions
 
 
 def test_live_fx_does_not_shadow_recorded_month_end_fx():
@@ -12,15 +12,15 @@ def test_live_fx_does_not_shadow_recorded_month_end_fx():
          "source": "manual", "valid_through": "2026-09-30"},
     ]}
     rows = [{"kind": "holding", "ticker": "NASDAQ:AAPL", "currency": "USD", "quantity": "2"}]
-    historical = _enrich(rows, tables, date(2026, 9, 30), historical=True)[0]
-    current = _enrich(rows, tables, date(2026, 9, 30), historical=False)[0]
+    historical = enrich_rows(rows, tables, date(2026, 9, 30), historical=True)[0]
+    current = enrich_rows(rows, tables, date(2026, 9, 30), historical=False)[0]
     assert historical["fx_rate"] == "1200"
     assert historical["fx_source"] == "manual"
     assert current["fx_rate"] == "1400"
 
 
 def test_small_prices_are_exposed_as_plain_decimal_strings():
-    result = _value([{
+    result = value_positions([{
         "kind": "holding", "id": "micro", "currency": "KRW", "quantity": "1",
         "avg_cost": "0.000000001", "price": "0.00000001", "source": "manual",
         "as_of": "2026-09-30", "price_as_of": "2026-09-30",

@@ -8,11 +8,11 @@ from sqlalchemy import select
 
 from app.enums.context_category import Category as C
 from app.modules.advisor.advisor_manager import advisor_manager
-from app.modules.context.context_routing_manager import context_routing_manager
+from app.modules.context.routing import context_router
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.database.model import Account, CalendarEvent
-from app.modules.crud.advisor_handler import message_handler
-from app.schema.advisor_schema import AskOptions
+from app.modules.crud import message_handler
+from app.modules.advisor.types import AskOptions
 
 
 def ask(session, conversation, message, provider, options=None):
@@ -70,7 +70,7 @@ def test_explicit_scope_still_wins_over_previous_turn(seeded, fake_provider):
 
 
 def test_new_topic_does_not_inherit_unrelated_financial_scope():
-    route = context_routing_manager.route("오늘 운동 일정 알려줘", previous=frozenset({C.FINANCIAL, C.INVESTMENT}))
+    route = context_router.route("오늘 운동 일정 알려줘", previous=frozenset({C.FINANCIAL, C.INVESTMENT}))
     assert C.CALENDAR in route.selected and C.HEALTH in route.selected
     assert C.FINANCIAL not in route.selected
 

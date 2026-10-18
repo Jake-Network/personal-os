@@ -107,16 +107,28 @@ frontend/src/
 |---|---|
 | OAuthAuthService | `modules/auth/oauth_manager.py` |
 | ChatGPTPlanProvider / LLMGateway | `modules/llm/providers.py`, `modules/llm/llm_gateway_manager.py` |
-| ContextRouter / ContextBuilder | `modules/context/context_routing_manager.py`, `context_builder_manager.py` |
+| ContextRouter / ContextBuilder | `modules/context/routing.py`, `context_builder_manager.py` |
 | Read-only agent tools | `modules/context/context_tool_manager.py` |
 | AdvisorService | `modules/advisor/advisor_manager.py` |
 | FinancialCalculator | `modules/finance/financial_calculator.py` |
 | DecisionJournalService | `modules/advisor/memory_manager.py` |
-| ConversationRepository | `modules/crud/advisor_handler.py` |
+| ConversationRepository | `modules/crud/conversation_handler.py` |
+
+Inside a module package, files are split by role:
+
+| File | Holds |
+|---|---|
+| `<name>_manager.py` | DB, network, LLM and file I/O calls and their order |
+| `types.py` | dataclasses and TypedDicts passed between files (`app/schema/` is for API models only) |
+| `errors.py` | domain exceptions; routers map them to HTTP |
+| role-named files (`budget.py`, `valuation.py`, `parsing.py`, ...) | pure functions: parsing, checks, calculations |
+
+A function that does no I/O does not go in a manager. `modules/crud/` holds one ORM handler per model,
+re-exported from `app.modules.crud`.
 
 ## How a question is answered
 
-1. `ContextRoutingManager` selects the needed categories with deterministic rules, without an LLM call.
+1. `ContextRouter` selects the needed categories with deterministic rules, without an LLM call.
    Financial overviews and resignation planning include holdings as well as cash and debt.
    Explicit follow-ups such as `그럼 6개월이면?` retain the previous subject even when new time keywords match.
    Registered holding names/tickers can identify an investment question without a generic stock keyword;

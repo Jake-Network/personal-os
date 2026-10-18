@@ -1,18 +1,10 @@
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.enums.context_category import Category
-
-
-@dataclass
-class AskOptions:
-    categories: frozenset[Category] | None = None  # Context Inspector override
-    exclude: frozenset[Category] = frozenset()  # per-request exclusions, on top of saved settings
-    document_search: bool = True
-    document_ids: tuple[int, ...] | None = None  # None inherits; empty clears pins
+from app.modules.advisor.types import AskOptions
 
 
 ### Conversation

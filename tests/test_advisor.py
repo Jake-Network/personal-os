@@ -5,10 +5,10 @@ from app.enums.context_category import Category
 from app.modules.advisor.advisor_manager import advisor_manager
 from app.modules.advisor.proposal_manager import proposal_manager
 from app.modules.context.privacy_manager import privacy_manager
-from app.modules.crud.advisor_handler import llm_usage_event_handler, proposed_action_handler
+from app.modules.crud import llm_usage_event_handler, proposed_action_handler
 from app.modules.database.model import AuditLog, Task
 from app.modules.llm.errors import QuotaExceeded
-from app.schema.advisor_schema import AskOptions
+from app.modules.advisor.types import AskOptions
 
 
 def run(session, conv, text, options=None):
@@ -116,7 +116,7 @@ def test_failed_turn_is_not_replayed_as_history(seeded, fake_provider):
 
 
 def test_client_disconnect_keeps_partial_answer_as_incomplete(seeded, fake_provider):
-    from app.modules.crud.advisor_handler import message_handler
+    from app.modules.crud import message_handler
 
     conv = advisor_manager.create_conversation(seeded, "x")
     fake_provider.reply = "a" * 40

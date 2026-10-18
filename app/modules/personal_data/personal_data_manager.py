@@ -4,35 +4,30 @@ These endpoints are the user's own edits. The advisor has no path to them: its o
 channel is proposal_manager, which cannot touch financial tables (AC-18).
 """
 
-from dataclasses import dataclass
-from datetime import date
-
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.base import BaseCRUDHandler
-from app.modules.crud.career_handler import career_criterion_handler, interview_handler, job_application_handler
-from app.modules.crud.finance_handler import (
+from app.modules.crud import (
     account_handler,
+    audit_log_handler,
+    calendar_event_handler,
+    career_criterion_handler,
     cashflow_entry_handler,
     fx_rate_handler,
+    goal_handler,
     holding_handler,
+    interview_handler,
+    job_application_handler,
     liability_handler,
     other_asset_handler,
     planned_expense_handler,
+    task_handler,
+    workout_log_handler,
 )
-from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
-from app.modules.finance.value_history_manager import HISTORY_ONLY_FIELDS, value_history_manager
+from app.modules.finance.value_history import capture, split_history_fields, tracks
+from app.modules.finance.value_history_manager import value_history_manager
+from app.modules.personal_data.types import Resource
 from app.schema import domain_schema as s
-
-
-@dataclass(frozen=True)
-class Resource:
-    handler: BaseCRUDHandler
-    create_schema: type[BaseModel]
-    item_schema: type[BaseModel]
-    financial: bool = False
 
 
 RESOURCES: dict[str, Resource] = {
@@ -65,9 +60,9 @@ class PersonalDataManager:
         return obj
 
     def create(self, session: Session, name: str, resource: Resource, body: BaseModel):
-        data, trade_date = self._split(name, body)
+        data, trade_date = split_history_fields(name, body)
         obj = resource.handler.create(session, data)
-        if value_history_manager.tracks(name):
+        if tracks(name):
             value_history_manager.record(session, name, obj, None, "create", trade_date=trade_date)
         self._audit(session, name, resource, "create", obj.id)
         session.commit()
@@ -75,8 +70,8 @@ class PersonalDataManager:
 
     def update(self, session: Session, name: str, resource: Resource, item_id: int, body: BaseModel):
         obj = self.get(session, resource, item_id)
-        before = value_history_manager.capture(name, obj) if value_history_manager.tracks(name) else None
-        data, trade_date = self._split(name, body, exclude_unset=True)
+        before = capture(name, obj) if tracks(name) else None
+        data, trade_date = split_history_fields(name, body, exclude_unset=True)
         resource.handler.update(session, obj, data)
         if before is not None:
             value_history_manager.record(session, name, obj, before, "update", trade_date=trade_date)
@@ -86,18 +81,11 @@ class PersonalDataManager:
 
     def delete(self, session: Session, name: str, resource: Resource, item_id: int) -> None:
         obj = self.get(session, resource, item_id)
-        if value_history_manager.tracks(name):
-            value_history_manager.record(session, name, obj, value_history_manager.capture(name, obj), "delete")
+        if tracks(name):
+            value_history_manager.record(session, name, obj, capture(name, obj), "delete")
         resource.handler.delete(session, obj)
         self._audit(session, name, resource, "delete", item_id)
         session.commit()
-
-    @staticmethod
-    def _split(name: str, body: BaseModel, exclude_unset: bool = False) -> tuple[dict, date | None]:
-        """Row columns, and the history-only trade date that must not reach the table."""
-        history_only = HISTORY_ONLY_FIELDS.get(name, frozenset())
-        return (body.model_dump(exclude_unset=exclude_unset, exclude=set(history_only)),
-                getattr(body, "trade_date", None) if history_only else None)
 
     @staticmethod
     def _audit(session: Session, name: str, resource: Resource, verb: str, item_id: int) -> None:

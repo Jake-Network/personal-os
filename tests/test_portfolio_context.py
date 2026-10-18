@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 
 from app.enums.context_category import Category as C
 from app.modules.context import portfolio_tools as tools
-from app.modules.context.context_routing_manager import context_routing_manager
-from app.schema.context_schema import ToolContext
+from app.modules.context.routing import context_router
+from app.modules.context.types import ToolContext
 
 
 def sample():
@@ -44,7 +44,7 @@ def test_asset_history_questions_select_required_categories():
     for question in ("How has my net worth changed over the past six months?",
                      "What proportion of my wealth is invested in stocks?",
                      "Did my assets actually increase last month?"):
-        assert {C.FINANCIAL, C.INVESTMENT} <= context_routing_manager.route(question).selected
+        assert {C.FINANCIAL, C.INVESTMENT} <= context_router.route(question).selected
 
 
 def test_stock_share_does_not_reveal_excluded_financial_totals(session, monkeypatch):

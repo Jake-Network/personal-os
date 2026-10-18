@@ -6,12 +6,12 @@ import pytest
 
 from app.enums.context_category import Category
 from app.modules.advisor.advisor_manager import advisor_manager
-from app.modules.context.history_privacy_manager import HistoryPrivacyManager
+from app.modules.context.history_privacy import decide_history
 from app.modules.context.privacy_manager import privacy_manager
-from app.modules.crud.advisor_handler import context_snapshot_handler, message_handler
+from app.modules.crud import context_snapshot_handler, message_handler
 from app.modules.database.model import AdvisorMessage
 from app.modules.llm.errors import AdvisorError
-from app.schema.advisor_schema import AskOptions
+from app.modules.advisor.types import AskOptions
 
 # Values that only exist in the financial category of the `seeded` fixture or in answers built on it.
 FINANCIAL_SECRETS = ("12000000", "12,000,000", "급여통장", "9,100,000", "9100000", "신용대출")
@@ -133,19 +133,20 @@ def test_decide_is_a_pure_prefix_rule():
     cats = {"a": frozenset({Category.GOALS}), "b": frozenset({Category.FINANCIAL}),
             "c": frozenset({Category.CAREER})}
     messages = [msg(1, "a"), msg(2, "a"), msg(3, "b"), msg(4, "b"), msg(5, "c"), msg(6, "c")]
-    d = HistoryPrivacyManager.decide(messages, cats, frozenset({Category.FINANCIAL}))
+    d = decide_history(messages, cats, frozenset({Category.FINANCIAL}))
     assert [m.id for m in d.kept] == [1, 2] and d.withheld_ids == [3, 4, 5, 6]
-    assert HistoryPrivacyManager.decide(messages, cats, frozenset()).withheld_ids == []
+    assert decide_history(messages, cats, frozenset()).withheld_ids == []
 
 
 def test_outbound_guard_fails_closed_on_excluded_package_category(seeded):
-    from app.modules.context.history_privacy_manager import HistoryDecision
-    from app.schema.context_schema import ContextPackage
+    from app.modules.context.types import HistoryDecision
+    from app.modules.context.types import ContextPackage
+    from app.modules.advisor.requests import build_request
 
     package = ContextPackage("s", {}, False, ["financial"], [], {}, [], [])
     with pytest.raises(AdvisorError):
-        advisor_manager.build_request("m", HistoryDecision([], [], []), package, "q",
-                                      frozenset({Category.FINANCIAL}))
+        build_request("m", HistoryDecision([], [], []), package, "q",
+                      frozenset({Category.FINANCIAL}))
 
 
 def test_history_limit_still_applies_after_filtering(seeded, fake_provider, monkeypatch):

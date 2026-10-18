@@ -13,9 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.modules.auth.oauth_manager import oauth_manager
-from app.modules.crud.app_setting_handler import app_setting_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.advisor_handler import llm_usage_event_handler
+from app.modules.crud import app_setting_handler, audit_log_handler, llm_usage_event_handler
 from app.modules.database.model import LLMUsageEvent
 from app.modules.llm.errors import AdvisorError, AuthRequired, QuotaExceeded, ScopeNotAuthorized
 from app.modules.llm.providers import (
@@ -25,7 +23,7 @@ from app.modules.llm.providers import (
     LLMProvider,
     ResponsesApiClient,
 )
-from app.schema.llm_schema import LLMRequest, StreamEvent
+from app.modules.llm.types import LLMRequest, StreamEvent
 
 PROVIDER_KEY = "llm.provider"
 MODEL_KEY = "llm.model"
