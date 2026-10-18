@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HoldingItemAssetClass = typeof HoldingItemAssetClass[keyof typeof HoldingItemAssetClass];
-
+export type HoldingItemAssetClass = (typeof HoldingItemAssetClass)[keyof typeof HoldingItemAssetClass];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const HoldingItemAssetClass = {

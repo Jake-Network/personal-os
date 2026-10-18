@@ -33,7 +33,7 @@ export function toPayload(fields: FieldSpec[], values: FormValues): Record<strin
       if (f.nullable) out[f.name] = null;
       continue; // let the server apply its default or report the missing field
     }
-    if (f.kind === 'integer') out[f.name] = Number(v);
+    if (f.kind === 'integer' && f.name !== 'quantity') out[f.name] = Number(v);
     else if (f.kind === 'datetime') out[f.name] = new Date(String(v)).toISOString();
     else out[f.name] = String(v).trim(); // decimals stay strings: no float rounding of money
   }

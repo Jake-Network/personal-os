@@ -9,7 +9,7 @@
     "start": "next start -H 127.0.0.1 -p 5173",
     "lint": "eslint src",
     "typecheck": "next typegen && tsc --noEmit",
-    "generate-api": "orval --config orval.config.ts",
+    "generate-api": "orval --config orval.config.ts && prettier --ignore-path /dev/null --write src/api-client/generated src/api-client/model",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -1,259 +1,55 @@
-# Portfolio and monthly net worth
+# 로컬 재무 기록과 시세
 
-## Connect your Google account
+계좌·잔액·보유 수량·평균단가·부채·거래는 이 컴퓨터의 DB가 원본입니다. Google 연결 없이 입력하고 조회할 수 있습니다. 대시보드와 상담도 같은 로컬 기록을 사용합니다. `/data/holdings`에서 보유 종목을, 나머지 데이터 화면에서 계좌·부채·환율 등을 관리합니다. `/finance`는 백엔드가 계산한 평가액을 보여줍니다. 누락된 가격·환율·기준일은 0으로 대체하지 않습니다.
 
-After the one-time server setup below, open `/finance`, choose **Google 계정으로 연결**,
-sign in to the Google account that can access your private spreadsheet, and approve the
-requested permissions. The account needs at least Viewer access; a service account is
-not required for this flow. Save your spreadsheet ID, verify current values, and sync.
-Google account access is a separate connection from the existing ChatGPT OAuth provider;
-it does not add a Personal OS application login or change ChatGPT authentication.
+보유 수량은 0 이상의 정수로 입력합니다. 화면은 정수 뒤의 불필요한 소수점 0을 생략합니다. 기존 소수 수량 기록은 자동 반올림하지 않고 보존하며, 수정할 때 정수 수량을 확인해 입력하세요.
 
-Tokens are encrypted and stored on the server. The browser receives connection status
-and an authorization URL, never Google access or refresh tokens. When Google access is
-expired or revoked, use **Google 다시 연결**. **Google 연결 해제** removes the local tokens
-and stops Google synchronization. Previously imported records are preserved on the server,
-and monthly snapshots remain accessible. The current portfolio requires an import matching
-the active Google connection; reconnect and synchronize to display it again.
-The server also attempts to revoke the grant at Google. If that request
-cannot reach Google, remove the grant using your Google Account's
-[third-party connections settings](https://myaccount.google.com/connections).
+## Google은 시세 전용
 
-### One-time server setup
+`/finance`에서 Google 연결 후 **시세 전용 파일 새로 만들기**를 선택합니다. 앱이 새 파일에 `Quotes`와 `FX`만 생성합니다. 전송 값은 정규화한 거래소·티커·통화쌍과 서버가 생성한 수식입니다. 계좌명·수량·원가·평가액·로컬 ID·메모는 보내지 않습니다. Google에는 조회 티커 목록이 남습니다.
 
-If `/api/finance/google/status` reports `configured: false`, the app has no Google
-OAuth client credentials yet. A Google account alone does not supply an application
-client ID and secret. The `/finance` setup panel shows the missing environment settings
-and the exact callback URI to register; no Google tokens or client secret are displayed.
+Google Cloud에서 Sheets API를 활성화하고 웹 애플리케이션 OAuth 클라이언트를 발급합니다. 요청 scope는 `openid`, `email`, `https://www.googleapis.com/auth/drive.file`입니다. `drive.file`은 특정 파일 접근 권한이며 탭 단위 제한이 아닙니다. 기존 자산 파일을 재사용하지 않습니다. [Google 공식 scope 설명](https://developers.google.com/workspace/sheets/api/scopes)
 
-1. Select or create a project in [Google Cloud Console](https://console.cloud.google.com/),
-   then enable [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com).
-2. Configure Google Auth Platform branding, audience and data access. For an External
-   application in Testing, add your own Google account as a test user. Request
-   `https://www.googleapis.com/auth/spreadsheets.readonly` plus the identity scopes
-   `openid` and `email` used to display the connected account. To enter holdings from
-   Personal OS, also configure `https://www.googleapis.com/auth/spreadsheets`;
-   the holdings page requests this write permission only when you choose to reconnect.
-3. In [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients),
-   create an OAuth client with application type **Web application**. Add the authorized
-   redirect URI `http://127.0.0.1:8000/api/finance/google/callback` for native local
-   development. The redirect URI must exactly match the server setting, including host,
-   port and path. If using a different local port or Docker's frontend port, register
-   that browser-accessible callback URL and set the same value below.
-   For Docker, put these variables in `docker/.env` (see `docker/env.sample`) and
-   rebuild and recreate the backend to load both dependencies and credentials:
-   `docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build --force-recreate app`.
-   This also starts the database dependency. `restart` alone does not load changed
-   environment settings, and recreating an old image does not install the Google SDK.
-   Use the same hostname as the browser's Personal OS URL so the callback receives the
-   login cookie: `localhost` and `127.0.0.1` are different hosts. A callback through the
-   frontend `/api/finance/google/callback` proxy can keep the same origin.
-4. Set these server environment variables, then restart the backend:
-
-   ```dotenv
-   GOOGLE_OAUTH_CLIENT_ID=your-web-application-client-id
-   GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
-   GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/finance/google/callback
-   ```
-
-   Keep the existing token-encryption key (or persisted `data/secret.key`) stable across
-   restarts so stored credentials remain readable. See `.env.example` for the encryption
-   setting. Environment variables must be passed to the running server; `.env` is not
-   automatically loaded in native development. In Docker, pass the Google variables to
-   the backend container and persist its data directory.
-
-### WSL IP access
-
-You may view the dashboard at a WSL address such as `http://172.18.224.169:5173/finance`,
-but start Google linking at the **login URL** shown in the setup panel. By default this
-is `http://127.0.0.1:5173/finance`. It must be reachable from the Windows browser as well
-as from WSL. If Windows localhost forwarding is unavailable, restore localhost forwarding
-or configure a registered HTTPS domain before attempting OAuth. Changing the redirect
-URI to the raw WSL IP will not solve this: [Google's redirect validation](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
-requires HTTPS and disallows raw IP hosts except loopback addresses. Cookies set for
-the WSL IP also cannot bind a callback to `127.0.0.1`. The server keeps rejecting login
-requests from unexpected origins rather than weakening the browser binding.
-
-The authorization flow asks for offline access so the server can refresh tokens. For
-External applications in Testing, refresh tokens for Sheets access normally expire after
-seven days, so reconnection is expected. Moving out of Testing may require Google's app
-verification depending on audience and requested scopes. See Google's
-[web-server OAuth guide](https://developers.google.com/identity/protocols/oauth2/web-server)
-and [refresh-token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
-
-Credentials never belong in `NEXT_PUBLIC_*`, browser storage, the spreadsheet, or an
-Advisor message. This remains a local, single-user application; Google connection does
-not make the Personal OS HTTP server safe to expose publicly.
-
-### Optional server credentials
-
-Existing Application Default Credentials (ADC) remain an alternative before Google OAuth
-has been used. For example, store a service-account JSON file outside the repository,
-reference it with `GOOGLE_APPLICATION_CREDENTIALS`, and share the spreadsheet with that
-service account as a **Viewer**. In Docker, mount the file read-only and set the variable
-to its container path. After OAuth is used, a disconnected or expired OAuth connection
-requires reconnection; the app does not switch silently to a different Google account.
-
-Open `/finance`, save the spreadsheet ID (the part between `/d/` and `/edit` in its URL),
-verify current GOOGLEFINANCE retrieval, then synchronize. Manual prices work without
-GOOGLEFINANCE verification. A failed synchronization retains the previous successful
-import, records the error and attempt time, and warns that displayed data may be stale.
-Changing spreadsheet IDs resets verification. The holdings page refreshes while visible;
-there is no background scheduler or brokerage connection.
-
-## Enter holdings in Personal OS
-
-Open `/data/holdings` at the configured login origin (normally
-`http://127.0.0.1:5173`). Choose the Google write-permission connection and approve it
-with an account that has **Editor** access to the spreadsheet. Existing read-only
-connections and ADC credentials cannot write holdings. Save the private spreadsheet ID
-on `/finance`, then use the holdings page's worksheet preparation action if needed.
-Preparation creates missing tabs, headers and verification formulas; it does not fill
-historical records or declare account coverage complete.
-
-Enter an exchange-qualified ticker such as `NASDAQ:AAPL`, its currency, quantity and
-optional average cost. Saving writes to the authoritative `Holdings` sheet and installs
-current-price and trade-date GOOGLEFINANCE formulas. Foreign currencies receive a current
-KRW FX formula unless a usable current rate is already present. Unsupported tickers can
-use an explicit manual price and its actual date instead.
-
-The visible page synchronizes every 60 seconds; Google recalculates its own formulas,
-and quotes can be delayed up to 20 minutes. Verification must succeed before automatic
-quotes or FX values contribute to valuations. Formula errors and missing values remain
-unavailable; a successful holding save can show a pending quote. Refresh after calculation
-or supply a manual price. Closing the page stops polling.
-
-Stable IDs and audited request IDs make retries safe, and version checks reject stale
-app edits. App writes are serialized, but Sheets has no conditional row-update transaction:
-avoid sorting, inserting or editing spreadsheet rows simultaneously with an app save.
-The editor does not create monthly history from today's holdings or overwrite historical
-closes and FX evidence. Review `Coverage` separately before treating totals as complete.
-
-## Worksheet format
-
-Create all the tabs below, with the exact header names in row 1. Dates must be ISO text
-`YYYY-MM-DD` (set cells to **Plain text** before entering dates). Amounts and quantities
-may be decimal numbers or plain decimal text. Plain text avoids Sheets' own numeric
-precision limit. Blank values and formula errors mean unavailable, never zero. Use an
-explicit `0` only when the actual balance or quantity is zero. Use stable unique IDs per
-position kind; do not reuse one holding ID for two separate lots/accounts.
-Each tab supports at most 9,999 data rows. Values must be nonnegative, below `1e20`,
-with at most 12 decimal places; invalid values remain unavailable. Net worth and gains
-may be negative. These limits keep Decimal calculations bounded.
-
-| Tab | Headers |
-| --- | --- |
-| `Cash` | `id,label,currency,balance,as_of` |
-| `Holdings` | `id,label,ticker,currency,quantity,avg_cost,asset_class,price,price_as_of,source,as_of` |
-| `Liabilities` | `id,label,currency,balance,as_of` |
-| `OtherAssets` | `id,label,currency,balance,as_of` |
-| `FX` | `currency,rate,as_of,source` |
-| `Closes` | `ticker,currency,price,as_of,source,valid_through` |
-| `History` | `month,kind,id,label,currency,balance,quantity,avg_cost,ticker,asset_class,as_of` |
-| `Coverage` | `month,cash,holding,liability,other` |
-
-`currency` is a three-letter uppercase code. Each FX rate means KRW per one unit of
-foreign currency; KRW itself uses 1. Keep dated historical FX records as literal values
-in `FX`. `asset_class` is `equity`, `etf`, `bond`, `crypto` or `other`; specify `equity`
-for stocks rather than assuming every investment is a stock. `source` records provenance,
-such as `manual:exchange-close`; use `googlefinance` for current formula values.
-
-`as_of` in a live holding is the date of the quantity record; `price_as_of` is the market
-date of its quote. A fresh synchronization does not make an old quote fresh. Enter
-unsupported tickers with literal manual prices and their actual price dates. Edit
-synchronized records in Sheets, then synchronize again, or use `/data/holdings` to write
-holdings directly to Sheets. Once a spreadsheet is configured, legacy local
-account/holding/FX/liability/other-asset editing APIs and forms are read-only.
-Existing local records are preserved, but are excluded from Sheets valuations.
-
-For current data, put `current,TRUE,TRUE,TRUE,TRUE` in `Coverage` only after checking that
-every account, holding, liability and other asset has been included. An empty liability
-tab with explicit coverage means no liabilities; an empty tab without coverage is unknown.
-The same attestation is required per historical month, with `month` such as `2026-09`.
-
-## Verify current GOOGLEFINANCE values
-
-Create a `Verification` tab with these formulas in row 1 (no header):
-
-```text
-A1: =GOOGLEFINANCE("NASDAQ:GOOG","price")
-B1: =GOOGLEFINANCE("CURRENCY:USDKRW")
+```dotenv
+GOOGLE_OAUTH_CLIENT_ID=your-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+# 운영용 compose에서는 웹 서버를 통해 callback을 전달합니다.
+GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:5173/api/finance/google/callback
 ```
 
-The Verify action reads both formulas and evaluated values through the official API.
-Both must return finite positive numbers. The backend stores the verification time and
-proof for this spreadsheet. Until it passes, GOOGLEFINANCE prices and rates are unavailable
-for valuation; the program does not assume that a mock test proves Google accessibility.
-Current formulas can then be used in the `Holdings.price` and `FX.rate` columns. Set actual
-quote/FX dates independently; retrieval time is recorded separately.
+네이티브 개발에서 백엔드로 직접 callback을 받으려면 포트를 8000으로 설정하고 같은 URI를 Google Console에 등록합니다. 브라우저의 호스트는 항상 같아야 합니다. `localhost`와 `127.0.0.1`은 다른 쿠키 호스트입니다. OAuth 시작 시 앱 잠금이 해제되어 있어야 하며, 잠금·세션 만료 후 callback은 거부됩니다. Google과 ChatGPT 연결은 서로 독립입니다.
 
-[Google documents](https://support.google.com/docs/answer/3093281?hl=en) that quotes can be
-delayed up to 20 minutes, many international exchanges are unsupported, and historical
-GOOGLEFINANCE arrays **cannot be accessed through Sheets API or Apps Script**. Exchange-qualified
-tickers reduce ambiguity. Dates passed to historical formulas use noon UTC and may shift
-market dates. This integration does not query those historical arrays or treat a current
-quote as a historical close. [Sheets API batchGet](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchGet)
-supports retrieving calculated, unformatted current values; availability is still checked
-against the user's spreadsheet.
+과거의 `spreadsheets` 또는 `spreadsheets.readonly` 승인은 코드의 scope 변경만으로 철회되지 않습니다. [Google 계정 연결 관리](https://myaccount.google.com/connections)에서 기존 승인을 해제하고 다시 연결하세요. 과거 Google 파일의 개인정보도 자동 삭제하지 않습니다. 이전 완료 후 원격 파일 잔존 여부를 직접 확인하세요.
 
-For an opt-in live integration check using the same credential setup:
+Google 계정을 바꾼 경우 `/finance`의 **현재 Google 계정으로 시세 파일 새로 연결**을 선택하세요. 현재 계정에 새 Quotes/FX 파일을 만든 뒤 연결을 교체합니다. 생성 실패나 도중 계정 변경 시 기존 연결을 유지하며, 이전 Google 파일과 로컬 보유 내역·관측 이력은 보존합니다. 새 연결은 갱신 제한을 초기화하므로 즉시 시세 갱신을 시작할 수 있습니다.
 
-```bash
-PERSONAL_OS_LIVE_SHEETS=1 GOOGLE_SHEETS_TEST_SPREADSHEET_ID=your_id uv run pytest tests/test_sheets_live.py -q
-```
+수동·자동 갱신은 5분 공통 제한을 적용합니다. 같은 종목은 여러 계좌에 있어도 한 번만 조회합니다. 새 관측이 아니면 이전 관측 시각을 갱신하지 않습니다. 오류·계산 대기·미지원 종목은 이전 유효 관측을 보존하며 정상 가격으로 바꾸지 않습니다. 미지원 종목에는 출처와 날짜가 있는 수동 가격을 입력하세요. Google 시세는 최대 20분 지연될 수 있고 모든 시장·종목을 지원하지 않습니다. 과거 GOOGLEFINANCE 배열은 Sheets API에서 조회할 수 없으므로 월말 종가 자료로 쓰지 않습니다. [GOOGLEFINANCE 공식 설명](https://support.google.com/docs/answer/3093281?hl=en)
 
-Without those variables, the live test skips. Mock-based transport and API integration
-tests run in the normal suite. The live test is read-only and does not populate sheets.
+## 기존 자료 이전
 
-## Create and correct month-end snapshots
+기존 `PortfolioImport`와 월별 스냅샷은 보존됩니다. `/finance`의 **기존 Sheets 저장 자료를 로컬로 편입**에서 저장된 import ID의 행·누락·충돌을 먼저 확인하고 편입합니다. 원본 파일·계정·행 ID 매핑을 보존하므로 같은 import를 다시 실행해도 중복 생성하지 않습니다. 티커만 같다는 이유로 다른 계좌의 행을 합치지 않습니다. 과거 스냅샷과 수정본은 재계산하지 않습니다.
 
-Populate `History` with **the quantities and balances actually held at that month-end**.
-For September, use `month=2026-09` and `as_of=2026-09-30` on each historical row. `kind` is
-`cash`, `holding`, `liability` or `other`. Holdings use `quantity` and `ticker`; other kinds
-use `balance`. A row for today's holdings is never copied into a past month.
+기존 개인 재무 시트 설정·검증·동기화 API는 종료되었습니다. 시세 연결은 로컬 데이터 편집 권한이나 원본을 결정하지 않습니다. 기존 ADC로 다른 계정에 자동 대체하지 않습니다.
 
-Record literal closing prices in `Closes` and dated literal rates in `FX`, retaining
-provenance in `source`. The valuation selects the latest recorded close on or before the
-calendar month-end for that ticker and currency, and the applicable dated FX rate.
-`Closes.valid_through` attests that this is the last valid market close through that date;
-it must cover month-end for a complete snapshot. This lets an actual Friday close cover
-a Sunday month-end without inventing Sunday prices. You must confirm this using your
-market records. Without adequate evidence or coverage, the snapshot remains incomplete.
-Historical formulas are not a substitute for literal recorded evidence.
+## 거래와 월마감
 
-Synchronize, then select a completed month on `/finance/history` and create its snapshot.
-Repeated creation returns the existing latest revision, even after another synchronization.
-The frozen snapshot retains individual balances, quantities, prices/dates, FX/dates,
-valuation results and completeness. Today's sheet changes cannot rewrite it.
+`/finance/records`에서 수입·지출·이체·매매·배당·이자·수수료·세금·상환을 별도 종류로 기록합니다. 발생일과 기록 시각을 구분하고 이체를 수입으로 집계하지 않습니다. 거래 입력은 기록이며 잔액·보유 수량에 자동 반영됐다고 가정하지 않습니다. 권리변동 역시 확인된 수량을 직접 기록하며 가격 변화로 추정하지 않습니다.
 
-Review a snapshot's lines and audit history. A correction submits a full replacement set
-of historical evidence, explicit coverage and a reason. It appends a revision linked to
-the previous one; it does not update the original. Concurrent edits to an old revision
-are rejected so the reviewer must reload. Corrections are deliberately separate from
-ordinary synchronization and are never performed by the Advisor.
+일별 관측 평가 저장은 확정 월말 스냅샷과 다릅니다. `/finance/history`의 월마감 입력에서 과거 수량·잔액·가격·환율·포함 범위의 근거를 명시합니다. 현재 수량이나 현재 가격으로 과거 공백을 채우지 않습니다. 불완전한 합계와 누락 월은 화면에 표시됩니다. 월별 차이는 관측 차이이며 수익이나 저축으로 단정하지 않습니다. 수정은 원래 ID와 revision 연결을 남기는 새 기록입니다.
 
-Monthly changes compare consecutive, complete months only. Missing months are gaps, not
-zero. A percentage change is unavailable when previous net worth is zero or negative.
-Net-worth growth is an observed difference; it does not establish whether deposits,
-spending, investment returns or currency movements caused that difference. The Advisor's
-read-only history tool makes this distinction and respects financial/investment exclusions.
+연간 거래 집계는 기록된 현금흐름의 범위를 나타냅니다. 기록 누락을 0으로 확정하거나 근거 없는 성과·원인 분석을 하지 않습니다. 생활비 런웨이는 생활비로 사용할 수 있는 유동성과 기존 지출 충족 조건을 따릅니다.
 
 ## Database upgrades
 
-The app never migrates an existing database on startup; it uses the database as it is (an empty
-database is built from the committed migrations) and logs a warning when the schema is behind head. Upgrading is an explicit command run with the same
-`DATABASE_URL` / `PERSONAL_OS_DATA_DIR` as the app:
+Docker 컨테이너는 서버 실행 전에 DB 준비와 migration 잠금을 기다리고 이미지에 포함된 Alembic `head`까지 자동 업그레이드합니다. 실패하면 서버를 시작하지 않습니다. 기존 설치의 이미지를 교체하기 전에 앱과 worker의 쓰기를 중지하고 DB·문서·키·설정을 함께 백업하세요. PostgreSQL 백업은 자동으로 생성되지 않습니다.
+
+DB 준비·잠금 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기본 `60`초)로 설정합니다. 정비 명령에서 자동 업그레이드를 건너뛰려면 `PERSONAL_OS_AUTO_MIGRATE=0`을 지정합니다. 이력이 없는 기존 DB는 [명시적 전환](documents.md#기존-create_all-db의-명시적-전환)이 필요하며, 이미지가 모르는 revision도 시작을 거부합니다. 자동 stamp나 downgrade는 수행하지 않습니다.
+
+네이티브 `uvicorn` 실행은 빈 DB만 초기화합니다. 기존 DB를 수동으로 확인·업그레이드할 때는 다음 명령을 사용합니다.
 
 ```bash
-uv run python -m app.modules.database.migration_manager          # show the plan, change nothing
-uv run python -m app.modules.database.migration_manager --apply  # back up, then migrate
+uv run python -m app.modules.database.migration_manager
+uv run python -m app.modules.database.migration_manager --apply
 ```
 
-For a database created by an earlier version (no `alembic_version` table), its tables and columns
-are compared with the schema of every migration revision. Only an exact match is stamped; the
-append-only triggers that startup never installs are then added and the remaining migrations run.
-If nothing matches exactly, the command lists the differences and changes nothing. SQLite files are
-copied to `<file>.bak-<UTC timestamp>` before any change; back up PostgreSQL yourself
-(`pg_dump`). Migrations only add tables, columns, indexes, triggers and history rows; existing rows
-are never rewritten. `uv run alembic upgrade head` still works for databases already under Alembic. Use a dedicated disposable
-database for tests because the test fixtures drop application tables.
+첫 명령은 읽기 전용 계획입니다. `--apply`는 SQLite 파일을 백업하고 명시적으로 업그레이드합니다. PostgreSQL은 별도 `pg_dump` 백업과 격리 복원 확인을 먼저 수행하세요. `stamp head`, 테이블 재생성, 볼륨 삭제로 불일치를 덮지 않습니다. 백업은 [README](../README.md)의 암호화 절차를 따릅니다.

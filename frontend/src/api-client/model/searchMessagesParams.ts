@@ -6,5 +6,21 @@
  */
 
 export type SearchMessagesParams = {
-q: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  q: string;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
+  since?: string | null;
+  until?: string | null;
+  conversation_id?: number | null;
 };

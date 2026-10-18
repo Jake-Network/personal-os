@@ -5,4 +5,4 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HoldingCreateQuantity = number | string;
+export type CareerRecordCreateSourceMessageId = number | null;

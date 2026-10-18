@@ -1,7 +1,7 @@
 """Explicit, user-run migration of an existing database to the Alembic head.
 
-The app never changes the schema of an existing database at startup. This command does, and only
-when asked:
+Native app startup leaves an existing database unchanged; Docker's entrypoint upgrades it
+automatically. This command supports explicit inspection, backup and migration:
 
     uv run python -m app.modules.database.migration_manager            # show the plan (read-only)
     uv run python -m app.modules.database.migration_manager --apply    # back up (SQLite), then migrate

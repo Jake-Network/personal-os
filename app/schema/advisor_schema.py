@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from app.enums.context_category import Category
 from app.modules.advisor.types import AskOptions
@@ -50,12 +50,20 @@ class AskRequest(BaseModel):
     document_search: bool = True
     document_ids: list[int] | None = Field(default=None, max_length=5)
 
+    history_since: AwareDatetime | None = None
+    history_until: AwareDatetime | None = None
+    history_company: str | None = Field(default=None, max_length=200)
+    history_project: int | None = None
+    history_decision: int | None = None
+
     def options(self) -> AskOptions:
         return AskOptions(
             categories=frozenset(self.categories) if self.categories is not None else None,
             exclude=frozenset(self.exclude),
             document_search=self.document_search,
             document_ids=tuple(self.document_ids) if self.document_ids is not None else None,
+            history_since=self.history_since, history_until=self.history_until,
+            history_company=self.history_company, history_project=self.history_project, history_decision=self.history_decision,
         )
 
 
@@ -133,3 +141,69 @@ class RecommendationFeedback(BaseModel):
     summary: str
     user_rating: Literal[-1, 0, 1] | None = None
     user_feedback: str | None = None
+
+
+class MemoryRevisionCreate(MemoryCreate):
+    # Required optimistic version protects concurrent corrections from overwriting each other.
+    expected_revision: int = Field(ge=0)
+    scope: str | None = Field(default=None, max_length=200)
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    review_on: datetime | None = None
+    external_allowed: bool = True
+    source_references: list[dict] = Field(default_factory=list, max_length=30)
+
+    @field_validator("source_references")
+    @classmethod
+    def validate_sources(cls, value):
+        for ref in value:
+            if not isinstance(ref.get("table"), str) or type(ref.get("id")) not in {int, str}:
+                raise ValueError("each source requires a table and integer/string id")
+            if len(ref["table"]) > 100 or isinstance(ref["id"], str) and len(ref["id"]) > 200:
+                raise ValueError("invalid source identifier")
+        return value
+
+
+class MemoryRevisionItem(MemoryCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    memory_id: int
+    revision: int
+    status: str
+    scope: str | None
+    valid_from: datetime | None
+    valid_until: datetime | None
+    review_on: datetime | None
+    external_allowed: bool
+    source_references: list[dict]
+    created_at: datetime
+    confirmed_at: datetime | None
+
+
+class SummaryCreate(BaseModel):
+    first_message_id: int | None = None
+    last_message_id: int | None = None
+
+
+class SummaryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    conversation_id: int
+    first_message_id: int
+    last_message_id: int
+    content: str
+    status: str
+    source_references: list[dict]
+    generator: str
+    created_at: datetime
+
+
+class ConversationLinkCreate(BaseModel):
+    kind: Literal["company", "project", "decision"]
+    target: str = Field(min_length=1, max_length=200)
+
+
+class ConversationLinkItem(ConversationLinkCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    conversation_id: int

@@ -5,4 +5,6 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HoldingInputQuantity = number | string;
+export type TransactionsParams = {
+  year?: number | null;
+};

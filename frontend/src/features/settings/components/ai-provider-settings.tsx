@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
 
 import { CALLBACK_ERROR, OUTCOME, PROVIDERS } from '../consts';
+import { TransferPolicySettings } from './transfer-policy-settings';
 
 type Notice = { tone: 'success' | 'destructive' | 'warning'; text: string };
 
@@ -105,6 +106,7 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
         </Alert>
       )}
 
+      <TransferPolicySettings provider={s?.provider} />
       <Card className='mb-3.5'>
         <CardHeader>
           <CardTitle>ChatGPT 계정</CardTitle>

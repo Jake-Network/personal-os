@@ -13,6 +13,8 @@ const withRefLinks = (text: string) =>
   text.replace(REF, (_m, table: string, id: string) => `[${TABLE_LABEL[table] ?? table} #${id}](${REF_HREF}${table}:${id})`);
 
 const componentsFor = (onDocumentRef?: (ref: string) => void): Components => ({
+  // Model/document markdown must never contact an external image server.
+  img: ({ alt }) => <span className='text-muted-foreground'>[외부 이미지 차단{alt ? `: ${alt}` : ''}]</span>,
   a: ({ href, children }) =>
     href?.startsWith(`${REF_HREF}document_chunks:`) ? (
       <button

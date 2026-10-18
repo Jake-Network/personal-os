@@ -10,6 +10,10 @@ class LLMRequest:
     model: str
     instructions: str
     input: list[dict]
+    source_snapshot_id: str | None = None
+    excluded_categories: tuple[str, ...] = ()
+    source_message_ids: tuple[int, ...] = ()
+    authorization: dict | None = None
 
 
 @dataclass

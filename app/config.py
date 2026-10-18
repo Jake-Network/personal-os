@@ -54,6 +54,7 @@ class Settings:
     # Context / history budgets.
     history_message_limit: int = 20
     context_char_limit: int = 24_000
+    request_char_limit: int = 64_000
 
     @property
     def redirect_uri(self) -> str:

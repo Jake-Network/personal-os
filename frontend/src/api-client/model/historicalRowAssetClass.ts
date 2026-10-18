@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HistoricalRowAssetClass = typeof HistoricalRowAssetClass[keyof typeof HistoricalRowAssetClass];
-
+export type HistoricalRowAssetClass = (typeof HistoricalRowAssetClass)[keyof typeof HistoricalRowAssetClass];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const HistoricalRowAssetClass = {

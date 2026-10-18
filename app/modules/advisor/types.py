@@ -1,6 +1,7 @@
 """Types passed through one advisor turn."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.enums.context_category import Category
 from app.modules.context.types import HistoryDecision, payload_citations
@@ -15,6 +16,11 @@ class AskOptions:
     exclude: frozenset[Category] = frozenset()  # per-request exclusions, on top of saved settings
     document_search: bool = True
     document_ids: tuple[int, ...] | None = None  # None inherits; empty clears pins
+    history_since: datetime | None = None
+    history_until: datetime | None = None
+    history_company: str | None = None
+    history_project: int | None = None
+    history_decision: int | None = None
 
 
 @dataclass

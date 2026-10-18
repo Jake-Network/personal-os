@@ -239,6 +239,8 @@ def reindex(session, document):
 
 def delete_document(session, document_id, purge_evidence=False):
     document = get_document(session, document_id)
+    from app.modules.context.record_privacy import invalidate_deleted_source
+    invalidate_deleted_source(session, "documents", document_id)
     if purge_evidence:
         from app.modules.documents.evidence import purge_document_evidence
         purge_document_evidence(session, document_id)

@@ -6,5 +6,5 @@
  */
 
 export type ListMemoriesParams = {
-status?: string;
+  status?: string;
 };

@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { customInstance } from '@/api-client/custom-client';
 import { financeApi } from '@/features/finance/api';
-import { holdingDraft, holdingsApi, type HoldingInput, type SheetHolding } from './api';
+import { holdingDraft, holdingsApi, quantityText, type HoldingInput, type SheetHolding } from './api';
 
 vi.mock('@/api-client/custom-client', () => ({ customInstance: vi.fn().mockResolvedValue({}) }));
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('Sheets holdings API', () => {
+  it('omits trailing fractional zeros without rounding historical fractions or large integers', () => {
+    expect(quantityText('12.000000000000')).toBe('12');
+    expect(quantityText('0.000000000000')).toBe('0');
+    expect(quantityText('9007199254740993.000000000000')).toBe('9007199254740993');
+    expect(quantityText('1.123456789120')).toBe('1.12345678912');
+    expect(quantityText('100')).toBe('100');
+  });
   it('requests explicit write consent and returns to holdings without changing default read consent', async () => {
     await financeApi.googleLogin(true, 'holdings');
     expect(customInstance).toHaveBeenLastCalledWith({
@@ -24,7 +31,7 @@ describe('Sheets holdings API', () => {
       position_id: 'position',
       request_id: 'request',
       ticker: 'NASDAQ:AAPL',
-      quantity: '9007199254740993.000000001',
+      quantity: '9007199254740993',
       avg_cost: '123.123456789',
       currency: 'USD',
       label: 'Apple',

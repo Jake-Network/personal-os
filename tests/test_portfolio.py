@@ -145,7 +145,7 @@ class FakeSheets:
 
 
 @pytest.fixture
-def portfolio_api(client, monkeypatch, sheet_tables):
+def portfolio_api(client, session, monkeypatch, sheet_tables):
     from app.modules.portfolio import portfolio_manager as manager
 
     class OctoberDate(date):
@@ -156,8 +156,35 @@ def portfolio_api(client, monkeypatch, sheet_tables):
     monkeypatch.setattr(manager, "date", OctoberDate)
     fake = FakeSheets(sheet_tables)
     monkeypatch.setattr(manager, "SheetsClient", lambda **kwargs: fake)
-    assert client.put("/api/finance/settings", json={"spreadsheet_id": "private-test-sheet"}).status_code == 200
-    return client, fake
+    # Historical import evaluation stays tested directly after public personal-Sheets
+    # endpoints retire. Snapshot/history requests still use the actual API.
+    import httpx
+    manager.configure(session, "private-test-sheet")
+    class LegacyImportHarness:
+        def put(self, path, json):
+            if path == "/api/finance/settings":
+                from app.schema.portfolio_schema import SheetsSettingsInput
+                try:
+                    data = SheetsSettingsInput(**json)
+                    value = manager.configure(session, data.spreadsheet_id)
+                    return httpx.Response(200, json=value)
+                except ValueError as exc:
+                    return httpx.Response(422, json={"detail": str(exc)})
+            return client.put(path, json=json)
+        def post(self, path, **kwargs):
+            if path in {"/api/finance/sync", "/api/finance/verify"}:
+                try:
+                    value = manager.sync(session) if path.endswith("sync") else manager.verify(session)
+                    from fastapi.encoders import jsonable_encoder
+                    return httpx.Response(200, json=jsonable_encoder(value))
+                except ValueError as exc:
+                    return httpx.Response(422, json={"detail": str(exc)})
+            return client.post(path, **kwargs)
+        def get(self, path):
+            if path == "/api/finance/portfolio":
+                return httpx.Response(200, json=manager.imported_portfolio_preview(session))
+            return client.get(path)
+    return LegacyImportHarness(), fake
 
 
 def import_sheet(portfolio_api):
@@ -354,10 +381,10 @@ def test_settings_validate_id_and_changing_sheet_resets_trust(portfolio_api):
     assert client.get("/api/finance/portfolio").json()["synced_at"] is None
 
 
-def test_sheets_authority_blocks_conflicting_local_writes(portfolio_api):
+def test_saved_legacy_import_does_not_block_local_writes(portfolio_api):
     client, _ = portfolio_api
     response = client.post("/api/data/holdings", json={"symbol": "OTHER", "quantity": "1"})
-    assert response.status_code == 409
+    assert response.status_code == 201
 
 
 def test_history_period_validation_and_missing_month_indicators(portfolio_api):
@@ -490,11 +517,14 @@ def test_last_valid_close_skips_unavailable_later_row(portfolio_api):
 
 
 @pytest.mark.parametrize("share_financial", [False, True])
-def test_advisor_stock_proportion_respects_financial_privacy(portfolio_api, session, share_financial):
+def test_advisor_stock_proportion_respects_financial_privacy(portfolio_api, session, share_financial, monkeypatch):
     from app.enums.context_category import Category
     from app.modules.context.portfolio_tools import sheets_portfolio
     from app.modules.context.types import ToolContext
 
+    from app.modules.context import portfolio_tools
+    from app.modules.portfolio import portfolio_manager
+    monkeypatch.setattr(portfolio_tools, "_portfolio", lambda ctx: portfolio_manager.imported_portfolio_preview(ctx.session))
     client, fake = portfolio_api
     fake.data["Holdings"][0]["asset_class"] = "equity"
     assert client.post("/api/finance/sync").status_code == 200

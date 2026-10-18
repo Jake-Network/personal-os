@@ -7,6 +7,11 @@
 import type { ContextPreviewRequestCategories } from './contextPreviewRequestCategories';
 import type { Category } from './category';
 import type { ContextPreviewRequestDocumentIds } from './contextPreviewRequestDocumentIds';
+import type { ContextPreviewRequestHistorySince } from './contextPreviewRequestHistorySince';
+import type { ContextPreviewRequestHistoryUntil } from './contextPreviewRequestHistoryUntil';
+import type { ContextPreviewRequestHistoryCompany } from './contextPreviewRequestHistoryCompany';
+import type { ContextPreviewRequestHistoryProject } from './contextPreviewRequestHistoryProject';
+import type { ContextPreviewRequestHistoryDecision } from './contextPreviewRequestHistoryDecision';
 import type { ContextPreviewRequestConversationId } from './contextPreviewRequestConversationId';
 
 export interface ContextPreviewRequest {
@@ -19,5 +24,10 @@ export interface ContextPreviewRequest {
   exclude?: Category[];
   document_search?: boolean;
   document_ids?: ContextPreviewRequestDocumentIds;
+  history_since?: ContextPreviewRequestHistorySince;
+  history_until?: ContextPreviewRequestHistoryUntil;
+  history_company?: ContextPreviewRequestHistoryCompany;
+  history_project?: ContextPreviewRequestHistoryProject;
+  history_decision?: ContextPreviewRequestHistoryDecision;
   conversation_id?: ContextPreviewRequestConversationId;
 }

@@ -38,7 +38,7 @@ def test_explicit_privacy_deny_does_not_query(session, query, kwargs):
         event.remove(session.bind, "before_cursor_execute", reject)
 
 
-def test_sheets_latest_selected_identity_only(session, monkeypatch):
+def test_local_routing_ignores_saved_sheet_and_google_identity(session, monkeypatch):
     from app.modules.auth.google_oauth_manager import google_oauth_manager
     monkeypatch.setattr(google_oauth_manager, "settings", replace(google_oauth_manager.settings, google_oauth_client_id="entity-test"))
     session.add(PortfolioSettings(id=1, spreadsheet_id="selected"))
@@ -60,7 +60,7 @@ def test_sheets_latest_selected_identity_only(session, monkeypatch):
         statements.append(statement)
     event.listen(session.bind, "before_cursor_execute", capture)
     try:
-        assert matched_investment_terms(session, "NEW 신규종목은 OLD OTHER WRONG LOCAL") == ("NEW", "신규종목")
+        assert matched_investment_terms(session, "NEW 신규종목은 OLD OTHER WRONG LOCAL") == ("LOCAL",)
     finally:
         event.remove(session.bind, "before_cursor_execute", capture)
     assert not any("ciphertext" in statement or "quantity" in statement for statement in statements)
@@ -68,7 +68,7 @@ def test_sheets_latest_selected_identity_only(session, monkeypatch):
     connection = session.get(GoogleOAuthConnection, 1)
     connection.status = "disconnected"
     session.commit()
-    assert matched_investment_terms(session, "NEW 신규종목은") == ()
+    assert matched_investment_terms(session, "NEW 신규종목은 LOCAL") == ("LOCAL",)
 
 
 def test_sheets_adc_legacy_identity(session):
@@ -76,4 +76,4 @@ def test_sheets_adc_legacy_identity(session):
     session.add(PortfolioImport(spreadsheet_id="selected", source_identity=None,
                                 payload={"Holdings": [{"ticker": "AAPL"}]}))
     session.commit()
-    assert matched_investment_terms(session, "AAPL?") == ("AAPL",)
+    assert matched_investment_terms(session, "AAPL?") == ()

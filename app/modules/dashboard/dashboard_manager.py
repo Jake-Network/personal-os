@@ -13,7 +13,7 @@ class DashboardManager:
         now = now or datetime.now(UTC)
         # Local display only, so privacy exclusions (which govern what leaves the machine) do not apply.
         selected = frozenset(ALL_CATEGORIES) - {Category.PROFILE}
-        data, _, flags, freshness = context_builder_manager.collect(session, selected, now)
+        data, _, flags, freshness = context_builder_manager.collect(session, selected, now, external_sharing=False)
         return {"generated_at": now.isoformat(), "data": data, "data_quality_flags": flags,
                 "source_updated_at": freshness, "computed": {"runway": data.get("cash_runway")}}
 

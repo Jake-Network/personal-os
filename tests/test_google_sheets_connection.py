@@ -24,21 +24,21 @@ class FakeSheet:
         return tables
 
 
-def test_adc_proof_and_import_are_not_reused_after_google_login(session):
+def test_legacy_import_adc_proof_and_import_are_not_reused_after_google_login(session):
     manager.configure(session, "private-spreadsheet")
     manager.verify(session, FakeSheet())
     assert manager.sync(session, FakeSheet())["investments"] == "20.00"
     connection = GoogleOAuthConnection(id=1, status="connected", subject="account-a", scopes=[])
     session.add(connection)
     session.commit()
-    assert manager.portfolio(session)["import_id"] is None
+    assert manager.imported_portfolio_preview(session)["import_id"] is None
     imported = manager.sync(session, FakeSheet())
     assert imported["investments"] is None
     manager.verify(session, FakeSheet())
-    assert manager.portfolio(session)["investments"] == "20.00"
+    assert manager.imported_portfolio_preview(session)["investments"] == "20.00"
 
 
-def test_google_account_switch_requires_its_own_import_and_quote_verification(session):
+def test_legacy_import_google_account_switch_requires_its_own_import_and_quote_verification(session):
     connection = GoogleOAuthConnection(id=1, status="connected", subject="account-a", scopes=[])
     session.add(connection)
     session.commit()
@@ -47,13 +47,13 @@ def test_google_account_switch_requires_its_own_import_and_quote_verification(se
     manager.sync(session, FakeSheet())
     connection.subject = "account-b"
     session.commit()
-    assert manager.portfolio(session)["import_id"] is None
+    assert manager.imported_portfolio_preview(session)["import_id"] is None
     assert manager.sync(session, FakeSheet())["investments"] is None
     manager.verify(session, FakeSheet())
-    assert manager.portfolio(session)["investments"] == "20.00"
+    assert manager.imported_portfolio_preview(session)["investments"] == "20.00"
     connection.status = "needs_reauth"
     session.commit()
-    result = manager.portfolio(session)
+    result = manager.imported_portfolio_preview(session)
     assert result["investments"] is None
     assert result["stale"] is True
 

@@ -21,7 +21,7 @@ class HistoricalRow(BaseModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     as_of: date
     balance: Decimal | None = None
-    quantity: Decimal | None = None
+    quantity: int | None = Field(default=None, ge=0, lt=10**20)
     avg_cost: Decimal | None = None
     ticker: str | None = None
     asset_class: Literal["equity", "etf", "bond", "crypto", "other"] = "other"
@@ -32,7 +32,7 @@ class HistoricalRow(BaseModel):
     fx_rate: Decimal | None = None
     fx_as_of: date | None = None
 
-    @field_validator("balance", "quantity", "avg_cost", "price", "fx_rate")
+    @field_validator("balance", "avg_cost", "price", "fx_rate")
     @classmethod
     def finite(cls, value):
         if value is not None and (not value.is_finite() or value < 0 or value >= Decimal("1e20") or value.as_tuple().exponent < -12):

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -9,19 +9,19 @@ import { notify } from '@/components/notify';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
-import { getListConversationsQueryKey, useDeleteConversation, useListConversations } from '@/api-client/generated/advisor/advisor';
+import { getListConversationsQueryKey, useDeleteConversation, useGetConversation } from '@/api-client/generated/advisor/advisor';
 
 import { DOMAINS, parseDomain } from '../consts';
 import type { InspectorData, InspectorMode } from '../types';
 import { AdvisorChat } from './advisor-chat';
-import { ContextInspector } from './context-inspector';
+import { WorkspacePanel } from './workspace-panel';
 import { ConversationList } from './conversation-list';
 
 const WIDE = '(min-width: 1280px)';
 
 /**
- * Rendered from app/(main)/advisor/layout.tsx, not a page: layouts survive /advisor → /advisor/[id],
- * so a new conversation keeps its live answer stream when the URL gains its id.
+ * The layout owns the selected evidence panel. Each conversation observes its saved server run,
+ * so URL changes and chat remounts recover the same execution.
  */
 export function AdvisorWorkspace() {
   const params = useParams<{ id?: string[] }>();
@@ -37,14 +37,14 @@ export function AdvisorWorkspace() {
     key: '',
   });
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const latestInspector = useRef<typeof inspector | null>(null);
   const [listOpen, setListOpen] = useState(false);
 
   // Reset the panel when the conversation (or new-conversation domain) changes.
   const viewKey = `${conversationId}:${newDomain}`;
   const inspectorState = inspector.key === viewKey ? inspector : { data: null, mode: 'preview' as const, loading: false };
 
-  const { data: conversations } = useListConversations();
-  const current = conversations?.find(c => c.id === conversationId);
+  const { data: current } = useGetConversation(conversationId ?? 0, undefined, { query: { enabled: conversationId !== null } });
   const domain = parseDomain(current?.domain ?? null) ?? newDomain;
 
   const remove = useDeleteConversation({
@@ -73,22 +73,35 @@ export function AdvisorWorkspace() {
       </Sheet>
 
       <AdvisorChat
+        key={conversationId ?? `new-${newDomain}`}
         conversationId={conversationId}
         domain={domain}
         onConversationCreated={id => router.replace(`/advisor/${id}`)}
         onInspector={(data, mode, loading) => {
+          if (mode !== 'snapshot') latestInspector.current = { data, mode, loading, key: viewKey };
+          if (mode !== 'snapshot' && inspector.key === viewKey && inspector.mode === 'snapshot') return;
           setInspector({ data, mode, loading, key: viewKey });
           // Below xl the panel is a sheet; open it to show the evidence the user asked for.
           if (mode === 'snapshot' && !window.matchMedia(WIDE).matches) setInspectorOpen(true);
         }}
         header={
-          <div className='flex items-center gap-2 border-b bg-card px-[18px] py-3'>
+          <div className='flex flex-wrap items-center gap-2 border-b bg-card px-[18px] py-3'>
             <h2 className='flex-1 truncate text-[15px]'>{title}</h2>
+            {inspectorState.mode === 'snapshot' && (
+              <Button
+                size='sm'
+                onClick={() => {
+                  const latest = latestInspector.current;
+                  setInspector(latest?.key === viewKey ? latest : { data: null, mode: 'preview', key: viewKey });
+                }}>
+                현재 상담 근거로 돌아가기
+              </Button>
+            )}
             <Button size='sm' className='md:hidden' onClick={() => setListOpen(true)}>
               상담 목록
             </Button>
             <Button size='sm' className='xl:hidden' onClick={() => setInspectorOpen(true)}>
-              참조 데이터
+              상담 패널
             </Button>
             {conversationId && (
               <Button
@@ -103,11 +116,16 @@ export function AdvisorWorkspace() {
         }
       />
 
-      <ContextInspector {...inspectorProps} className='hidden xl:block' />
+      <WorkspacePanel conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent side='right' className='xl:hidden'>
-          <SheetTitle className='sr-only'>참조 중인 데이터</SheetTitle>
-          <ContextInspector {...inspectorProps} className='h-full border-l-0' onClose={() => setInspectorOpen(false)} />
+          <SheetTitle className='sr-only'>상담 패널</SheetTitle>
+          <WorkspacePanel
+            conversationId={conversationId}
+            inspector={inspectorProps}
+            className='h-full border-l-0'
+            onClose={() => setInspectorOpen(false)}
+          />
         </SheetContent>
       </Sheet>
     </div>

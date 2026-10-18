@@ -4,10 +4,7 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
-import {
-  useMutation,
-  useQuery
-} from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
   DataTag,
   DefinedInitialDataOptions,
@@ -20,236 +17,179 @@ import type {
   UseMutationOptions,
   UseMutationResult,
   UseQueryOptions,
-  UseQueryResult
+  UseQueryResult,
 } from '@tanstack/react-query';
 
-import type {
-  HTTPValidationError,
-  StartGoogleLoginParams
-} from '../../model';
+import type { HTTPValidationError, StartGoogleLoginParams } from '../../model';
 
 import { customInstance } from '../../custom-client';
 import type { ErrorType } from '../../custom-client';
 
-
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
-
-
 /**
  * @summary Get Status
  */
-export const getGoogleStatus = (
-
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<unknown>(
-      {url: `/api/finance/google/status`, method: 'GET', signal
-    },
-      options);
-    }
-
-
-
+export const getGoogleStatus = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<unknown>({ url: `/api/finance/google/status`, method: 'GET', signal }, options);
+};
 
 export const getGetGoogleStatusQueryKey = () => {
-    return [
-    `/api/finance/google/status`
-    ] as const;
-    }
+  return [`/api/finance/google/status`] as const;
+};
 
+export const getGetGoogleStatusQueryOptions = <TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetGoogleStatusQueryOptions = <TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetGoogleStatusQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGoogleStatus>>> = ({ signal }) => getGoogleStatus(requestOptions, signal);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetGoogleStatusQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGoogleStatus>>> = ({ signal }) => getGoogleStatus(requestOptions, signal);
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type GetGoogleStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getGoogleStatus>>>
-export type GetGoogleStatusQueryError = ErrorType<unknown>
-
+export type GetGoogleStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getGoogleStatus>>>;
+export type GetGoogleStatusQueryError = ErrorType<unknown>;
 
 export function useGetGoogleStatus<TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getGoogleStatus>>,
-          TError,
-          Awaited<ReturnType<typeof getGoogleStatus>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, Awaited<ReturnType<typeof getGoogleStatus>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetGoogleStatus<TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getGoogleStatus>>,
-          TError,
-          Awaited<ReturnType<typeof getGoogleStatus>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, Awaited<ReturnType<typeof getGoogleStatus>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetGoogleStatus<TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Get Status
  */
 
 export function useGetGoogleStatus<TData = Awaited<ReturnType<typeof getGoogleStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getGoogleStatus>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetGoogleStatusQueryOptions(options);
 
-  const queryOptions = getGetGoogleStatusQueryOptions(options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
 
+/**
+ * @summary Start Login
+ */
+export const startGoogleLogin = (params?: StartGoogleLoginParams, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<unknown>({ url: `/api/finance/google/login`, method: 'POST', params, signal }, options);
+};
 
+export const getStartGoogleLoginMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError, { params?: StartGoogleLoginParams }, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError, { params?: StartGoogleLoginParams }, TContext> => {
+  const mutationKey = ['startGoogleLogin'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof startGoogleLogin>>, { params?: StartGoogleLoginParams }> = props => {
+    const { params } = props ?? {};
+
+    return startGoogleLogin(params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartGoogleLoginMutationResult = NonNullable<Awaited<ReturnType<typeof startGoogleLogin>>>;
+
+export type StartGoogleLoginMutationError = ErrorType<HTTPValidationError>;
 
 /**
  * @summary Start Login
  */
-export const startGoogleLogin = (
-    params?: StartGoogleLoginParams,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
+export const useStartGoogleLogin = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError, { params?: StartGoogleLoginParams }, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof startGoogleLogin>>, TError, { params?: StartGoogleLoginParams }, TContext> => {
+  const mutationOptions = getStartGoogleLoginMutationOptions(options);
 
-
-      return customInstance<unknown>(
-      {url: `/api/finance/google/login`, method: 'POST',
-        params, signal
-    },
-      options);
-    }
-
-
-
-export const getStartGoogleLoginMutationOptions = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError,{params?: StartGoogleLoginParams}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError,{params?: StartGoogleLoginParams}, TContext> => {
-
-const mutationKey = ['startGoogleLogin'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startGoogleLogin>>, {params?: StartGoogleLoginParams}> = (props) => {
-          const {params} = props ?? {};
-
-          return  startGoogleLogin(params,requestOptions)
-        }
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type StartGoogleLoginMutationResult = NonNullable<Awaited<ReturnType<typeof startGoogleLogin>>>
-
-    export type StartGoogleLoginMutationError = ErrorType<HTTPValidationError>
-
-    /**
- * @summary Start Login
- */
-export const useStartGoogleLogin = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startGoogleLogin>>, TError,{params?: StartGoogleLoginParams}, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof startGoogleLogin>>,
-        TError,
-        {params?: StartGoogleLoginParams},
-        TContext
-      > => {
-
-      const mutationOptions = getStartGoogleLoginMutationOptions(options);
-
-      return useMutation(mutationOptions, queryClient);
-    }
-    /**
+  return useMutation(mutationOptions, queryClient);
+};
+/**
  * @summary Disconnect
  */
-export const disconnectGoogle = (
+export const disconnectGoogle = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<void>({ url: `/api/finance/google/disconnect`, method: 'POST', signal }, options);
+};
 
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
+export const getDisconnectGoogleMutationOptions = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError, void, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError, void, TContext> => {
+  const mutationKey = ['disconnectGoogle'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectGoogle>>, void> = () => {
+    return disconnectGoogle(requestOptions);
+  };
 
-      return customInstance<void>(
-      {url: `/api/finance/google/disconnect`, method: 'POST', signal
-    },
-      options);
-    }
+  return { mutationFn, ...mutationOptions };
+};
 
+export type DisconnectGoogleMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectGoogle>>>;
 
+export type DisconnectGoogleMutationError = ErrorType<unknown>;
 
-export const getDisconnectGoogleMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError,void, TContext> => {
-
-const mutationKey = ['disconnectGoogle'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectGoogle>>, void> = () => {
-
-
-          return  disconnectGoogle(requestOptions)
-        }
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DisconnectGoogleMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectGoogle>>>
-
-    export type DisconnectGoogleMutationError = ErrorType<unknown>
-
-    /**
+/**
  * @summary Disconnect
  */
-export const useDisconnectGoogle = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof disconnectGoogle>>,
-        TError,
-        void,
-        TContext
-      > => {
+export const useDisconnectGoogle = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof disconnectGoogle>>, TError, void, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof disconnectGoogle>>, TError, void, TContext> => {
+  const mutationOptions = getDisconnectGoogleMutationOptions(options);
 
-      const mutationOptions = getDisconnectGoogleMutationOptions(options);
-
-      return useMutation(mutationOptions, queryClient);
-    }
+  return useMutation(mutationOptions, queryClient);
+};

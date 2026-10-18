@@ -6,5 +6,5 @@
  */
 
 export type DeleteDocumentParams = {
-purge_evidence?: boolean;
+  purge_evidence?: boolean;
 };

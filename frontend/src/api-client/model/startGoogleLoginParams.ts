@@ -7,6 +7,6 @@
 import type { StartGoogleLoginReturnTo } from './startGoogleLoginReturnTo';
 
 export type StartGoogleLoginParams = {
-write_access?: boolean;
-return_to?: StartGoogleLoginReturnTo;
+  write_access?: boolean;
+  return_to?: StartGoogleLoginReturnTo;
 };

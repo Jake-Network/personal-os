@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type TaskItemStatus = typeof TaskItemStatus[keyof typeof TaskItemStatus];
-
+export type TaskItemStatus = (typeof TaskItemStatus)[keyof typeof TaskItemStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const TaskItemStatus = {

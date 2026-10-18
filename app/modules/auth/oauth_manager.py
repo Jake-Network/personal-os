@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
@@ -24,7 +25,7 @@ from app.modules.auth.pkce import pkce_pair
 from app.modules.auth.tokens import merged_token_record, provider_error_code
 from app.modules.auth.types import PendingLogin
 from app.modules.crud import app_setting_handler, audit_log_handler, oauth_connection_handler, oauth_credential_handler
-from app.modules.database.model import OAuthConnection
+from app.modules.database.model import OAuthConnection, AppSetting
 from app.modules.llm.errors import AuthRequired, ConsentDeclined, NotConnected
 
 IDENTITY_SCOPES = ("openid", "profile", "email")
@@ -32,6 +33,7 @@ PLAN_SCOPES = ("offline_access", "resource.invoke", "chatgpt.tokens.use.direct")
 PLAN_USAGE_SCOPE = "chatgpt.tokens.use.direct"
 DYNAMIC_CLIENT = "dynamic_agent_client"
 HOST_ID_KEY = "oauth.ext_agent_host_id"
+LOGIN_GENERATION_KEY = "oauth.login_generation"
 PENDING_TTL = 600
 REFRESH_SKEW = timedelta(seconds=90)
 REAUTH_CODES = {"invalid_grant", "refresh_token_invalidated", "refresh_token_expired", "invalid_refresh_token",
@@ -137,10 +139,16 @@ class OAuthManager:
             params["login_hint"] = previous.email
         if force_consent:
             params["prompt"] = "consent"
-        self._pending[state] = PendingLogin(verifier, nonce, client_id, time.monotonic())
+        generation = self._login_generation(session)
+        if generation is None:
+            generation = secrets.token_hex(32)
+            app_setting_handler.set_value(session, LOGIN_GENERATION_KEY, {"id": generation})
+            session.commit()
+        self._pending[state] = PendingLogin(verifier, nonce, client_id, time.monotonic(), generation)
         return f"{self.settings.oauth_authorize_url}?{urlencode(params)}"
 
-    async def handle_callback(self, session: Session, params: dict[str, str]) -> OAuthConnection:
+    async def handle_callback(self, session: Session, params: dict[str, str],
+                              authorization_guard: Callable[[], None] | None = None) -> OAuthConnection:
         state = params.get("state", "")
         pending = self._pending.pop(state, None)
         if pending is None or time.monotonic() - pending.created > PENDING_TTL:
@@ -183,6 +191,9 @@ class OAuthManager:
             "plan_usage_enabled": plan_usage,
             "last_error_code": None if plan_usage else "plan_usage_scope_not_granted",
         }
+        if authorization_guard is not None:
+            authorization_guard()
+        self._require_login_generation(session, pending.generation)
         conn = oauth_connection_handler.get_latest(session)
         if conn is None or conn.subject != claims["sub"] or conn.client_id != client_id:
             conn = oauth_connection_handler.create(session, {
@@ -192,6 +203,8 @@ class OAuthManager:
         else:
             oauth_connection_handler.update(session, conn, fields)
         self._store_tokens(session, conn, tokens)
+        from app.modules.llm.transfer_policy import invalidate
+        invalidate(session)
         audit_log_handler.record(session, "user", "oauth.connect", f"oauth_connections:{conn.id}",
                                  {"plan_usage_enabled": plan_usage, "scopes": granted})
         session.commit()
@@ -229,6 +242,9 @@ class OAuthManager:
     async def _refresh(self, session: Session, conn: OAuthConnection) -> None:
         async with self._refresh_lock:  # serialize: refresh tokens rotate
             session.refresh(conn)
+            if conn.status != "connected":
+                raise AuthRequired("connection was disconnected")
+            generation = self._login_generation(session)
             tokens = self._load_tokens(session, conn)
             if not tokens.get("refresh_token"):
                 self._mark_reauth(session, conn, "no_refresh_token")
@@ -244,6 +260,7 @@ class OAuthManager:
             except httpx.TransportError as exc:
                 # Temporary failure: keep credentials.
                 raise AuthRequired("refresh network failure", provider_code="network") from exc
+            self._require_login_generation(session, generation)
             if resp.status_code >= 400:
                 code = provider_error_code(resp)
                 if code in REAUTH_CODES or resp.status_code in (400, 401):
@@ -266,14 +283,39 @@ class OAuthManager:
             conn.last_error_code = code
             session.commit()
 
+    def _login_generation(self, session: Session, *, lock: bool = False) -> str | None:
+        statement = select(AppSetting).where(AppSetting.key == LOGIN_GENERATION_KEY).execution_options(populate_existing=True)
+        row = session.scalar(statement.with_for_update() if lock else statement)
+        return row.value.get("id") if row else None
+
+    def _require_login_generation(self, session: Session, expected: str | None) -> None:
+        if self._login_generation(session, lock=True) != expected:
+            raise ConsentDeclined("login was cancelled by disconnect", provider_code="login_cancelled")
+
     async def disconnect(self, session: Session) -> None:
+        # Rotate the durable marker and remove local credentials in one transaction,
+        # before remote revocation. In-flight login/refresh cannot restore these tokens.
+        self._login_generation(session, lock=True)
+        app_setting_handler.set_value(session, LOGIN_GENERATION_KEY, {"id": secrets.token_hex(32)})
+        from app.modules.llm.transfer_policy import invalidate
+        invalidate(session)
+        self._pending.clear()
         conn = self.current(session)
-        if conn is None:
-            return
-        try:
-            tokens = self._load_tokens(session, conn)
-        except AuthRequired:
-            tokens = {}
+        tokens = {}
+        client_id = None
+        if conn is not None:
+            client_id = conn.client_id
+            try:
+                tokens = self._load_tokens(session, conn)
+            except AuthRequired:
+                pass
+            cred = oauth_credential_handler.get(session, conn.id)
+            if cred is not None:
+                oauth_credential_handler.delete(session, cred)
+            conn.status = "disconnected"
+            conn.plan_usage_enabled = False
+            audit_log_handler.record(session, "user", "oauth.disconnect", f"oauth_connections:{conn.id}")
+        session.commit()
         if tokens.get("refresh_token"):
             try:
                 async with self.http_factory() as http:
@@ -281,17 +323,9 @@ class OAuthManager:
                     endpoint = discovery.get("revocation_endpoint")
                     if endpoint:
                         await http.post(endpoint, data={"token": tokens["refresh_token"],
-                                                        "token_type_hint": "refresh_token",
-                                                        "client_id": conn.client_id})
+                                                        "token_type_hint": "refresh_token", "client_id": client_id})
             except httpx.HTTPError:
-                pass  # local credentials are removed regardless; revocation is best-effort
-        cred = oauth_credential_handler.get(session, conn.id)
-        if cred is not None:
-            oauth_credential_handler.delete(session, cred)
-        conn.status = "disconnected"
-        conn.plan_usage_enabled = False
-        audit_log_handler.record(session, "user", "oauth.disconnect", f"oauth_connections:{conn.id}")
-        session.commit()
+                pass  # Local revocation is already committed when the network fails.
 
     def _gc_pending(self) -> None:
         cutoff = time.monotonic() - PENDING_TTL

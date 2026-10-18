@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalItemHorizon = typeof GoalItemHorizon[keyof typeof GoalItemHorizon];
-
+export type GoalItemHorizon = (typeof GoalItemHorizon)[keyof typeof GoalItemHorizon];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const GoalItemHorizon = {

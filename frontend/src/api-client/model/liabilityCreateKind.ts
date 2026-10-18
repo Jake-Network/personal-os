@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type LiabilityCreateKind = typeof LiabilityCreateKind[keyof typeof LiabilityCreateKind];
-
+export type LiabilityCreateKind = (typeof LiabilityCreateKind)[keyof typeof LiabilityCreateKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const LiabilityCreateKind = {

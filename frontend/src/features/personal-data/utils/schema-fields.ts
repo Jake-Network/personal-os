@@ -27,7 +27,7 @@ export interface OpenApiSpec {
   components: { schemas: Record<string, JsonSchema> };
 }
 
-const LONG_TEXT = new Set(['jd_text', 'notes', 'prep_notes', 'description']);
+const LONG_TEXT = new Set(['jd_text', 'notes', 'prep_notes', 'description', 'csv_text']);
 
 function kindOf(name: string, variants: JsonSchema[]): Pick<FieldSpec, 'kind' | 'options'> {
   const enumVariant = variants.find(v => Array.isArray(v.enum));
@@ -43,7 +43,7 @@ function kindOf(name: string, variants: JsonSchema[]): Pick<FieldSpec, 'kind' | 
 }
 
 export function schemaFields(spec: OpenApiSpec, resource: string): FieldSpec[] {
-  const ref = spec.paths?.[`/api/data/${resource}`]?.post?.requestBody?.content?.['application/json']?.schema?.$ref;
+  const ref = spec.paths?.[resource.startsWith('/') ? resource : `/api/data/${resource}`]?.post?.requestBody?.content?.['application/json']?.schema?.$ref;
   if (!ref) throw new Error(`알 수 없는 리소스: ${resource}`);
   const schema = spec.components.schemas[ref.split('/').pop()!];
   const required = new Set(schema.required ?? []);

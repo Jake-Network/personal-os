@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalCreateStatus = typeof GoalCreateStatus[keyof typeof GoalCreateStatus];
-
+export type GoalCreateStatus = (typeof GoalCreateStatus)[keyof typeof GoalCreateStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const GoalCreateStatus = {

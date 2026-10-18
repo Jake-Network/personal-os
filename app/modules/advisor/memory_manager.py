@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.modules.crud import audit_log_handler, decision_journal_handler, personal_memory_handler
-from app.modules.database.model import DecisionJournalEntry, PersonalMemory
+from app.modules.database.model import DecisionJournalEntry, PersonalMemory, MemoryRevision
 from app.schema.advisor_schema import DecisionCreate, DecisionReview, MemoryCreate
 
 
@@ -22,6 +22,8 @@ class MemoryManager:
             "kind": body.kind, "content": body.content, "status": "confirmed", "source": "user",
             "confirmed_at": datetime.now(UTC),
         })
+        session.add(MemoryRevision(memory_id=memory.id, revision=0, kind=memory.kind, content=memory.content,
+            status=memory.status, confirmed_at=memory.confirmed_at, source_references=[]))
         audit_log_handler.record(session, "user", "memory.create", f"personal_memories:{memory.id}")
         session.commit()
         return memory
@@ -36,6 +38,12 @@ class MemoryManager:
             "status": "confirmed" if confirm else "rejected",
             "confirmed_at": datetime.now(UTC) if confirm else None,
         })
+        from app.modules.advisor.memory_history_manager import latest_revision
+        from app.modules.context.record_privacy import stamp_references
+        prior = latest_revision(session, memory.id)
+        session.add(MemoryRevision(memory_id=memory.id, revision=prior.revision + 1 if prior else 0,
+            kind=memory.kind, content=memory.content, status=memory.status, confirmed_at=memory.confirmed_at,
+            source_references=stamp_references(session, [{"table": "advisor_messages", "id": memory.source_message_id}]) if memory.source_message_id else []))
         audit_log_handler.record(session, "user", "memory.confirm" if confirm else "memory.reject",
                                  f"personal_memories:{memory.id}")
         session.commit()
@@ -65,9 +73,11 @@ class DecisionJournalManager:
         entry = decision_journal_handler.get(session, entry_id)
         if entry is None:
             raise LookupError("decision not found")
-        decision_journal_handler.update(session, entry, {
-            "actual_outcome": body.actual_outcome, "reviewed_at": datetime.now(UTC),
-        })
+        from app.modules.reviews.review_manager import add_outcome
+        from app.schema.review_jobs_schema import OutcomeCreate
+
+        add_outcome(session, entry_id, OutcomeCreate(actual_outcome=body.actual_outcome))
+        session.refresh(entry)
         audit_log_handler.record(session, "user", "decision.review", f"decision_journal:{entry.id}")
         session.commit()
         return entry

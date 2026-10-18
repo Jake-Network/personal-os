@@ -163,7 +163,10 @@ class ChatGPTPlanProvider:
             return await self.client.list_models(await self._token(session, force_refresh=True))
 
     async def stream(self, session: Session, request: LLMRequest) -> AsyncIterator[StreamEvent]:
+        from app.modules.llm.transfer_policy import account_binding
+        expected_account = account_binding(session, self.name)
         token = await self._token(session)
+        self._check_transfer(session, request, expected_account)
         emitted = False
         try:
             async for event in self.client.stream(token, request):
@@ -174,11 +177,25 @@ class ChatGPTPlanProvider:
                 raise
             # One refresh-and-retry for an expired access token, before any output.
             token = await self._token(session, force_refresh=True)
+            self._check_transfer(session, request, expected_account)
             async for event in self.client.stream(token, request):
                 yield event
         except ScopeNotAuthorized as exc:
             self.oauth.mark_plan_usage_disabled(session, exc.provider_code)
             raise
+
+    def _check_transfer(self, session: Session, request: LLMRequest, expected_account: str | None) -> None:
+        # Refresh may await a network request while the user revokes sharing or
+        # switches accounts. Recheck immediately before the personal payload leaves.
+        from app.modules.llm.transfer_policy import account_binding, require_confirmation, TransferNotConfirmed
+        from app.modules.context.source_policy import require_live_request_sources
+        session.expire_all()
+        from app.modules.llm.run_policy import require
+        require(session, request.authorization)
+        if not expected_account or account_binding(session, self.name) != expected_account:
+            raise TransferNotConfirmed()
+        require_confirmation(session, self.name)
+        require_live_request_sources(session, request)
 
 
 class ApiKeyProvider:
@@ -200,6 +217,13 @@ class ApiKeyProvider:
         return await self.client.list_models(self._key(session))
 
     async def stream(self, session: Session, request: LLMRequest) -> AsyncIterator[StreamEvent]:
+        from app.modules.llm.transfer_policy import require_confirmation
+        from app.modules.context.source_policy import require_live_request_sources
+        session.expire_all()
+        from app.modules.llm.run_policy import require
+        require(session, request.authorization)
+        require_confirmation(session, self.name)
+        require_live_request_sources(session, request)
         async for event in self.client.stream(self._key(session), request):
             yield event
 

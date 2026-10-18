@@ -6,5 +6,5 @@
  */
 
 export type HistoryParams = {
-period?: string;
+  period?: string;
 };

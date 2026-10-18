@@ -7,8 +7,8 @@ from urllib.parse import urlsplit
 from app.config import Settings
 from app.modules.auth.errors import GoogleOAuthError
 
-READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
-WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+READ_SCOPE = "https://www.googleapis.com/auth/drive.file"
+WRITE_SCOPE = READ_SCOPE
 
 
 def setup_diagnostics(settings: Settings) -> dict:

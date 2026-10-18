@@ -265,6 +265,7 @@ export function DashboardView() {
 
       <aside className='hidden min-h-0 flex-col border-l bg-card xl:flex'>
         <AdvisorChat
+          key={panelConversation ?? 'new'}
           compact
           conversationId={panelConversation}
           onConversationCreated={setPanelConversation}

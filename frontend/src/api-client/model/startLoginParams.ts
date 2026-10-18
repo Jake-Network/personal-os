@@ -6,5 +6,5 @@
  */
 
 export type StartLoginParams = {
-force_consent?: boolean;
+  force_consent?: boolean;
 };

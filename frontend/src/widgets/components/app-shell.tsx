@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className='grid h-dvh grid-cols-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[216px_minmax(0,1fr)] md:grid-rows-1'>
+    <div className='grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[216px_minmax(0,1fr)] md:grid-rows-1'>
       <div className='flex items-center gap-2.5 border-b bg-card px-4 py-2.5 font-bold md:hidden'>
         <Button size='icon' onClick={() => setOpen(true)} aria-label='메뉴'>
           <Menu />

@@ -115,3 +115,69 @@ def test_revoked_refresh_token_requires_reauth(session):
     with pytest.raises(AuthRequired):
         asyncio.run(manager.access_token(session))
     assert conn.status == "needs_reauth" and conn.last_error_code == "invalid_grant"
+
+
+def test_disconnect_cancels_pending_login_even_without_existing_connection(session):
+    manager = make_manager(token_endpoint("chatgpt.tokens.use.direct", []))
+    state = parse_qs(urlparse(manager.start_login(session)).query)["state"][0]
+    asyncio.run(manager.disconnect(session))
+    with pytest.raises(ConsentDeclined):
+        asyncio.run(manager.handle_callback(session, {"state": state, "code": "synthetic", "client_id": "synthetic"}))
+    assert session.query(OAuthCredential).count() == 0
+
+
+@pytest.mark.parametrize("during_refresh", [False, True])
+def test_disconnect_during_token_exchange_cannot_restore_credentials(session, during_refresh):
+    from app.modules.llm import transfer_policy
+    from sqlalchemy import select
+
+    interrupt = False
+    async def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"revocation_endpoint": "https://auth.openai.com/revoke"})
+        if request.url.path == "/revoke":
+            return httpx.Response(200, json={})
+        if interrupt:
+            await manager.disconnect(session)
+        return httpx.Response(200, json={"access_token": "synthetic-access", "refresh_token": "synthetic-refresh",
+                                       "id_token": "synthetic-id", "expires_in": 3600,
+                                       "scope": "chatgpt.tokens.use.direct"})
+    manager = make_manager(handler)
+    _, conn = login(manager, session)
+    transfer_policy.confirm(session, "chatgpt_plan", True, True)
+    interrupt = True
+    if during_refresh:
+        operation = manager.access_token(session, force_refresh=True)
+    else:
+        state = parse_qs(urlparse(manager.start_login(session)).query)["state"][0]
+        operation = manager.handle_callback(session, {"state": state, "code": "synthetic", "client_id": conn.client_id})
+    with pytest.raises(ConsentDeclined, match="disconnect"):
+        asyncio.run(operation)
+    session.rollback()
+    session.refresh(conn)
+    assert conn.status == "disconnected"
+    assert session.scalar(select(OAuthCredential)) is None
+    assert not transfer_policy.status(session, "chatgpt_plan")["confirmed"]
+
+
+def test_disconnect_commits_local_revocation_before_remote_request(session):
+    from app.modules.database import db
+    from app.modules.database.model import OAuthConnection
+    from app.modules.llm import transfer_policy
+    from sqlalchemy import select
+
+    calls = []
+    manager = make_manager(token_endpoint("chatgpt.tokens.use.direct", calls))
+    _, conn = login(manager, session)
+    transfer_policy.confirm(session, "chatgpt_plan", True, True)
+
+    def unavailable(request):
+        with db.session() as check:
+            assert check.get(OAuthConnection, conn.id).status == "disconnected"
+            assert check.scalar(select(OAuthCredential)) is None
+            assert not transfer_policy.status(check, "chatgpt_plan")["confirmed"]
+        raise httpx.ConnectError("synthetic provider unavailable", request=request)
+
+    manager.http_factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(unavailable))
+    asyncio.run(manager.disconnect(session))
+    assert not manager.status(session)["connected"]

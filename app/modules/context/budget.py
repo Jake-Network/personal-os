@@ -50,6 +50,9 @@ def fit_to_budget(body: dict, query: str, limit: int) -> dict:
     base_flags: list[DataQualityFlag] = body["data_quality_flags"]
     fit_flags: list[DataQualityFlag] = []
     terms = _query_terms(query)
+    required_memories = [row for row in data.get("get_profile", {}).get("confirmed_memories", [])
+                         if row.get("kind") in {"constraint", "priority"}]
+    essential_sections = ESSENTIAL_SECTIONS | ({"get_profile"} if required_memories else set())
     cap_flags = False
 
     def fits() -> bool:
@@ -83,7 +86,7 @@ def fit_to_budget(body: dict, query: str, limit: int) -> dict:
 
     # 4. Whole low-priority sections.
     for name in order:
-        if name in data and name not in ESSENTIAL_SECTIONS:
+        if name in data and name not in essential_sections:
             del data[name]
             fit_flags.append({"code": "context_section_omitted", "category": "system", "detail": name})
             if fits():
@@ -92,6 +95,12 @@ def fit_to_budget(body: dict, query: str, limit: int) -> dict:
     # 5. Essential sections keep only their calculated numbers.
     for name in order:
         section = data.get(name)
+        if name == "get_profile" and required_memories:
+            data[name] = {"confirmed_memories": required_memories}
+            fit_flags.append({"code": "optional_memories_omitted", "category": "profile"})
+            if fits():
+                return body
+            continue
         if isinstance(section, dict):
             removed = sorted(k for k in section if k not in ESSENTIAL_KEYS)
             if removed:
@@ -151,6 +160,8 @@ def _walk_rows(data: dict):
 def _cap_text(data: dict, cap: int) -> bool:
     changed = False
     for row in _walk_rows(data):
+        if row.get("kind") in {"constraint", "priority"}:
+            continue
         for key, value in row.items():
             if isinstance(value, str) and len(value) > cap:
                 row[key] = value[:cap] + " …[truncated]"
@@ -173,10 +184,13 @@ def _shrink_rows(section, terms: list[str], keep: int) -> int:
     for key, rows in _row_lists(section):
         if len(rows) <= keep:
             continue
-        ranked = sorted(range(len(rows)), key=lambda i: (not _row_relevant(rows[i], terms), i))[:keep]
+        required = [i for i, row in enumerate(rows) if row.get("kind") in {"constraint", "priority"}]
+        optional = sorted((i for i in range(len(rows)) if i not in required),
+                          key=lambda i: (not _row_relevant(rows[i], terms), i))[:max(0, keep - len(required))]
+        ranked = required + optional
         section[key] = [rows[i] for i in sorted(ranked)]
-        section[f"{key}_omitted_rows"] = len(rows) - keep
-        omitted += len(rows) - keep
+        section[f"{key}_omitted_rows"] = len(rows) - len(ranked)
+        omitted += len(rows) - len(ranked)
     return omitted
 
 

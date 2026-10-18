@@ -1,13 +1,24 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 
+import { getCsrfToken, notifySessionExpired } from '@/features/security/session';
+
 import { ApiError, toApiError } from './api-error';
 
 // Same-origin: next.config.ts rewrites /api/* to the FastAPI server.
 const instance = axios.create({ timeout: 60_000 });
 
+instance.interceptors.request.use(config => {
+  const token = getCsrfToken();
+  if (token && !['get', 'head', 'options'].includes(config.method?.toLowerCase() ?? 'get')) config.headers.set('X-CSRF-Token', token);
+  return config;
+});
+
 instance.interceptors.response.use(
   response => response,
-  error => Promise.reject(toApiError(error)),
+  error => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) notifySessionExpired();
+    return Promise.reject(toApiError(error));
+  },
 );
 
 /** orval mutator: every generated hook goes through here. */

@@ -1,8 +1,9 @@
-"""The unauthenticated API only answers local callers: no DNS rebinding, no cross-site writes."""
+"""Authenticated local API refuses DNS rebinding and unconfigured browser origins."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.modules.database.model import ProposedAction
 from app.modules.security.local_trust_middleware import LocalTrustMiddleware
 
@@ -34,19 +35,23 @@ def test_cross_site_writes_are_refused_and_change_nothing(client, session, propo
 
 
 def test_cross_site_fetch_metadata_without_origin_is_refused(client, proposal):
+    client.headers.pop("Origin", None)
     res = client.post(f"/api/proposals/{proposal}/reject", headers={"sec-fetch-site": "cross-site"})
     assert res.status_code == 403
 
 
-@pytest.mark.parametrize("origin", ["http://127.0.0.1:5173", "http://localhost:5173"])
-def test_local_frontend_writes_are_allowed(client, proposal, origin):
-    assert client.post(f"/api/proposals/{proposal}/reject", headers={"origin": origin}).status_code == 204
+def test_configured_frontend_writes_are_allowed(client, proposal):
+    assert client.post(f"/api/proposals/{proposal}/reject", headers={"origin": settings.frontend_url}).status_code == 204
 
 
-def test_same_origin_through_proxy_on_a_lan_ip_is_allowed(client, proposal):
-    # Windows reaching the WSL Next server by its IP: Origin and forwarded host agree.
+def test_another_loopback_origin_is_refused(client, proposal):
+    assert client.post(f"/api/proposals/{proposal}/reject", headers={"origin": "http://localhost:5173"}).status_code == 403
+
+
+def test_matching_proxy_host_cannot_expand_configured_frontend_origin(client, proposal):
+    # A forwarded host cannot authorize another browser origin.
     headers = {"origin": "http://172.20.1.5:5173", "x-forwarded-host": "172.20.1.5:5173"}
-    assert client.post(f"/api/proposals/{proposal}/reject", headers=headers).status_code == 204
+    assert client.post(f"/api/proposals/{proposal}/reject", headers=headers).status_code == 403
 
 
 def test_reads_without_origin_still_work(client):

@@ -22,7 +22,7 @@ jobs:
         database: [sqlite, postgresql]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: personal_os
           POSTGRES_PASSWORD: personal_os

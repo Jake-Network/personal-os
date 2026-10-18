@@ -4,9 +4,12 @@ The advisor can only *propose*. Applying a proposal requires an explicit user ap
 writes an audit record. Financial tables are not reachable from here at all.
 """
 
-from datetime import UTC, datetime
+import hashlib
+import json
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -20,19 +23,120 @@ from app.modules.crud import (
     proposed_action_handler,
     task_handler,
 )
-from app.modules.database.model import PersonalMemory, ProposedAction
+from app.modules.database.model import CalendarEvent, Goal, PersonalMemory, ProposedAction, MemoryRevision
+
+
+def _validate_payload(action: str, payload: dict) -> dict:
+    """Validate model output before persisting it or applying a legacy proposal."""
+    allowed = {
+        "create_task": {"title", "due_on", "priority", "estimate_minutes"},
+        "calendar_update": {"event_id", "title", "starts_at", "ends_at", "kind"},
+        "goal_update": {"goal_id", "current_value", "target_date", "status"},
+    }
+    if action not in allowed:
+        raise ProposalError(f"unsupported action {action}")
+    if not isinstance(payload, dict) or set(payload) - allowed[action]:
+        raise ProposalError("invalid payload fields")
+    p = dict(payload)
+    try:
+        if "title" in p:
+            if not isinstance(p["title"], str) or not p["title"].strip():
+                raise ProposalError("title required")
+            p["title"] = p["title"].strip()
+            if len(p["title"]) > 200:
+                raise ProposalError("title exceeds 200 characters")
+        if action == "create_task" and "title" not in p:
+            raise ProposalError("title required")
+        if "priority" in p and p["priority"] not in ("low", "normal", "high"):
+            raise ProposalError("invalid priority")
+        for key in ("event_id", "goal_id", "estimate_minutes"):
+            if key in p and p[key] is not None:
+                if isinstance(p[key], bool) or not isinstance(p[key], int) or p[key] <= 0:
+                    raise ProposalError(f"{key} must be a positive integer")
+        for key in ("due_on", "target_date"):
+            if key in p:
+                parse_date(p[key])
+        for key in ("starts_at", "ends_at"):
+            if key in p:
+                parse_datetime(p[key])
+        if p.get("starts_at") and p.get("ends_at") and parse_datetime(p["ends_at"]) < parse_datetime(p["starts_at"]):
+            raise ProposalError("calendar ends_at precedes starts_at")
+        if action == "calendar_update":
+            if p.get("event_id"):
+                if not set(p).intersection({"title", "starts_at", "ends_at"}):
+                    raise ProposalError("calendar changes required")
+                if "kind" in p:
+                    raise ProposalError("kind cannot be changed by this action")
+            elif not p.get("title") or not p.get("starts_at"):
+                raise ProposalError("title and starts_at required for a new event")
+            if "starts_at" in p and not p["starts_at"]:
+                raise ProposalError("starts_at required")
+            if p.get("kind", "personal") not in ("personal", "work", "interview", "workout", "deadline"):
+                raise ProposalError("invalid calendar kind")
+        if action == "goal_update":
+            if not p.get("goal_id"):
+                raise ProposalError("goal_id required")
+            if not set(p).intersection({"current_value", "target_date", "status"}):
+                raise ProposalError("goal changes required")
+            if "status" in p and p["status"] not in ("active", "done", "dropped"):
+                raise ProposalError("invalid status")
+            if "current_value" in p and not Decimal(str(p["current_value"])).is_finite():
+                raise ProposalError("current_value must be finite")
+    except (TypeError, ValueError, InvalidOperation) as exc:
+        raise ProposalError(str(exc)) from exc
+    return p
+
+
+def _target(session: Session, action: str, payload: dict, *, lock: bool = False):
+    model = CalendarEvent if action == "calendar_update" else Goal if action == "goal_update" else None
+    target_id = payload.get("event_id" if action == "calendar_update" else "goal_id")
+    if model is None or not target_id:
+        return None
+    stmt = select(model).where(model.id == target_id).execution_options(populate_existing=True)
+    target = session.scalar(stmt.with_for_update() if lock else stmt)
+    if target is None:
+        raise ProposalError("proposal target not found")
+    return target
+
+
+def _fingerprint(target) -> str:
+    def encode(value):
+        if isinstance(value, datetime):
+            return value.astimezone(UTC).isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, Decimal):
+            return str(value.normalize())
+        return value
+    snapshot = {column.key: encode(getattr(target, column.key)) for column in target.__table__.columns}
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
 
 
 class ProposalManager:
     @staticmethod
     def record(session: Session, conversation_id: int, message_id: int, proposals: list[dict],
                memories: list[dict]) -> tuple[list[ProposedAction], list[PersonalMemory]]:
+        validated = []
+        for proposal in proposals:
+            action = proposal.get("action")
+            payload = _validate_payload(action, proposal.get("payload"))
+            target = _target(session, action, payload)
+            if target is not None:
+                before = {}
+                for key in payload:
+                    if key not in {'event_id', 'goal_id'} and hasattr(target, key):
+                        value = getattr(target, key)
+                        before[key] = (value.isoformat() if isinstance(value, (date, datetime)) else
+                                       str(value) if isinstance(value, Decimal) else value)
+                payload['_before'] = before
+                payload["_precondition"] = _fingerprint(target)
+            validated.append({**proposal, "payload": payload})
         actions = [
             proposed_action_handler.create(session, {
                 "action": p["action"], "payload": p["payload"], "rationale": p.get("rationale"),
                 "conversation_id": conversation_id,
             })
-            for p in proposals
+            for p in validated
         ]
         mems = [
             personal_memory_handler.create(session, {
@@ -41,6 +145,10 @@ class ProposalManager:
             })
             for m in memories
         ]
+        from app.modules.context.record_privacy import stamp_references
+        for memory in mems:
+            session.add(MemoryRevision(memory_id=memory.id, revision=0, kind=memory.kind, content=memory.content,
+                status="proposed", source_references=stamp_references(session, [{"table": "advisor_messages", "id": message_id}])))
         for a in actions:
             audit_log_handler.record(session, "advisor", f"propose.{a.action}", f"proposed_actions:{a.id}",
                                      {"payload": a.payload})
@@ -50,16 +158,19 @@ class ProposalManager:
         proposal = self._claim(session, proposal_id, "approved")
         try:
             ref = self._apply(session, proposal.action, proposal.payload)
+            proposed_action_handler.update(session, proposal, {"result_ref": ref})
+            audit_log_handler.record(session, "user", f"approve.{proposal.action}", f"proposed_actions:{proposal.id}",
+                                     {"payload": proposal.payload, "result": ref})
+            session.commit()
         except ProposalError:
             session.rollback()
             raise
         except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
             session.rollback()
             raise ProposalError(f"invalid payload: {exc}") from exc
-        proposed_action_handler.update(session, proposal, {"result_ref": ref})
-        audit_log_handler.record(session, "user", f"approve.{proposal.action}", f"proposed_actions:{proposal.id}",
-                                 {"payload": proposal.payload, "result": ref})
-        session.commit()
+        except Exception:
+            session.rollback()
+            raise
         return ref
 
     def reject(self, session: Session, proposal_id: int) -> None:
@@ -92,6 +203,13 @@ class ProposalManager:
 
     @staticmethod
     def _apply(session: Session, action: str, p: dict) -> dict:
+        if not isinstance(p, dict):
+            raise ProposalError("invalid payload fields")
+        precondition = p.get("_precondition")
+        p = _validate_payload(action, {k: v for k, v in p.items() if k not in {"_precondition", "_before"}})
+        target = _target(session, action, p, lock=True)
+        if target is not None and (not precondition or precondition != _fingerprint(target)):
+            raise ProposalError("proposal target changed; request a new proposal")
         if action == "create_task":
             title = str(p.get("title", "")).strip()
             if not title:
@@ -106,15 +224,19 @@ class ProposalManager:
 
         if action == "calendar_update":
             if p.get("event_id"):
-                event = calendar_event_handler.get(session, int(p["event_id"]))
-                if event is None:
-                    raise ProposalError("calendar event not found")
+                event = target
                 changes = {k: (parse_datetime(p[k]) if k != "title" else str(p[k])[:200])
                            for k in ("title", "starts_at", "ends_at") if k in p}
+                starts_at = changes.get("starts_at", event.starts_at)
+                ends_at = changes.get("ends_at", event.ends_at)
+                if ends_at is not None and ends_at < starts_at:
+                    raise ProposalError("calendar ends_at precedes starts_at")
                 calendar_event_handler.update(session, event, changes)
             else:
                 if not p.get("title") or not p.get("starts_at"):
                     raise ProposalError("title and starts_at required for a new event")
+                if p.get("ends_at") and parse_datetime(p["ends_at"]) < parse_datetime(p["starts_at"]):
+                    raise ProposalError("calendar ends_at precedes starts_at")
                 event = calendar_event_handler.create(session, {
                     "title": str(p["title"])[:200], "starts_at": parse_datetime(p["starts_at"]),
                     "ends_at": parse_datetime(p.get("ends_at")), "kind": p.get("kind") or "personal",
@@ -122,9 +244,7 @@ class ProposalManager:
             return {"table": "calendar_events", "id": event.id}
 
         if action == "goal_update":
-            goal = goal_handler.get(session, int(p.get("goal_id") or 0))
-            if goal is None:
-                raise ProposalError("goal not found")
+            goal = target
             changes: dict = {}
             if "current_value" in p:
                 changes["current_value"] = Decimal(str(p["current_value"]))

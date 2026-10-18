@@ -8,7 +8,6 @@ import type { HoldingCreateAccountId } from './holdingCreateAccountId';
 import type { HoldingCreateName } from './holdingCreateName';
 import type { HoldingCreateMarket } from './holdingCreateMarket';
 import type { HoldingCreateAssetClass } from './holdingCreateAssetClass';
-import type { HoldingCreateQuantity } from './holdingCreateQuantity';
 import type { HoldingCreateAvgCost } from './holdingCreateAvgCost';
 import type { HoldingCreateLastPrice } from './holdingCreateLastPrice';
 import type { HoldingCreatePriceAsOf } from './holdingCreatePriceAsOf';
@@ -25,7 +24,10 @@ export interface HoldingCreate {
    * @maxLength 3
    */
   currency?: string;
-  quantity: HoldingCreateQuantity;
+  /**
+   * @minimum 0
+   */
+  quantity: number;
   avg_cost?: HoldingCreateAvgCost;
   last_price?: HoldingCreateLastPrice;
   price_as_of?: HoldingCreatePriceAsOf;

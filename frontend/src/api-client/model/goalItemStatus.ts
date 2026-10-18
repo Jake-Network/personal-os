@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalItemStatus = typeof GoalItemStatus[keyof typeof GoalItemStatus];
-
+export type GoalItemStatus = (typeof GoalItemStatus)[keyof typeof GoalItemStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const GoalItemStatus = {

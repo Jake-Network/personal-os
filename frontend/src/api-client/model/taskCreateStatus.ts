@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type TaskCreateStatus = typeof TaskCreateStatus[keyof typeof TaskCreateStatus];
-
+export type TaskCreateStatus = (typeof TaskCreateStatus)[keyof typeof TaskCreateStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const TaskCreateStatus = {

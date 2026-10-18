@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type SnapshotCorrectionCoverageItem = typeof SnapshotCorrectionCoverageItem[keyof typeof SnapshotCorrectionCoverageItem];
-
+export type SnapshotCorrectionCoverageItem = (typeof SnapshotCorrectionCoverageItem)[keyof typeof SnapshotCorrectionCoverageItem];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const SnapshotCorrectionCoverageItem = {

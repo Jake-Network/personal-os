@@ -40,6 +40,18 @@ export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink href='/memory' onNavigate={onNavigate}>
         기억 · 의사결정
       </NavLink>
+      <NavLink href='/career' onNavigate={onNavigate}>
+        경력 · 성과 기록
+      </NavLink>
+      <NavLink href='/timeline' onNavigate={onNavigate}>
+        인생 기록
+      </NavLink>
+      <NavLink href='/reviews' onNavigate={onNavigate}>
+        기간 회고
+      </NavLink>
+      <NavLink href='/jobs' onNavigate={onNavigate}>
+        백그라운드 작업
+      </NavLink>
       <NavLink href='/documents' onNavigate={onNavigate}>
         문서함
       </NavLink>
@@ -68,6 +80,9 @@ export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
           className={cn('size-2 rounded-full bg-input', providerOn && 'bg-primary', providerOff && 'bg-destructive')}
           title={provider?.connected ? '연결됨' : '연결 안 됨'}
         />
+      </NavLink>
+      <NavLink href='/settings/security' onNavigate={onNavigate}>
+        보안 · 백업
       </NavLink>
       <NavLink href='/settings/privacy' onNavigate={onNavigate}>
         데이터 공유

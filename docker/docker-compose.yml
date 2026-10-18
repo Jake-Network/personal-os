@@ -55,7 +55,7 @@ services:
       # Bind mounts from a Windows drive (WSL /mnt/c) deliver no change events.
       WATCHFILES_FORCE_POLLING: "true"
     # Dev: live reload from the mounted source. Drop `command` and the ../app mount for an immutable image.
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "app"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "app", "--no-access-log"]
     volumes:
       - ../app:/project/app
       - ../migrations:/project/migrations:ro

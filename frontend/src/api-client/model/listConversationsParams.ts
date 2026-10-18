@@ -6,5 +6,20 @@
  */
 
 export type ListConversationsParams = {
-q?: string | null;
+  q?: string | null;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
+  since?: string | null;
+  until?: string | null;
+  domain?: string | null;
+  company?: string | null;
+  project?: number | null;
+  decision?: number | null;
 };

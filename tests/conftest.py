@@ -47,8 +47,14 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 
 
 @pytest.fixture
-def session():
-    db.init(TEST_DATABASE_URL)
+def session(request, tmp_path):
+    url = TEST_DATABASE_URL
+    if url in {'sqlite://', 'sqlite:///:memory:'} and {'client', 'locked_client'} & set(request.fixturenames):
+        # HTTP subscribers, authentication checks and the server worker own separate
+        # transactions. Sharing one StaticPool connection can roll back another
+        # coroutine's uncommitted evidence; use independent disposable connections.
+        url = f"sqlite:///{tmp_path / 'api.db'}"
+    db.init(url)
     Base.metadata.drop_all(db.engine)
     db.create_schema()
     with db.session() as s:
@@ -56,26 +62,53 @@ def session():
 
 
 @pytest.fixture
-def fake_provider(monkeypatch):
+def fake_provider(monkeypatch, session):
     provider = FakeProvider()
     monkeypatch.setitem(llm_gateway_manager.providers, "chatgpt_plan", provider)
     monkeypatch.setitem(llm_gateway_manager.providers, "openai_api_key", ExplodingProvider())
+    # Synthetic account attestation: production gateway policy is still exercised;
+    # no real OAuth credentials or personal data enter these fixtures.
+    from app.modules.llm import transfer_policy
+    monkeypatch.setattr(transfer_policy, "account_binding", lambda session, provider: "synthetic-account")
+    transfer_policy.confirm(session, "chatgpt_plan", True, True)
     return provider
 
 
 @pytest.fixture
-def client(session, monkeypatch):
+def checkpoint_schema(session):
+    import importlib
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+
+    # Official saver tables belong to explicit migrations, outside ORM create_all.
+    # Only this disposable test fixture installs them; application startup never does.
+    with db.engine.begin() as connection:
+        if "checkpoints" not in inspect(connection).get_table_names():
+            with Operations.context(MigrationContext.configure(connection)):
+                importlib.import_module("migrations.versions.0011_advisor_checkpoints").upgrade()
+
+
+@pytest.fixture
+def client(session, monkeypatch, checkpoint_schema):
     from app.main import app
     from app.modules.documents import document_manager
+    from app.modules.jobs import job_manager
 
     async def idle_worker(_database, stop):
         await stop.wait()
 
-    # The lifespan worker would share the single in-memory SQLite connection with the test session
-    # from another thread; tests drive indexing explicitly with process_one instead.
+    # Tests drive document indexing and scheduled jobs explicitly. The consultation
+    # worker remains active so legacy SSE tests exercise durable server execution.
     monkeypatch.setattr(document_manager, "process_pending", idle_worker)
+    monkeypatch.setattr(job_manager, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
     with TestClient(app, base_url="http://127.0.0.1:8000") as c:
+        from app.config import settings
+        c.headers["Origin"] = settings.frontend_url
+        response = c.post("/api/security/setup", json={"password": "synthetic-test-password-123"})
+        assert response.status_code == 200, response.text
+        c.headers["X-CSRF-Token"] = response.json()["csrf_token"]
         yield c
 
 
@@ -91,10 +124,12 @@ def seeded(session):
         Holding,
         JobApplication,
         Liability,
+        LocalFinanceCoverage,
     )
 
     today = date.today()
     session.add_all([
+        LocalFinanceCoverage(id=1, kinds=["cash", "holding", "liability", "other"]),
         Account(name="급여통장", kind="checking", currency="KRW", balance=Decimal("12000000"),
                 balance_as_of=today, is_liquid=True),
         Account(name="달러예금", kind="deposit", currency="USD", balance=Decimal("1000"),

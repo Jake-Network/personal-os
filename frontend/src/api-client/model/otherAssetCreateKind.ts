@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type OtherAssetCreateKind = typeof OtherAssetCreateKind[keyof typeof OtherAssetCreateKind];
-
+export type OtherAssetCreateKind = (typeof OtherAssetCreateKind)[keyof typeof OtherAssetCreateKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const OtherAssetCreateKind = {

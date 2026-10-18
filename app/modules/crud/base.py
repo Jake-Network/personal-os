@@ -53,5 +53,7 @@ class BaseCRUDHandler(Generic[ModelType]):
         return obj
 
     def delete(self, session: Session, obj: ModelType) -> None:
+        from app.modules.context.record_privacy import invalidate_deleted_source
+        invalidate_deleted_source(session, self.model.__tablename__, getattr(obj, "id", None))
         session.delete(obj)
         session.flush()

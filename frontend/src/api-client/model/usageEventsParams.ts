@@ -6,5 +6,5 @@
  */
 
 export type UsageEventsParams = {
-limit?: number;
+  limit?: number;
 };

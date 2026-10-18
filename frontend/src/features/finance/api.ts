@@ -22,6 +22,7 @@ export type GoogleConnection = {
   setup?: GoogleOAuthSetup;
   connected: boolean;
   can_write?: boolean;
+  requires_scope_reset?: boolean;
   status: 'not_connected' | 'connected' | 'needs_reauth' | 'disconnected';
   email: string | null;
   scopes: string[];
@@ -92,5 +93,6 @@ export const financeApi = {
     customInstance<{ snapshots: Snapshot[]; missing_months: string[] }>({ url: '/api/finance/history', params: { period } }),
   create: (month: string) => customInstance<Snapshot>({ url: '/api/finance/history', method: 'POST', data: { month: `${month}-01` } }),
   audit: (id: number) => customInstance<Snapshot[]>({ url: `/api/finance/history/${id}/audit` }),
+  closeMonth: (data: unknown) => customInstance<Snapshot>({ url: '/api/finance/month-close', method: 'POST', data }),
   correct: (id: number, data: unknown) => customInstance<Snapshot>({ url: `/api/finance/history/${id}/corrections`, method: 'POST', data }),
 };
