@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.modules.database import get_session
+from app.modules.finance.value_history import tracks
 from app.modules.finance.value_history_manager import value_history_manager
 from app.modules.personal_data.personal_data_manager import RESOURCES, Resource, personal_data_manager
 from app.schema import domain_schema as s
@@ -44,7 +45,7 @@ def _register(name: str, res: Resource) -> None:
         _get(session, item_id)
         return personal_data_manager.update(session, name, res, item_id, body)
 
-    if value_history_manager.tracks(name):
+    if tracks(name):
         @router.get(f"/{name}/{{item_id}}/history", response_model=list[s.ValueChangeItem],
                     operation_id=f"history_{name}")
         def item_history(item_id: int, session: Session = Depends(get_session)):
