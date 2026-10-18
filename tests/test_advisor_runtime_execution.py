@@ -99,7 +99,7 @@ def runtime_env(tmp_path, monkeypatch):
 
 def create(client, request_id="first"):
     response = client.post("/api/advisor/conversations/1/runs",
-                           json={"request_id": request_id, "message": "현재 상담을 정리해 주세요."})
+                           json={"request_id": request_id, "message": "현재 상담을 정리해 주세요.", "depth": "deep"})
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -260,7 +260,7 @@ def test_restart_after_durable_plan_does_not_repeat_completed_model_call(runtime
                     checkpointer=saver, current_message_id=run.user_message_id, on_progress=progress,
                     run_authorization=run.authorization)
                 config = {"configurable": {"thread_id": run.id}}
-                await graph.ainvoke(initial_state(body.message), config, durability="sync", interrupt_after=["plan"])
+                await graph.ainvoke(initial_state(body.message, depth="deep"), config, durability="sync", interrupt_after=["plan"])
                 stored = await graph.aget_state(config)
                 assert stored.values["model_calls"] == 1
                 assert stored.next == ("collected",)
@@ -459,3 +459,23 @@ def test_heartbeat_continues_while_async_retrievers_yield_after_snapshot_flush(r
     assert len(provider.requests) == 3
     assert len(validated) >= 3
     assert timing["heartbeats"] >= 1
+
+
+def test_auto_dialogue_completes_in_one_validated_call(runtime_env):
+    client, database, provider = runtime_env
+    provider.replies.append(FINAL)
+    response = client.post("/api/advisor/conversations/1/runs", json={
+        "request_id": "auto-direct", "message": "McKinsey 내 성장과 승진 가능성이 궁금해요", "depth": "auto"})
+    assert response.status_code == 201, response.text
+    run = response.json()
+    finish(database)
+    completed = client.get(f"/api/advisor/runs/{run['id']}").json()
+    assert completed["status"] == "completed", completed
+    assert completed["result"]["answer"] == FINAL["answer"]
+    assert completed["result"]["model_calls"] == len(provider.requests) == 1
+    assert completed["result"]["context_snapshot_id"]
+    assert "```proposal" not in provider.requests[0].instructions
+    assert "JSON 스키마" in provider.requests[0].instructions
+    with database.session() as session:
+        messages = session.scalars(select(AdvisorMessage).order_by(AdvisorMessage.id)).all()
+        assert [(m.role, m.status) for m in messages] == [("user", "complete"), ("assistant", "complete")]

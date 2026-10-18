@@ -45,7 +45,7 @@ def run_graph(monkeypatch, outputs, *, resume=None, tool_registry=None, on_progr
 
     async def execute():
         config = {'configurable': {'thread_id': 'run'}}
-        result = await graph.ainvoke(module.initial_state('질문'), config, durability='sync')
+        result = await graph.ainvoke(module.initial_state('질문', depth='deep'), config, durability='sync')
         if resume:
             assert result['__interrupt__'][0].value['question'] == '어느 기간인가요?'
             for answer in resume if isinstance(resume, list) else [resume]:
@@ -189,9 +189,9 @@ def test_review_discovers_missing_issue_and_replans_with_dependency_invalidation
 
 def test_clarifications_exhaust_budget_into_partial_answer(monkeypatch):
     question = '{"objective":"확인","clarification":{"question":"어느 기간인가요?"}}'
-    result, calls = run_graph(monkeypatch, [question] * 5 + ['{"answer":"추가 확인 한도로 현재 한계만 반환합니다."}'],
-                              resume=['미정'] * 5)
-    assert result['model_calls'] == 6
+    result, calls = run_graph(monkeypatch, [question] * 11 + ['{"answer":"추가 확인 한도로 현재 한계만 반환합니다."}'],
+                              resume=['미정'] * 11)
+    assert result['model_calls'] == 12
     assert result['answer']
     assert result['limitations']
 

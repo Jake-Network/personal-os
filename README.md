@@ -94,6 +94,14 @@ LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 
 
 `/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM review is enabled implicitly.
 
+## Consultation latency and analysis depth
+
+In `auto` depth, ordinary dialogue goes directly to one structured final answer. Explicit analysis, constrained comparisons and selected scenarios use planning, authorized read tools, server calculations, then one final answer. Auto skips separate model review, per-scenario model explanations and model-generated history summaries. It reuses source-checked summaries or the existing disclosed message excerpts; required context that exceeds the request budget still fails explicitly. Schema repair may add one call per structured stage, and essential clarification can pause a run.
+
+`deep` retains history summarization, scenario analysis and review/replanning within the existing call limits. Both auto paths validate final JSON, document citations and numerical evidence, and keep proposals pending approval. A complete JSON object inside a single Markdown JSON fence is accepted; arbitrary prose, malformed JSON and invalid fields still fail validation. Progress events include the schema and safe validation error types/field paths, without model output or personal content.
+
+These are call-count reductions, not a wall-clock latency guarantee. Normal durable answers are published after final validation; intermediate JSON is not shown as an answer.
+
 ## Local production runtime and backup
 
 Use the separate production compose file, not a development overlay:

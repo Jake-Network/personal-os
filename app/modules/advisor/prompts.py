@@ -60,3 +60,13 @@ goal_update payload: {"goal_id": 정수, "current_value" | "target_date" | "stat
 {"kind": "preference", "content": "..."}
 ```
 """
+
+
+# Runtime schemas replace the legacy Markdown block transport while retaining approval rules.
+STRUCTURED_SYSTEM_PROMPT = SYSTEM_PROMPT.split("## 제안 블록 (선택)", 1)[0] + """\
+## 구조화된 결과
+현재 단계에서 지정한 JSON 스키마의 객체 하나만 반환합니다. 설명문과 Markdown 코드 블록을 덧붙이지 않습니다.
+작업·일정·목표 변경은 스키마가 허용하는 경우에만 승인 대기 제안으로 반환하며 즉시 실행하지 않습니다.
+재무 데이터 변경은 제안하지 않습니다. 장기 기억은 스키마가 허용하는 후보로만 제안하며 사용자 확인이 필요합니다.
+스키마에 없는 제안·기억 필드를 만들지 않습니다.
+"""

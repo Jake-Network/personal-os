@@ -3,7 +3,7 @@
 from app.config import settings
 from app.enums.context_category import Category
 from app.modules.advisor.history import DOCUMENT_REFERENCE_PATTERN
-from app.modules.advisor.prompts import SYSTEM_PROMPT
+from app.modules.advisor.prompts import SYSTEM_PROMPT, STRUCTURED_SYSTEM_PROMPT
 from app.modules.context.types import ContextPackage, HistoryDecision, payload_citations
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.types import LLMRequest
@@ -16,7 +16,7 @@ HISTORICAL_EVIDENCE_RULES = (
 
 
 def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
-                  excluded: frozenset[Category]) -> LLMRequest:
+                  excluded: frozenset[Category], *, structured_output: bool = False) -> LLMRequest:
     """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
     leaked = excluded & {Category(c) for c in [*package.categories,
                                                *package.payload.get("document_categories", [])]}
@@ -38,7 +38,7 @@ def build_request(model: str, history: HistoryDecision, package: ContextPackage,
         source_snapshot_id=package.snapshot_id,
         source_message_ids=tuple(message.id for message in history.kept),
         excluded_categories=tuple(str(c) for c in excluded),
-        instructions=SYSTEM_PROMPT + HISTORICAL_EVIDENCE_RULES,
+        instructions=(STRUCTURED_SYSTEM_PROMPT if structured_output else SYSTEM_PROMPT) + HISTORICAL_EVIDENCE_RULES,
         input=[
             *notes,
             *replayed,

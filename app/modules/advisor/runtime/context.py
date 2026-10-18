@@ -4,6 +4,7 @@ import json
 import uuid
 import re
 from datetime import UTC, datetime
+from dataclasses import replace
 from zoneinfo import ZoneInfo
 
 from langchain_core.documents import Document
@@ -16,6 +17,32 @@ from app.modules.advisor.memory_store import ConfirmedMemoryStore
 from app.modules.advisor.retrievers import HistoryRetriever, DocumentRetriever
 from app.enums.context_category import ALL_CATEGORIES
 from app.modules.advisor.history_service import history_service
+
+
+def bounded_history_excerpt(messages, budget=4000):
+    """Keep early constraints and recent overflow within a total serialized budget."""
+    budget = max(0, budget)
+    selected = {}
+    # Reserve room for an explicit omission notice, including large message IDs.
+    reserve = min(budget, 200)
+    used = 0
+    order = [0, *range(len(messages) - 1, 0, -1)] if messages else []
+    for index in order:
+        message = messages[index]
+        excerpt = f"[{message['role']} message:{message['id']}] {message['content'][:500]}"
+        cost = len(json.dumps(excerpt, ensure_ascii=False)) + 1
+        if used + cost <= budget - reserve:
+            selected[index] = excerpt
+            used += cost
+    omitted = [message['id'] for index, message in enumerate(messages) if index not in selected]
+    pieces = [selected[index] for index in sorted(selected)]
+    if omitted:
+        pieces.append(f'[이전 대화 {len(omitted)}개 메시지 생략: ID 범위 {omitted[0]}~{omitted[-1]}. '
+                      '생략된 조건이 있을 수 있으므로 필요한 경우 다시 확인하세요.]')
+    content = '\n'.join(pieces)
+    # Very small budgets may not even accommodate the omission notice. The
+    # package quality flag still discloses omission, without sending raw text.
+    return content if len(json.dumps(content, ensure_ascii=False)) - 2 <= budget else ''
 
 
 class ContextAssembler:
@@ -100,7 +127,8 @@ class ContextAssembler:
     def store_history_summary(self, content, overflow, *, generator='graph_summary_v1'):
         return history_service.record_summary(self.session, self.conversation.id, content, overflow, generator=generator)
 
-    async def assemble(self, query, *, instruction='', derived=None, sources=(), history_source_ids=()):
+    async def assemble(self, query, *, instruction='', derived=None, sources=(), history_source_ids=(),
+                       structured_output=False):
         async with self.lock:
             await self.check()
             self.validate_sources(sources)
@@ -116,8 +144,7 @@ class ContextAssembler:
                 if overflow and summary is None:
                     # Deterministic compatibility/budget fallback. It preserves
                     # source identity and explicitly marks excerpt truncation.
-                    content = '\n'.join(f"[{m['role']} message:{m['id']}] {m['content'][:500]}"
-                        for m in overflow['messages'])
+                    content = bounded_history_excerpt(overflow['messages'])
                     summary = self.store_history_summary(content, overflow, generator='runtime_extract_v1')
             if self.baseline_snapshot_id:
                 from app.modules.context.snapshots import to_package
@@ -155,11 +182,31 @@ class ContextAssembler:
                         [{'table': 'conversation_summaries', 'id': summary.id}]))
                     if summary.generator == 'runtime_extract_v1':
                         flags = [*payload.get('data_quality_flags', []), {'code': 'history_summary_extractive_fallback',
-                            'category': 'system', 'detail': '이전 대화의 메시지별 최대 500자 발췌입니다. 생략된 내용이 있을 수 있습니다.'}]
+                            'category': 'system', 'detail': '이전 대화의 메시지별 최대 500자, 전체 최대 4000자 발췌입니다. '
+                                f"원본 범위는 메시지 ID {summary.first_message_id}~{summary.last_message_id}입니다. "
+                                '예산에 따라 메시지와 내용이 생략됩니다. 발췌가 비어 있으면 이 범위 전체가 생략되었습니다.'}]
                         payload['data_quality_flags'] = flags
                 if self.baseline_snapshot_id:
                     payload['comparison_baseline'] = {'snapshot_id': self.baseline_snapshot_id,
                         'generated_at': package.payload.get('generated_at')}
+                if summary is not None and summary.generator == 'runtime_extract_v1':
+                    from app.config import settings
+                    # Re-budget cached legacy extracts too. Provenance continues
+                    # to cover the complete original range, including omissions.
+                    payload['data']['conversation_summary']['content'] = ''
+                    empty_package = replace(package, payload=payload)
+                    base_request = build_request(self.model, history.decision(), empty_package, query,
+                        self.manager.sharing_exclusions(self.session, options), structured_output=structured_output)
+                    base_request.instructions += '\n' + instruction
+                    if derived:
+                        base_request.input.insert(-1, {'role': 'developer', 'content':
+                            '이번 실행의 파생 분석(확정 사실이나 장기 기억이 아님):\n' + json.dumps(derived, ensure_ascii=False)})
+                    size = len(json.dumps({'instructions': base_request.instructions,
+                                          'input': base_request.input}, ensure_ascii=False))
+                    room = min(4000, settings.context_char_limit - len(empty_package.text),
+                               (settings.request_char_limit - size) // 2)
+                    payload['data']['conversation_summary']['content'] = bounded_history_excerpt(
+                        overflow['messages'], room)
                 row = ContextSnapshot(id=snapshot_id, conversation_id=self.conversation.id,
                     context_categories=package.categories, excluded_categories=package.excluded_categories,
                     record_references=refs, source_updated_at=package.source_updated_at,
@@ -180,7 +227,8 @@ class ContextAssembler:
                 'context_snapshot_id': m.context_snapshot_id, 'created_at': m.created_at.isoformat(),
                 'historical': True} for m in history.messages]
             request = build_request(self.model, history.decision(), package, query,
-                                    self.manager.sharing_exclusions(self.session, options))
+                                    self.manager.sharing_exclusions(self.session, options),
+                                    structured_output=structured_output)
             request.authorization = self.authorization
             if instruction:
                 request.instructions += '\n' + instruction

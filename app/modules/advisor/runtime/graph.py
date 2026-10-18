@@ -188,6 +188,32 @@ def initial_state(query, depth='auto', single_response=False, scenarios=None, se
             'previous_scenario_results': selected[0].get('prior_results', {}) if selected else {}}
 
 
+def needs_analysis(state):
+    """Reserve planning for explicit analysis and comparisons with material constraints."""
+    if state.get('depth') == 'deep' or state.get('selected_scenarios'):
+        return True
+    query = state.get('query', '')
+    comparison = re.search(r'비교|시나리오|대안|트레이드오프|장단점|선택|어느.{0,12}(좋|나)|뭐가\s*더|versus|\bvs\b', query, re.I)
+    constraints = re.search(r'예산|생활비|지출|소득|잔고|퇴사|런웨이|시간|일정|조건|제약|개월|만원|억|이직|커리어|경력|투자|부채|목표|위험', query)
+    explicit = re.search(r'심층|종합\s*분석|상세\s*분석|재무\s*분석|계산해|계산해줘', query)
+    financial_calculation = re.search(r'생활비|지출|소득|잔고|현금|만원|런웨이', query) and re.search(r'버틸|계산|런웨이|면.{0,30}얼마', query)
+    time_feasibility = re.search(r'시간|수면|근무', query) and re.search(r'가능|여유|할\s*수|남는|남을|계산|부족', query)
+    quantitative_change = (re.search(r'생활비|지출|소득|수입|현금|잔고|근무|시간|수면', query)
+        and re.search(r'\d', query)
+        and re.search(r'바꾸면|줄이면|늘리면|쓴다면|벌면|가능|충분|부족|남을|남는', query))
+    multiple = len(re.findall(r'[?？]', query)) > 1 and bool(constraints)
+    return bool(explicit or (comparison and constraints) or financial_calculation or time_feasibility or quantitative_change or multiple)
+
+
+def structured_response(content, schema):
+    """Accept one complete JSON object, optionally wrapped in a Markdown fence."""
+    value = str(content).strip()
+    fenced = re.fullmatch(r'```(?:json)?\s*\n([\s\S]*?)\n```', value, re.I)
+    if fenced:
+        value = fenced.group(1).strip()
+    return schema.model_validate_json(value)
+
+
 def build_conversation_graph(session, manager, conversation, options, model, checkpointer=None,
                              guard=None, current_message_id=None, on_progress=None, run_authorization=None,
                              on_stream=None):
@@ -223,7 +249,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 prompt += '\n직전 출력이 스키마 검증에 실패했습니다. 스키마에 맞게 한 번 수정하세요.'
             extra = {'history_source_ids': history_source_ids} if history_source_ids else {}
             request, package = await assembler.assemble(state['query'], instruction=prompt,
-                derived=derived, sources=state.get('sources', []), **extra)
+                derived=derived, sources=state.get('sources', []), structured_output=schema is not None, **extra)
             state['sources'] = list(dict.fromkeys([*state.get('sources', []), package.snapshot_id]))
             state['snapshot_id'], state['context'] = package.snapshot_id, assembler.last_context
             state['numeric_basis'] = getattr(package, 'payload', {}).get('data', {})
@@ -234,19 +260,30 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 await on_stream(state['context'])
             adapter = GatewayChatModel(manager.gateway, session, request, conversation.id,
                 **({'on_delta': stream_delta} if state.get('single_response') and on_stream else {}))
-            await progress('model_started', model_calls=state['model_calls'], snapshot_id=package.snapshot_id)
+            await progress('model_started', model_calls=state['model_calls'], snapshot_id=package.snapshot_id,
+                           schema=schema.__name__ if schema else None)
             with tracing_context(enabled=False):
                 response = await adapter.ainvoke([], config={'callbacks': []})
-            await progress('model_finished', model_calls=state['model_calls'], snapshot_id=package.snapshot_id)
+            await progress('model_finished', model_calls=state['model_calls'], snapshot_id=package.snapshot_id,
+                           schema=schema.__name__ if schema else None)
             if schema is None:
                 return str(response.content)
             try:
-                return schema.model_validate_json(response.content)
-            except ValueError:
+                return structured_response(response.content, schema)
+            except ValueError as exc:
+                # Content may contain private data; record only schema field names and error kinds.
+                errors = exc.errors(include_input=False, include_context=False, include_url=False) if hasattr(exc, 'errors') else []
+                await progress('structured_output_invalid', schema=schema.__name__, attempt=attempt + 1,
+                    errors=[{'type': item['type'], 'path': [str(part) for part in item['loc'] if not isinstance(part, str) or part in schema.model_fields]}
+                            for item in errors[:8]])
                 if attempt == attempts - 1:
                     raise AdvisorError('모델의 구조화된 분석 결과를 검증하지 못했습니다.', provider_code='invalid_structured_output')
 
     async def summarize(state):
+        if state.get('depth') != 'deep':
+            # Assembly reuses a source-checked summary or bounded, disclosed excerpts.
+            # Auto consultation never adds a serial provider call just for history.
+            return state
         if not hasattr(assembler, 'history_overflow'):
             return state
         overflow = await assembler.history_overflow(state['query'])
@@ -284,7 +321,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
         result = await call(state,
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
-            '단순 조회는 대안을 만들지 마세요. 중요한 사용자 조건이 없으면 확인 질문을 하세요. '
+            '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
+            '일반 조언은 명시적 한계와 조건부 설명으로 바로 답하고 선택적인 선호를 반복해서 묻지 마세요. '
             'period·constraints·assumptions·unresolved를 필요한 범위에서 구조화하세요. '
             'confirmed_facts는 현재 제공된 근거로 확인된 사실만 포함하고 가정이나 추정을 넣지 마세요. '
             '조회 작업은 아래 허용 도구만 사용하고 의존 관계를 명시하세요. 최대 3개 대안이며 '
@@ -394,6 +432,12 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         subgraph.add_edge('alternative', END)
         compiled_alternative = subgraph.compile()
         for scenario in state['plan']['scenarios']:
+            if state.get('depth') != 'deep':
+                # The final answer explains all alternatives together; calculations stay server owned.
+                scenarios.append({**scenario, 'results': {'server_calculations': calculate_scenario(
+                    scenario.get('assumptions', {}), state.get('baseline_payload', {}),
+                    previous_results=state.get('previous_scenario_results'))}})
+                continue
             if state['model_calls'] >= limits(state)[0] - 2:
                 state['limitations'].append('호출 한도로 일부 대안의 상세 분석을 생략했습니다.')
                 break
@@ -470,13 +514,13 @@ def build_conversation_graph(session, manager, conversation, options, model, che
     for name, node in [('summarize', summarize), ('plan', plan), ('clarify', clarify), ('research', research),
                        ('collected', collected), ('analyze', analyze), ('review', review), ('finish', finish)]:
         graph.add_node(name, node)
-    graph.add_conditional_edges(START, lambda state: 'finish' if state.get('single_response') else 'summarize')
+    graph.add_conditional_edges(START, lambda state: 'finish' if state.get('single_response') or not needs_analysis(state) else 'summarize')
     graph.add_edge('summarize', 'plan')
     graph.add_conditional_edges('plan', lambda state: 'clarify' if state.get('clarification') else 'collected')
     graph.add_edge('clarify', 'plan')
     graph.add_conditional_edges('collected', dispatch)
     graph.add_edge('research', 'collected')
-    graph.add_edge('analyze', 'review')
+    graph.add_conditional_edges('analyze', lambda state: 'review' if state.get('depth') == 'deep' else 'finish')
     graph.add_conditional_edges('review', lambda state: 'plan' if state.get('needs_replan') else
                                 'collected' if pending_tasks(state) else 'finish')
     graph.add_edge('finish', END)
