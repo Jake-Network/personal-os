@@ -8,7 +8,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.modules.finance.liquidity_policy import BUCKETS, POLICY_SUMMARY
-from app.modules.finance.types import ZERO, FxTable, NetWorth, Position, q2
+from app.modules.finance.types import ZERO, ExcludedPosition, FxTable, NetWorth, Position, q2
 
 
 def _month_label(index: int) -> str:
@@ -19,7 +19,7 @@ class FinancialCalculator:
     def net_worth(self, fx: FxTable, assets: list[Position], liabilities: list[Position]) -> NetWorth:
         total_a = total_l = spendable = ZERO
         by_bucket = {b: ZERO for b in BUCKETS}
-        excluded: list[dict] = []
+        excluded: list[ExcludedPosition] = []
         for pos, is_liability in [(p, False) for p in assets] + [(p, True) for p in liabilities]:
             reason = None
             converted = None

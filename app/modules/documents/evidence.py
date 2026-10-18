@@ -3,9 +3,10 @@ from sqlalchemy import delete, select, update
 
 from app.modules.database.model import AdvisorMessage, ContextDocumentReference, ContextSnapshot
 from app.modules.context.types import payload_evidence
+from app.modules.documents.types import DocumentReferenceRow
 
 
-def reference_rows(snapshot_id: str, payload: dict) -> list[dict]:
+def reference_rows(snapshot_id: str, payload: dict) -> list[DocumentReferenceRow]:
     evidence = payload_evidence(payload)
     keys = {(int(item['document_id']), int(item.get('version_id') or 0))
             for item in evidence if item.get('document_id') is not None}

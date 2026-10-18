@@ -31,7 +31,7 @@ from app.modules.crud.planning_handler import calendar_event_handler, goal_handl
 from app.modules.database.model import CalendarEvent, FxRate, Holding
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
-from app.modules.context.types import ToolContext, ToolResult
+from app.modules.context.types import DataQualityFlag, RecordRef, ToolContext, ToolResult
 from app.modules.finance.types import FxTable, Position, q2
 from app.modules.context.portfolio_tools import (
     get_monthly_asset_history, sheets_enabled, sheets_accounts, sheets_portfolio, sheets_market,
@@ -42,7 +42,7 @@ STALE_BALANCE_DAYS = 45
 TEXT_LIMIT = 1500
 
 
-def _ref(table: str, row) -> dict:
+def _ref(table: str, row) -> RecordRef:
     updated = getattr(row, "updated_at", None) or getattr(row, "as_of", None)
     return {"table": table, "id": row.id, "updated_at": _iso(updated)}
 
@@ -66,7 +66,7 @@ def _clip(text: str | None, limit: int = TEXT_LIMIT) -> str | None:
     return text[:limit] + " …[truncated]"
 
 
-def _flag(code: str, category: Category, detail: str | None = None) -> dict:
+def _flag(code: str, category: Category, detail: str | None = None) -> DataQualityFlag:
     return {"code": code, "category": category.value, **({"detail": detail} if detail else {})}
 
 

@@ -3,19 +3,72 @@
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import NotRequired, TypedDict
 
 from sqlalchemy.orm import Session
 
-from app.modules.database.model import AdvisorMessage
 from app.enums.context_category import Category
+from app.modules.database.model import AdvisorMessage
+from app.modules.documents.types import DocumentCitation
 
 
-def data_citations(data: dict) -> list[dict]:
+class RecordRef(TypedDict):
+    """A source a context tool read. Row refs carry `id`; aggregate refs carry `count` and `since`."""
+
+    table: str
+    id: NotRequired[int | None]
+    updated_at: NotRequired[str | None]
+    count: NotRequired[int]
+    since: NotRequired[str]
+    document_id: NotRequired[int]
+    version_id: NotRequired[int]
+    position_id: NotRequired[str]
+
+
+class ContextRecordRef(RecordRef):
+    """A RecordRef tagged by the builder with the category and tool that produced it."""
+
+    category: str
+    tool: str
+
+
+class DataQualityFlag(TypedDict):
+    """A caveat on the context data, surfaced to the model and the Context Inspector."""
+
+    code: str
+    category: str  # a Category value, "documents" or "system"
+    detail: NotRequired[str]
+    count: NotRequired[int]  # repeats merged into this flag
+    document_ids: NotRequired[list[int]]
+
+
+class RouteDecisionDict(TypedDict):
+    requested: list[str]
+    selected: list[str]
+    excluded: list[str]
+    matched_terms: list[str]
+    reason: str
+
+
+class HistoryDecisionDict(TypedDict):
+    history_withheld_messages: int
+    history_withheld_categories: list[str]
+
+
+class CalendarScopeDict(TypedDict):
+    start: str
+    end_exclusive: str
+    timezone: str
+    status: str
+    label: str
+
+
+def data_citations(data: dict) -> list[DocumentCitation]:
     """Document excerpts in a package's `data` section (the one place this path is spelled out)."""
     return data.get("search_documents", {}).get("citations", [])
 
 
-def payload_citations(payload: dict) -> list[dict]:
+def payload_citations(payload: dict) -> list[DocumentCitation]:
     return data_citations(payload.get("data", {}))
 
 
@@ -34,7 +87,7 @@ class RouteDecision:
     matched_terms: tuple[str, ...]
     reason: str  # keyword | override | previous_turn | domain | fallback
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> RouteDecisionDict:
         return {
             "requested": sorted(self.requested),
             "selected": sorted(self.selected),
@@ -63,9 +116,9 @@ class ToolResult:
     """Output of one context tool. The builder tags refs with category and tool name when it merges them."""
 
     data: dict
-    refs: list[dict] = field(default_factory=list)
+    refs: list[RecordRef] = field(default_factory=list)
     source_updated_at: datetime | None = None
-    flags: list[dict] = field(default_factory=list)
+    flags: list[DataQualityFlag] = field(default_factory=list)
 
 
 @dataclass
@@ -78,8 +131,8 @@ class ContextPackage:
     categories: list[str]
     excluded_categories: list[str]
     source_updated_at: dict
-    record_references: list[dict]
-    data_quality_flags: list[dict]
+    record_references: list[ContextRecordRef]
+    data_quality_flags: list[DataQualityFlag]
 
     @property
     def text(self) -> str:
@@ -107,7 +160,7 @@ class HistoryDecision:
     withheld_ids: list[int]
     withheld_categories: list[str]  # excluded categories that caused withholding
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> HistoryDecisionDict:
         return {"history_withheld_messages": len(self.withheld_ids),
                 "history_withheld_categories": self.withheld_categories}
 
@@ -121,6 +174,6 @@ class CalendarScope:
     status: str
     label: str
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> CalendarScopeDict:
         return {"start": self.start.isoformat(), "end_exclusive": self.end.isoformat(),
                 "timezone": str(self.start.tzinfo), "status": self.status, "label": self.label}

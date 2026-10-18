@@ -15,7 +15,14 @@ from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_curren
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.modules.llm.errors import AdvisorError
-from app.modules.context.types import ContextPackage, RouteDecision, ToolContext, data_citations
+from app.modules.context.types import (
+    ContextPackage,
+    ContextRecordRef,
+    DataQualityFlag,
+    RouteDecision,
+    ToolContext,
+    data_citations,
+)
 from app.modules.documents.retrieval import cited_categories, library_fingerprint, search as search_documents
 
 
@@ -58,12 +65,12 @@ class ContextBuilderManager:
         self.char_limit = char_limit
 
     def collect(self, session: Session, selected: frozenset[Category], now: datetime, *, query: str = ""
-                ) -> tuple[dict, list[dict], list[dict], dict]:
+                ) -> tuple[dict, list[ContextRecordRef], list[DataQualityFlag], dict]:
         """Run every tool for the selected categories. Returns (data, refs, flags, freshness)."""
         ctx = ToolContext(session=session, now=now, allowed=selected, query=query)
         data: dict[str, dict] = {}
-        refs: list[dict] = []
-        flags: list[dict] = []
+        refs: list[ContextRecordRef] = []
+        flags: list[DataQualityFlag] = []
         freshness: dict[str, str | None] = {}
         for category in ALL_CATEGORIES:
             if category not in selected:
@@ -205,8 +212,8 @@ class ContextBuilderManager:
         limit = self.char_limit if limit is None else limit
         body = copy.deepcopy(body)
         data: dict = body["data"]
-        base_flags: list[dict] = body["data_quality_flags"]
-        fit_flags: list[dict] = []
+        base_flags: list[DataQualityFlag] = body["data_quality_flags"]
+        fit_flags: list[DataQualityFlag] = []
         terms = _query_terms(query)
         cap_flags = False
 
@@ -344,15 +351,15 @@ def _shrink_rows(section, terms: list[str], keep: int) -> int:
     return omitted
 
 
-def _cap_flags(flags: list[dict]) -> list[dict]:
+def _cap_flags(flags: list[DataQualityFlag]) -> list[DataQualityFlag]:
     """One flag per (code, category), with a repeat count, then at most MAX_FLAGS."""
-    merged: dict[tuple, dict] = {}
+    merged: dict[tuple, DataQualityFlag] = {}
     for f in flags:
         key = (f.get("code"), f.get("category"))
         if key in merged:
             merged[key]["count"] = merged[key].get("count", 1) + 1
         else:
-            merged[key] = dict(f)
+            merged[key] = f.copy()
     out = list(merged.values())
     if len(out) > MAX_FLAGS:
         out = out[:MAX_FLAGS - 1] + [{"code": "data_quality_flags_omitted", "category": "system",
