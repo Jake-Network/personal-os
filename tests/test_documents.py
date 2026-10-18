@@ -290,49 +290,282 @@ def test_purge_evidence_removes_direct_and_transitive_snapshots(documents):
                                       record_references=[], source_updated_at={}, data_quality_flags=[],
                                       payload=payload, content_hash=ident))
     documents.commit()
+    from app.modules.documents.evidence import record_references
+    for snapshot in documents.scalars(select(ContextSnapshot)):
+        record_references(documents, snapshot)
     manager.delete_document(documents, doc.id, purge_evidence=True)
     assert {snapshot.id for snapshot in documents.scalars(select(ContextSnapshot))} == {"unrelated"}
 
 
 def test_background_worker_recovers_transient_database_failure(monkeypatch, caplog):
-    from contextlib import contextmanager
     from sqlalchemy.exc import OperationalError
 
-    class FakeDatabase:
-        def __init__(self):
-            self.sessions = []
-
-        @contextmanager
-        def session(self):
-            session = object()
-            self.sessions.append(session)
-            yield session
-
     async def scenario():
-        database = FakeDatabase()
+        database = object()
         stop = asyncio.Event()
-        calls, recovered = [], []
-
+        calls = []
         async def process_once(received_database):
             assert received_database is database
             calls.append("process")
             if len(calls) == 1:
                 raise OperationalError("SELECT private_text", {"document": "private-content"}, Exception("offline"))
-            assert recovered == database.sessions
-            assert len(recovered) == 1
             stop.set()
             return True
-
-        def recover(session):
-            recovered.append(session)
-
         monkeypatch.setattr(manager, "process_one", process_once)
-        monkeypatch.setattr(manager, "recover_pending", recover)
-        await asyncio.wait_for(manager.process_pending(database, stop), timeout=3)
+        monkeypatch.setattr(manager, "POLL_SECONDS", .01)
+        await asyncio.wait_for(manager.process_pending(database, stop), timeout=1)
         assert calls == ["process", "process"]
-        assert len(database.sessions) == 1
-
     asyncio.run(scenario())
     assert "document_worker_database_unavailable" in caplog.text
     assert "private-content" not in caplog.text
     assert "SELECT private_text" not in caplog.text
+
+
+@pytest.mark.parametrize("dimensions", [3, 4])
+def test_reindex_changed_model_preserves_old_version_and_source(documents, monkeypatch, dimensions):
+    doc = upload(documents)
+    process()
+    documents.expire_all()
+    original = doc.active_version_id
+    original_chunks = list(documents.scalars(select(DocumentChunk).where(DocumentChunk.version_id == original)))
+    changed = replace(manager.settings, embedding_model="replacement-model", embedding_dimensions=dimensions)
+    for module in (embedding, retrieval, manager):
+        monkeypatch.setattr(module, "settings", changed)
+    async def updated_embed(texts):
+        return [[1.] + [0.] * (dimensions - 1) for _ in texts]
+    monkeypatch.setattr(embedding, "embed_texts", updated_embed)
+    monkeypatch.setattr(embedding, "embed_query", lambda text: [1.] + [0.] * (dimensions - 1))
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_session] = lambda: documents
+    with TestClient(app) as client:
+        response = client.post(f"/api/documents/{doc.id}/reindex")
+        assert response.status_code == 202
+        assert response.json()["status"] == "pending"
+        assert response.json()["active_version_id"] == original
+        assert client.post(f"/api/documents/{doc.id}/reindex").status_code == 409
+    latest = manager.latest_version(documents, doc.id)
+    assert latest.content == documents.get(DocumentVersion, original).content
+    process()
+    documents.expire_all()
+    assert doc.active_version_id == latest.id != original
+    assert latest.embedding_model == "replacement-model"
+    assert latest.embedding_dimensions == dimensions
+    assert {c.id for c in documents.scalars(select(DocumentChunk).where(DocumentChunk.version_id == original))} == {c.id for c in original_chunks}
+    assert retrieval.search(documents, "Python", ["career"], [doc.id]).data["citations"]
+
+
+def test_claim_recovery_fences_old_worker_and_keeps_live_lease(documents):
+    from datetime import timedelta
+    from sqlalchemy import update
+    from app.modules.database.model.base import utcnow
+    doc = upload(documents)
+    claim = manager._claim(db, "worker-one")
+    assert claim
+    assert manager._claim(db, "worker-two") is None
+    manager.recover_pending(documents)
+    documents.expire_all()
+    version = manager.latest_version(documents, doc.id)
+    assert version.status == "processing" and version.lease_owner == "worker-one"
+    documents.execute(update(DocumentVersion).where(DocumentVersion.id == version.id)
+                      .values(lease_expires_at=utcnow() - timedelta(seconds=1)))
+    documents.commit()
+    assert manager._claim(db, "worker-two")[0] == version.id
+    manager._finish(db, version.id, "worker-one", [{"text": "stale", "page": None, "section": None}], [[1.,0.,0.]])
+    documents.expire_all()
+    assert version.status == "processing" and version.lease_owner == "worker-two"
+    assert not list(documents.scalars(select(DocumentChunk)))
+    manager._finish(db, version.id, "worker-two", [{"text": "current", "page": None, "section": None}], [[1.,0.,0.]])
+    documents.expire_all()
+    assert version.status == "ready" and doc.active_version_id == version.id
+
+
+def test_worker_cancellation_releases_only_owned_job(documents, monkeypatch):
+    doc = upload(documents)
+    async def scenario():
+        started = asyncio.Event()
+        async def blocked(texts):
+            started.set()
+            await asyncio.Event().wait()
+        monkeypatch.setattr(embedding, "embed_texts", blocked)
+        task = asyncio.create_task(manager.process_one(db))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    asyncio.run(scenario())
+    documents.expire_all()
+    version = manager.latest_version(documents, doc.id)
+    assert version.status == "pending" and version.lease_owner is None
+    assert doc.active_version_id is None
+
+
+def test_worker_idle_notification_and_database_work_do_not_block_event_loop(monkeypatch):
+    import threading
+    import time
+    async def scenario():
+        stop = asyncio.Event()
+        entered = threading.Event()
+        release = threading.Event()
+        claims = []
+        def slow_claim(database, owner):
+            claims.append(owner)
+            entered.set()
+            assert release.wait(timeout=2)
+            return None
+        monkeypatch.setattr(manager, "_claim", slow_claim)
+        worker = asyncio.create_task(manager.process_pending(object(), stop))
+        try:
+            deadline = time.monotonic() + 1
+            while not entered.is_set():
+                assert time.monotonic() < deadline
+                await asyncio.sleep(.005)
+            # If claim ran on the event loop, release could never be set in time.
+            release.set()
+            await asyncio.sleep(.65)
+            assert len(claims) == 1  # no half-second idle polling
+            await asyncio.to_thread(manager.notify_workers)
+            deadline = time.monotonic() + 1
+            while len(claims) < 2:
+                assert time.monotonic() < deadline
+                await asyncio.sleep(.005)
+            stop.set()
+            await asyncio.wait_for(worker, timeout=.5)
+        finally:
+            release.set()
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+    asyncio.run(scenario())
+
+
+def test_postgresql_worker_leases_concurrent_recovery_and_stale_completion(monkeypatch):
+    """Independent connections prove claim fencing against real PostgreSQL row locks."""
+    import os
+    import uuid
+    from datetime import timedelta
+    from sqlalchemy import create_engine, text, update
+    from sqlalchemy.orm import sessionmaker
+    from app.modules.database.database import Database
+    from app.modules.database.model import Base
+    from app.modules.database.model.base import utcnow
+
+    url = os.environ.get("TEST_DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("TEST_DATABASE_URL must point to a disposable PostgreSQL database")
+    schema = "rag_workers_" + uuid.uuid4().hex
+    admin = create_engine(url)
+    engine = None
+    try:
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        engine = create_engine(url, connect_args={"options": f'-csearch_path={schema},public'})
+        Base.metadata.create_all(engine)
+        database = Database()
+        database.engine = engine
+        database._sessionmaker = sessionmaker(bind=engine, expire_on_commit=False)
+        local_settings = replace(settings, embedding_dimensions=3)
+        monkeypatch.setattr(manager, "settings", local_settings)
+        monkeypatch.setattr(embedding, "settings", local_settings)
+        monkeypatch.setattr(manager, "HEARTBEAT_SECONDS", .05)
+        monkeypatch.setattr(manager, "LEASE_SECONDS", 3)
+        with database.session() as session:
+            doc = upload(session)
+            document_id = doc.id
+            version_id = manager.latest_version(session, document_id).id
+
+        async def scenario():
+            started = asyncio.Event()
+            finish = asyncio.Event()
+            calls = []
+            async def blocked_embed(texts):
+                calls.append(texts)
+                started.set()
+                await finish.wait()
+                return [[1., 0., 0.] for _ in texts]
+            monkeypatch.setattr(embedding, "embed_texts", blocked_embed)
+            workers = [asyncio.create_task(manager.process_one(database)) for _ in range(2)]
+            try:
+                await asyncio.wait_for(started.wait(), timeout=3)
+                # Recovery in a second connection must not reset the live owner's job.
+                def recover():
+                    with database.session() as session:
+                        version = session.get(DocumentVersion, version_id)
+                        owner = version.lease_owner
+                        manager.recover_pending(session)
+                        session.expire_all()
+                        version = session.get(DocumentVersion, version_id)
+                        assert version.status == "processing" and version.lease_owner == owner
+                        return owner
+                owner = await asyncio.to_thread(recover)
+                # More than the original lease: heartbeats must keep ownership alive.
+                await asyncio.sleep(3.2)
+                assert await asyncio.to_thread(recover) == owner
+                assert await manager.process_one(database) is False
+                assert len(calls) == 1
+                finish.set()
+                await asyncio.wait_for(asyncio.gather(*workers), timeout=3)
+            finally:
+                for worker in workers:
+                    worker.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
+        asyncio.run(scenario())
+        with database.session() as session:
+            assert session.get(DocumentVersion, version_id).status == "ready"
+            assert len(list(session.scalars(select(DocumentChunk)))) == 1
+            # Simulate an owner that died after claiming, with a real expired lease.
+            session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id)
+                            .values(status="processing", lease_owner="abandoned",
+                                    lease_expires_at=utcnow() - timedelta(seconds=1)))
+            session.commit()
+        assert manager._claim(database, "successor")[0] == version_id
+        manager._finish(database, version_id, "abandoned", error="old_worker_failed")
+        with database.session() as session:
+            assert session.get(DocumentVersion, version_id).lease_owner == "successor"
+        chunks = [{"text": "successor text", "page": None, "section": None}]
+        manager._finish(database, version_id, "successor", chunks, [[1., 0., 0.]])
+        manager._finish(database, version_id, "abandoned", chunks, [[1., 0., 0.]])
+        with database.session() as session:
+            assert session.get(DocumentVersion, version_id).status == "ready"
+            rows = list(session.scalars(select(DocumentChunk)))
+            assert len(rows) == 1 and rows[0].text == "successor text"
+    finally:
+        if engine is not None:
+            engine.dispose()
+        with admin.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def test_search_keeps_distinct_adjacent_markdown_sections(documents):
+    doc = upload(documents, text="# 오로라 제안\n서울 연봉 9000\n\n# 바다 제안\n부산 연봉 10000")
+    process()
+    documents.expire_all()
+    result = retrieval.search(documents, "오로라 바다 제안 비교", ["career"])
+    assert {row["section"] for row in result.data["citations"]} == {"오로라 제안", "바다 제안"}
+    assert {row["document_id"] for row in result.data["citations"]} == {doc.id}
+
+
+def test_search_keeps_independent_paragraphs_under_same_heading(documents):
+    first = "서울 지원 조건 " * 100
+    second = "부산 지원 조건 " * 100
+    doc = upload(documents, text=f"# 지원 비교\n{first}\n\n{second}")
+    process()
+    documents.expire_all()
+    chunks = documents.scalars(select(DocumentChunk).where(DocumentChunk.version_id == doc.active_version_id)
+                               .order_by(DocumentChunk.ordinal)).all()
+    assert len(chunks) == 2
+    assert {chunk.section for chunk in chunks} == {"지원 비교"}
+    result = retrieval.search(documents, "서울 부산 지원 비교", ["career"])
+    assert {row["chunk_id"] for row in result.data["citations"]} == {chunk.id for chunk in chunks}
+
+
+def test_search_suppresses_actual_long_paragraph_overlap(documents):
+    doc = upload(documents, text="# 긴 경력\n" + "서비스 운영 성과 " * 180)
+    process()
+    documents.expire_all()
+    chunks = documents.scalars(select(DocumentChunk).where(DocumentChunk.version_id == doc.active_version_id)
+                               .order_by(DocumentChunk.ordinal)).all()
+    assert len(chunks) == 2
+    assert chunks[1].text.startswith(chunks[0].text[-150:].strip())
+    result = retrieval.search(documents, "서비스 운영 성과", ["career"])
+    assert len(result.data["citations"]) == 1

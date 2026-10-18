@@ -37,10 +37,10 @@ class ContextBuilderManager:
     def __init__(self, char_limit: int):
         self.char_limit = char_limit
 
-    def collect(self, session: Session, selected: frozenset[Category], now: datetime
+    def collect(self, session: Session, selected: frozenset[Category], now: datetime, *, query: str = ""
                 ) -> tuple[dict, list[dict], list[dict], dict]:
         """Run every tool for the selected categories. Returns (data, refs, flags, freshness)."""
-        ctx = ToolContext(session=session, now=now, allowed=selected)
+        ctx = ToolContext(session=session, now=now, allowed=selected, query=query)
         data: dict[str, dict] = {}
         refs: list[dict] = []
         flags: list[dict] = []
@@ -63,9 +63,12 @@ class ContextBuilderManager:
               now: datetime | None = None, *, query: str = "", document_search: bool = True,
               document_ids: tuple[int, ...] = (), excluded: frozenset[Category] = frozenset(),
               inherited_citations: list[dict] | None = None,
-              inherited_dependencies: list[dict] | None = None) -> ContextPackage:
+              inherited_dependencies: list[dict] | None = None,
+              inherited_categories: list[str] | None = None,
+              history_document_refs: set[str] | None = None,
+              inherited_unknown: bool = False) -> ContextPackage:
         now = now or datetime.now(UTC)
-        data, refs, flags, freshness = self.collect(session, route.selected, now)
+        data, refs, flags, freshness = self.collect(session, route.selected, now, query=query)
         if document_search and query:
             result = search_documents(session, query, route.selected, document_ids or None,
                                       excluded_categories=excluded)
@@ -89,8 +92,15 @@ class ContextBuilderManager:
                 combined.setdefault(citation["ref"], dict(citation))
             section["citations"] = list(combined.values())[:10]
         self._fit_document_excerpts(data)
+        available_refs = {c["ref"] for c in data.get("search_documents", {}).get("citations", [])}
+        omitted_refs = (history_document_refs or set()) - available_refs
+        if omitted_refs:
+            flags.append({"code": "history_document_evidence_omitted", "category": "documents",
+                          "count": len(omitted_refs)})
         body = self._fit({
             "document_dependencies": list(dependencies.values()),
+            "history_categories": sorted(set(inherited_categories or []) - {c.value for c in route.selected}),
+            **({"history_provenance_unknown": True} if inherited_unknown else {}),
             "document_scope": {"enabled": document_search, "document_ids": list(document_ids),
                                "excluded_categories": sorted(str(c) for c in excluded)},
             "base_currency": base_currency(session),
@@ -117,7 +127,8 @@ class ContextBuilderManager:
             "record_references": refs,
             "source_updated_at": freshness,
             "data_quality_flags": body["data_quality_flags"],
-            "payload": {"context_snapshot_id": snapshot_id, "generated_at": now.isoformat(), **body},
+            "payload": {"context_snapshot_id": snapshot_id, "generated_at": now.isoformat(),
+                        "request_query": query, **body},
             "content_hash": content_hash,
         })
         return _package(snapshot, reused=False)
@@ -126,7 +137,8 @@ class ContextBuilderManager:
                              now: datetime | None = None) -> tuple[list[str], list[str]]:
         """Which tool sections differ between a past snapshot and today's data (same categories)."""
         selected = frozenset(Category(c) for c in snapshot.context_categories)
-        current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC))
+        current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC),
+                                      query=snapshot.payload.get("request_query", ""))
         past = snapshot.payload.get("data", {})
         if "search_documents" in past:
             scope = snapshot.payload.get("document_scope", {})

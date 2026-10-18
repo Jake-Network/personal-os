@@ -16,7 +16,10 @@ name: personal-os
 
 services:
   db:
-    image: pgvector/pgvector:pg17
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/db/Dockerfile
+    image: personal-os-postgres-vector:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-personal_os}
@@ -42,6 +45,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-personal_os}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-personal_os}
       PERSONAL_OS_DATA_DIR: /project/data
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      EMBEDDING_DENSECORE_MODEL_ID: ${EMBEDDING_DENSECORE_MODEL_ID:-}
       EMBEDDING_URL: ${EMBEDDING_URL:-http://embeddings:11434}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}

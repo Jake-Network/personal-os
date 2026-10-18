@@ -112,6 +112,7 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
             <summary className='cursor-pointer'>
               {c.title} · 버전 #{c.version_id}
               {c.page ? ` · p.${c.page}` : ''}
+              {c.historical ? ' · 이전 상담 근거' : ''}
             </summary>
             <p className='mt-1 text-faint'>
               {c.filename}

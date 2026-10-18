@@ -84,7 +84,17 @@ def retry(document_id: int, session: Session = Depends(get_session)):
         raise HTTPException(409, "only_failed_versions_can_be_retried")
     version.status, version.error = "pending", None
     session.commit()
+    manager.notify_workers()
     return manager.item(session, document)
+
+
+@router.post("/{document_id}/reindex", response_model=DocumentItem, status_code=202)
+def reindex(document_id: int, session: Session = Depends(get_session)):
+    document = _get(session, document_id)
+    try:
+        return manager.reindex(session, document)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.patch("/{document_id}", response_model=DocumentItem)

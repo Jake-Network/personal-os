@@ -31,9 +31,7 @@ async def lifespan(_app: FastAPI):
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         db.init(settings.resolved_database_url)
         db.migrate_schema()
-    from app.modules.documents.document_manager import recover_pending, process_pending
-    with db.session() as session:
-        recover_pending(session)
+    from app.modules.documents.document_manager import process_pending
     stop = asyncio.Event()
     worker = asyncio.create_task(process_pending(db, stop))
     try:

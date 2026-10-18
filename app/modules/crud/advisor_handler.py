@@ -1,3 +1,4 @@
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.modules.crud.base import BaseCRUDHandler
@@ -28,11 +29,13 @@ class MessageHandler(BaseCRUDHandler[AdvisorMessage]):
     def __init__(self):
         super().__init__(AdvisorMessage)
 
-    def get_history(self, session: Session, conversation_id: int, before_id: int, limit: int) -> list[AdvisorMessage]:
+    def get_history(self, session: Session, conversation_id: int, before_id: int | None, limit: int) -> list[AdvisorMessage]:
+        filters = [AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.status == "complete"]
+        if before_id is not None:
+            filters.append(AdvisorMessage.id < before_id)
         rows = self.get_multiple_with_filters(
             session,
-            [AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.id < before_id,
-             AdvisorMessage.status == "complete"],
+            filters,
             [AdvisorMessage.id.desc()],
             limit,
         )
@@ -50,6 +53,17 @@ class MessageHandler(BaseCRUDHandler[AdvisorMessage]):
 class ContextSnapshotHandler(BaseCRUDHandler[ContextSnapshot]):
     def __init__(self):
         super().__init__(ContextSnapshot)
+
+    def create(self, session, obj_in):
+        from app.modules.documents.evidence import record_references
+        snapshot = super().create(session, obj_in)
+        record_references(session, snapshot)
+        return snapshot
+
+    def delete(self, session, obj):
+        session.execute(update(AdvisorMessage).where(AdvisorMessage.context_snapshot_id == obj.id)
+                        .values(context_purged=True))
+        super().delete(session, obj)
 
     def get_latest_for_conversation(self, session: Session, conversation_id: int) -> ContextSnapshot | None:
         return self.get_first_with_filters(session, [ContextSnapshot.conversation_id == conversation_id],

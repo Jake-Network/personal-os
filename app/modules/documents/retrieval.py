@@ -20,6 +20,16 @@ def _cosine(left, right):
     return sum(a*b for a, b in zip(left, right)) / (math.hypot(*left) * math.hypot(*right))
 
 
+def _overlapping_chunks(left, right):
+    """Recognize the parser's 150-character overlap, not mere adjacency."""
+    if (left.version_id != right.version_id or abs(left.ordinal - right.ordinal) != 1
+            or left.page != right.page or left.section != right.section):
+        return False
+    earlier, later = (left, right) if left.ordinal < right.ordinal else (right, left)
+    overlap = earlier.text[-150:].strip()
+    return len(overlap) >= 80 and later.text.startswith(overlap)
+
+
 def citation(chunk, version, document):
     return {"ref": f"document_chunks:{chunk.id}", "document_id": document.id, "version_id": version.id,
             "chunk_id": chunk.id, "title": document.title, "filename": version.filename, "page": chunk.page,
@@ -29,19 +39,32 @@ def citation(chunk, version, document):
 def visible_documents(session, categories=None, document_ids=None, excluded_categories=None):
     excluded = {str(c) for c in privacy_manager.get_excluded(session)} | {str(c) for c in excluded_categories or []}
     allowed = {str(c) for c in categories} if categories is not None else None
-    documents = session.scalars(select(Document).where(Document.sharing_enabled.is_(True),
-                                                       Document.active_version_id.is_not(None))).all()
+    statement = select(Document).where(Document.sharing_enabled.is_(True), Document.active_version_id.is_not(None))
+    if document_ids is not None:
+        statement = statement.where(Document.id.in_(document_ids))
+    documents = session.scalars(statement).all()
     return [doc for doc in documents if not excluded.intersection(doc.categories)
             and (allowed is None or set(doc.categories).intersection(allowed))
             and (document_ids is None or doc.id in document_ids)]
 
 
-def library_fingerprint(session, categories, document_ids=None, excluded_categories=None):
+def _source_versions(session, ids):
+    # Queries must not reload the raw upload bytes for every conversation turn.
+    columns = (DocumentVersion.id, DocumentVersion.filename, DocumentVersion.as_of,
+               DocumentVersion.content_hash, DocumentVersion.status, DocumentVersion.embedding_model,
+               DocumentVersion.embedding_dimensions, DocumentVersion.updated_at)
+    return {row.id: row for row in session.execute(select(*columns).where(DocumentVersion.id.in_(ids)))} if ids else {}
+
+
+def library_fingerprint(session, categories, document_ids=None, excluded_categories=None, *, documents=None, versions=None):
     """Source identity for snapshot comparison; does not rerun semantic retrieval."""
-    docs = visible_documents(session, categories, document_ids or None, excluded_categories)
+    docs = visible_documents(session, categories, document_ids or None, excluded_categories) if documents is None else documents
     sources = []
+    versions = _source_versions(session, [d.active_version_id for d in docs]) if versions is None else versions
     for doc in sorted(docs, key=lambda row: row.id):
-        version = session.get(DocumentVersion, doc.active_version_id)
+        version = versions.get(doc.active_version_id)
+        if version is None:
+            continue
         sources.append((doc.id, doc.title, doc.categories, str(doc.updated_at), version.id,
                         version.content_hash, version.status, version.embedding_model,
                         version.embedding_dimensions, str(version.as_of), str(version.updated_at)))
@@ -51,18 +74,19 @@ def library_fingerprint(session, categories, document_ids=None, excluded_categor
 
 def search(session, query, categories, document_ids=None, limit=6, excluded_categories=None):
     pinned = list(dict.fromkeys(document_ids or []))[:5]
+    documents = visible_documents(session, categories, pinned or None, excluded_categories)
+    sources = _source_versions(session, [d.active_version_id for d in documents])
     result = ToolResult(data={"query": query, "citations": [], "requested_document_ids": pinned,
-                             "source_fingerprint": library_fingerprint(session, categories, pinned, excluded_categories)})
+                             "source_fingerprint": library_fingerprint(session, categories, pinned, excluded_categories,
+                                                                       documents=documents, versions=sources)})
     if not query.strip():
         return result
-    documents = visible_documents(session, categories, pinned or None, excluded_categories)
     if not documents:
         result.flags.append({"code": "no_matching_documents", "category": "documents"})
         return result
-    versions = {v.id: v for v in session.scalars(select(DocumentVersion).where(
-        DocumentVersion.id.in_([d.active_version_id for d in documents]), DocumentVersion.status == "ready",
-        DocumentVersion.embedding_model == settings.embedding_model,
-        DocumentVersion.embedding_dimensions == settings.embedding_dimensions))}
+    versions = {key: version for key, version in sources.items() if version.status == "ready"
+                and version.embedding_model == settings.embedding_model
+                and version.embedding_dimensions == settings.embedding_dimensions}
     if not versions:
         result.flags.append({"code": "document_embedding_reindex_required", "category": "documents"})
         return result
@@ -108,7 +132,7 @@ def search(session, query, categories, document_ids=None, limit=6, excluded_cate
             break
         if row[1].id not in {r[1].id for r in chosen}:
             # Overlapping chunks can otherwise crowd out other evidence.
-            if not any(r[1].version_id == row[1].version_id and abs(r[1].ordinal-row[1].ordinal) <= 1 for r in chosen):
+            if not any(_overlapping_chunks(r[1], row[1]) for r in chosen):
                 chosen.append(row)
     result.data["citations"] = [citation(chunk, version, document) for _, chunk, version, document in chosen]
     result.refs = [{"table": "document_chunks", "id": chunk.id, "document_id": document.id,

@@ -4,20 +4,39 @@ import hashlib
 import io
 import logging
 import re
+import threading
+from contextlib import suppress
+from datetime import timedelta
+from uuid import uuid4
 from pathlib import PurePath
 
 from pypdf import PdfReader
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, update, or_, and_
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
-from app.modules.database.model import Document, DocumentVersion, DocumentChunk, ContextSnapshot
+from app.modules.database.model import Document, DocumentVersion, DocumentChunk
 from app.modules.database.model.base import utcnow
 from app.modules.documents import embedding
 
 MAX_BYTES = 10 * 1024 * 1024
 MAX_TEXT = 500_000
 MAX_CHUNKS = 500
+LEASE_SECONDS = 120
+HEARTBEAT_SECONDS = 30
+POLL_SECONDS = 15
+_worker_signals = set()
+_signal_lock = threading.Lock()
+
+
+def notify_workers():
+    """Safe from sync request threads; idle workers hold no executor threads."""
+    with _signal_lock:
+        for loop, event in _worker_signals:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(event.set)
+
+
 EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"}
 
 
@@ -55,6 +74,7 @@ def add_version(session, document, filename, content, as_of=None):
     document.updated_at = utcnow()
     session.add(version)
     session.commit()
+    notify_workers()
     return item(session, document)
 
 
@@ -103,96 +123,156 @@ def parse_chunks(filename, content):
     return result
 
 
+def _expired():
+    return or_(DocumentVersion.lease_expires_at.is_(None), DocumentVersion.lease_expires_at <= utcnow())
+
+
 def recover_pending(session):
-    session.execute(update(DocumentVersion).where(DocumentVersion.status == "processing")
-                    .values(status="pending", error=None))
+    # Legacy jobs have no lease. Live workers renew theirs and are never reset.
+    session.execute(update(DocumentVersion).where(DocumentVersion.status == "processing", _expired())
+                    .values(status="pending", error=None, lease_owner=None, lease_expires_at=None))
     session.commit()
 
 
-async def process_one(database):
+def _claim(database, owner):
     with database.session() as session:
-        version = session.scalar(select(DocumentVersion).where(DocumentVersion.status == "pending")
-                                 .order_by(DocumentVersion.id).limit(1))
-        if version is None:
-            return False
-        version_id = version.id
-        # Conditional claim also prevents two worker loops indexing the same job.
-        claimed = session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id,
-                                  DocumentVersion.status == "pending").values(status="processing", error=None))
-        session.commit()
+        eligible = or_(DocumentVersion.status == "pending",
+                       and_(DocumentVersion.status == "processing", _expired()))
+        version_id = session.scalar(select(DocumentVersion.id).where(eligible)
+                                    .order_by(DocumentVersion.id).limit(1))
+        if version_id is None:
+            return None
+        claimed = session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id, eligible)
+                                  .values(status="processing", error=None, lease_owner=owner,
+                                          lease_expires_at=utcnow() + timedelta(seconds=LEASE_SECONDS)))
         if not claimed.rowcount:
-            return True
-        filename, content = version.filename, version.content
-    try:
-        chunks = await asyncio.to_thread(parse_chunks, filename, content)
-        vectors = await embedding.embed_texts([chunk["text"] for chunk in chunks])
-        # Defense in depth for replacement providers and tests.
-        embedding.validate_vectors({"model": settings.embedding_model, "embeddings": vectors}, len(chunks))
-        with database.session() as session:
-            version = session.get(DocumentVersion, version_id)
-            if version is None or version.status != "processing":
-                return True
+            session.rollback()
+            return False
+        version = session.get(DocumentVersion, version_id)
+        claim = version_id, version.filename, version.content
+        session.commit()
+        return claim
+
+
+def _owned(version_id, owner):
+    return (DocumentVersion.id == version_id, DocumentVersion.status == "processing",
+            DocumentVersion.lease_owner == owner, DocumentVersion.lease_expires_at > utcnow())
+
+
+def _renew(database, version_id, owner):
+    with database.session() as session:
+        result = session.execute(update(DocumentVersion).where(*_owned(version_id, owner))
+                                 .values(lease_expires_at=utcnow() + timedelta(seconds=LEASE_SECONDS)))
+        session.commit()
+        return bool(result.rowcount)
+
+
+async def _heartbeat(database, version_id, owner):
+    while True:
+        await asyncio.sleep(HEARTBEAT_SECONDS)
+        if not await asyncio.to_thread(_renew, database, version_id, owner):
+            return
+
+
+def _finish(database, version_id, owner, chunks=None, vectors=None, error=None, cancelled=False):
+    with database.session() as session:
+        # This UPDATE locks/fences the row until chunks and promotion commit together.
+        values = dict(status="pending" if cancelled else "failed" if error else "ready",
+                      error=error, lease_owner=None, lease_expires_at=None)
+        if chunks is not None:
+            values.update(embedding_model=settings.embedding_model,
+                          embedding_dimensions=settings.embedding_dimensions)
+        result = session.execute(update(DocumentVersion).where(*_owned(version_id, owner)).values(**values))
+        if not result.rowcount:
+            session.rollback()
+            return
+        if chunks is not None:
             session.execute(delete(DocumentChunk).where(DocumentChunk.version_id == version_id))
             session.add_all([DocumentChunk(version_id=version_id, ordinal=i, embedding=vector, **chunk)
                              for i, (chunk, vector) in enumerate(zip(chunks, vectors))])
-            version.status = "ready"
-            version.embedding_model = settings.embedding_model
-            version.embedding_dimensions = settings.embedding_dimensions
-            document = session.get(Document, version.document_id)
-            # A late older job must not supersede an already-ready newer version.
-            if document.active_version_id is None or document.active_version_id < version_id:
-                document.active_version_id = version_id
-                document.updated_at = utcnow()
-            session.commit()
+            version = session.get(DocumentVersion, version_id)
+            session.execute(update(Document).where(Document.id == version.document_id,
+                            or_(Document.active_version_id.is_(None), Document.active_version_id < version_id))
+                            .values(active_version_id=version_id, updated_at=utcnow()))
+        session.commit()
+
+
+async def process_one(database):
+    owner = str(uuid4())
+    claiming = asyncio.create_task(asyncio.to_thread(_claim, database, owner))
+    try:
+        claim = await asyncio.shield(claiming)
     except asyncio.CancelledError:
-        with database.session() as session:
-            session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id,
-                            DocumentVersion.status == "processing").values(status="pending"))
-            session.commit()
+        claim = await claiming
+        if claim:
+            await asyncio.to_thread(_finish, database, claim[0], owner, cancelled=True)
+        raise
+    if claim is None:
+        return False
+    if claim is False:
+        return True
+    version_id, filename, content = claim
+    heartbeat = asyncio.create_task(_heartbeat(database, version_id, owner))
+    try:
+        chunks = await asyncio.to_thread(parse_chunks, filename, content)
+        vectors = await embedding.embed_texts([chunk["text"] for chunk in chunks])
+        embedding.validate_vectors({"model": settings.embedding_model, "embeddings": vectors}, len(chunks))
+        if heartbeat.done():
+            heartbeat.result()
+        await asyncio.to_thread(_finish, database, version_id, owner, chunks, vectors)
+    except asyncio.CancelledError:
+        await asyncio.to_thread(_finish, database, version_id, owner, cancelled=True)
         raise
     except Exception as exc:
-        with database.session() as session:
-            version = session.get(DocumentVersion, version_id)
-            if version is not None:
-                version.status = "failed"
-                # Store a safe error code, never arbitrary server bodies/document text.
-                safe_codes = {"embedding_model_mismatch", "embedding_count_mismatch", "invalid_embedding_vector",
-                              "encrypted_or_too_many_pdf_pages", "document_text_too_large",
-                              "too_many_document_chunks", "no_extractable_text_ocr_not_supported"}
-                version.error = str(exc) if str(exc) in safe_codes else type(exc).__name__
-                session.commit()
+        safe_codes = {"embedding_model_mismatch", "embedding_count_mismatch", "invalid_embedding_vector",
+                      "encrypted_or_too_many_pdf_pages", "document_text_too_large",
+                      "too_many_document_chunks", "no_extractable_text_ocr_not_supported"}
+        error = str(exc) if str(exc) in safe_codes else type(exc).__name__
+        await asyncio.to_thread(_finish, database, version_id, owner, error=error)
+    finally:
+        heartbeat.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat
     return True
 
 
 async def process_pending(database, stop_event):
-    needs_recovery = False
-    while not stop_event.is_set():
-        try:
-            if needs_recovery:
-                with database.session() as session:
-                    recover_pending(session)
-                needs_recovery = False
-            await process_one(database)
-        except SQLAlchemyError:
-            # Transient database failures must not silently kill the indexing loop.
-            # Avoid logging SQL parameters containing document text.
-            logging.getLogger(__name__).warning("document_worker_database_unavailable")
-            needs_recovery = True
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=0.5)
-        except TimeoutError:
-            pass
+    signal = asyncio.Event()
+    registration = (asyncio.get_running_loop(), signal)
+    with _signal_lock:
+        _worker_signals.add(registration)
+    try:
+        while not stop_event.is_set():
+            signal.clear()
+            try:
+                if await process_one(database):
+                    continue
+            except SQLAlchemyError:
+                logging.getLogger(__name__).warning("document_worker_database_unavailable")
+            wake = asyncio.create_task(signal.wait())
+            stop = asyncio.create_task(stop_event.wait())
+            try:
+                await asyncio.wait((wake, stop), timeout=POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                wake.cancel()
+                stop.cancel()
+                await asyncio.gather(wake, stop, return_exceptions=True)
+    finally:
+        with _signal_lock:
+            _worker_signals.discard(registration)
+
+
+def reindex(session, document):
+    latest = latest_version(session, document.id)
+    if latest is None or latest.status in {"pending", "processing"}:
+        raise ValueError("document_indexing_in_progress")
+    return add_version(session, document, latest.filename, latest.content, latest.as_of)
 
 
 def delete_document(session, document_id, purge_evidence=False):
     document = get_document(session, document_id)
     if purge_evidence:
-        # Snapshots are indivisible provenance packages: remove the entire affected
-        # snapshot; FK SET NULL preserves the conversation without retained excerpts.
-        for snapshot in session.scalars(select(ContextSnapshot)):
-            citations = snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", [])
-            dependencies = snapshot.payload.get("document_dependencies", [])
-            if any(c.get("document_id") == document_id for c in citations + dependencies):
-                session.delete(snapshot)
+        from app.modules.documents.evidence import purge_document_evidence
+        purge_document_evidence(session, document_id)
     session.delete(document)
     session.commit()

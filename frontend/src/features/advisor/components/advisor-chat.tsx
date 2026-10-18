@@ -295,7 +295,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
                 {source.citation.section ? ` · ${source.citation.section}` : ''}
                 {source.citation.as_of ? ` · 기준일 ${source.citation.as_of}` : ''}
               </p>
-              <p className='text-xs text-faint'>이 답변에 사용한 당시의 발췌문입니다.</p>
+              <p className='text-xs text-faint'>{source.citation.historical ? '이전 상담에서 이어받은 과거 버전의 근거입니다.' : '이 답변에 사용한 당시의 발췌문입니다.'}</p>
               <div className='max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm'>{source.citation.text}</div>
             </>
           )}

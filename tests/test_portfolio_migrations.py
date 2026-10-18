@@ -55,7 +55,7 @@ def test_startup_applies_committed_revisions_and_preserves_existing_rows(tmp_pat
         with TestClient(main.app):
             assert set(inspect(database.engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
             with database.engine.connect() as connection:
-                assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '6581e3048ce0'
+                assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '25ae62365383'
                 if previous_revision:
                     assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
     finally:

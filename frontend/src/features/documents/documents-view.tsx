@@ -233,6 +233,11 @@ function DocumentCard({ doc, busy, perform }: { doc: PersonalDocument; busy: boo
         ))}
       </details>
       <div className='flex flex-wrap items-center gap-2'>
+        {doc.status === 'ready' && (
+          <Button disabled={busy} onClick={() => void perform(() => documentsApi.reindex(doc.id))}>
+            현재 모델로 다시 색인
+          </Button>
+        )}
         {doc.status === 'failed' && (
           <Button disabled={busy} onClick={() => void perform(() => documentsApi.retry(doc.id))}>
             다시 처리

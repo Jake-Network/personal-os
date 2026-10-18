@@ -1,8 +1,6 @@
 from collections.abc import Iterator
-from pathlib import Path
 
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -19,6 +17,10 @@ class Database:
         self._sessionmaker: sessionmaker[Session] | None = None
 
     def init(self, url: str) -> Engine:
+        if self.engine is not None:
+            self.engine.dispose()
+        self.engine = None
+        self._sessionmaker = None
         kwargs: dict = {}
         if url.startswith("sqlite"):
             kwargs["connect_args"] = {"check_same_thread": False}
@@ -38,12 +40,26 @@ class Database:
     def migrate_schema(self) -> None:
         """Upgrade the configured database, including migration-only constraints."""
         assert self.engine is not None, "Database.init() not called"
-        root = Path(__file__).resolve().parents[3]
-        config = Config(str(root / "alembic.ini"))
-        config.set_main_option("script_location", str(root / "migrations"))
-        with self.engine.begin() as connection:
-            config.attributes["connection"] = connection
-            command.upgrade(config, "head")
+        from app.modules.database.collation import check_collations
+        from app.modules.database.legacy_adoption import has_unversioned_tables, migration_config
+
+        try:
+            with self.engine.begin() as connection:
+                if connection.dialect.name == "sqlite":
+                    connection.exec_driver_sql("BEGIN")
+                check_collations(connection)
+                if has_unversioned_tables(connection):
+                    raise RuntimeError(
+                        "Existing database has tables without Alembic history. Back up the database, "
+                        "then run make db-adopt-legacy to validate it, and "
+                        "make db-adopt-legacy APPLY=1 to explicitly adopt and upgrade it."
+                    )
+                command.upgrade(migration_config(connection), "head")
+        except Exception:
+            self.engine.dispose()
+            self.engine = None
+            self._sessionmaker = None
+            raise
 
     def session(self) -> Session:
         assert self._sessionmaker is not None, "Database.init() not called"

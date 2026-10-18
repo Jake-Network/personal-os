@@ -437,6 +437,68 @@ export const useRetry = <TError = ErrorType<HTTPValidationError>,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * @summary Reindex
+ */
+export const reindex = (
+    documentId: number,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<DocumentItem>(
+      {url: `/api/documents/${documentId}/reindex`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getReindexMutationOptions = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reindex>>, TError,{documentId: number}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof reindex>>, TError,{documentId: number}, TContext> => {
+
+const mutationKey = ['reindex'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reindex>>, {documentId: number}> = (props) => {
+          const {documentId} = props ?? {};
+
+          return  reindex(documentId,requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReindexMutationResult = NonNullable<Awaited<ReturnType<typeof reindex>>>
+
+    export type ReindexMutationError = ErrorType<HTTPValidationError>
+
+    /**
+ * @summary Reindex
+ */
+export const useReindex = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reindex>>, TError,{documentId: number}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reindex>>,
+        TError,
+        {documentId: number},
+        TContext
+      > => {
+
+      const mutationOptions = getReindexMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
  * @summary Patch
  */
 export const patch = (

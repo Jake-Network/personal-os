@@ -17,6 +17,7 @@ export interface PersonalDocument {
 }
 
 export interface DocumentCitation {
+  historical?: boolean;
   ref: string;
   document_id: number;
   version_id: number;
@@ -43,6 +44,7 @@ export const documentsApi = {
   upload: (data: FormData) => customInstance<PersonalDocument>({ url: '/api/documents', method: 'POST', data }),
   replace: (id: number, data: FormData) => customInstance<PersonalDocument>({ url: `/api/documents/${id}/versions`, method: 'POST', data }),
   versions: (id: number) => customInstance<DocumentVersion[]>({ url: `/api/documents/${id}/versions` }),
+  reindex: (id: number) => customInstance<PersonalDocument>({ url: `/api/documents/${id}/reindex`, method: 'POST' }),
   retry: (id: number) => customInstance<PersonalDocument>({ url: `/api/documents/${id}/retry`, method: 'POST' }),
   update: (id: number, data: Partial<Pick<PersonalDocument, 'title' | 'categories' | 'kind' | 'sharing_enabled'>>) =>
     customInstance<PersonalDocument>({ url: `/api/documents/${id}`, method: 'PATCH', data }),

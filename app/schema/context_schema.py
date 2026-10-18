@@ -31,6 +31,7 @@ class ToolContext:
     session: Session
     now: datetime
     allowed: frozenset[Category]
+    query: str = ""
 
     @property
     def today(self) -> date:

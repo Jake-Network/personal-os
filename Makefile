@@ -20,3 +20,13 @@ db-history:
 
 db-check:
 	$(COMPOSE) exec -T app alembic check
+
+.PHONY: db-adopt-legacy db-collation-check
+# Works even when app startup refuses an unversioned legacy database.
+# Default validates only; APPLY=1 performs the explicit adoption and upgrade.
+db-adopt-legacy:
+	$(COMPOSE) run --rm --no-deps app python -m app.modules.database.legacy_adoption $(if $(filter 1,$(APPLY)),--apply,)
+
+# Read-only; does not rebuild indexes or acknowledge a library change.
+db-collation-check:
+	$(COMPOSE) run --rm --no-deps app python -m app.modules.database.collation

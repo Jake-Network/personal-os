@@ -7,7 +7,7 @@ export function optionsFor(base: InspectorData, on: Set<Category>, off: Set<Cate
   if (on.size === 0 || !base.route) return { exclude: [...off] };
   const categories = new Set<Category>([...base.route.requested, ...on]);
   off.forEach(c => categories.delete(c));
-  return { categories: [...categories], exclude: [] };
+  return { categories: [...categories], exclude: [...off] };
 }
 
 /** Proposal/memory blocks are rendered as cards, not as raw JSON. */

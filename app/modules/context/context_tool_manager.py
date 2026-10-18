@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.enums.context_category import Category
+from app.modules.context.calendar_scope import calendar_scope
 from app.modules.crud.advisor_handler import personal_memory_handler
 from app.modules.crud.app_setting_handler import app_setting_handler
 from app.modules.crud.career_handler import career_criterion_handler, interview_handler, job_application_handler
@@ -348,11 +349,16 @@ def get_interview_schedule(ctx: ToolContext, days: int = 30) -> ToolResult:
 
 
 def get_calendar_events(ctx: ToolContext, days: int = 14) -> ToolResult:
-    events = calendar_event_handler.get_between(
-        ctx.session, ctx.now - timedelta(hours=12), ctx.now + timedelta(days=days))
+    scope = calendar_scope(ctx.query, ctx.now, days)
+    events = calendar_event_handler.get_between(ctx.session, scope.start, scope.end)
+    flags = [] if events else [_flag("no_events_in_window", Category.CALENDAR)]
+    if scope.status == "unresolved":
+        flags.append(_flag("calendar_time_scope_unresolved", Category.CALENDAR,
+                           "requested dates could not be resolved; events cover only the reported default window"))
     return ToolResult(
         data={
-            "window_days": days,
+            "window_days": (scope.end - scope.start).total_seconds() / 86400,
+            "window": scope.as_dict(),
             "now": ctx.now.isoformat(),
             "events": [
                 {"ref": f"calendar_events:{e.id}", "title": e.title, "kind": e.kind, "starts_at": _iso(e.starts_at),
@@ -364,7 +370,7 @@ def get_calendar_events(ctx: ToolContext, days: int = 14) -> ToolResult:
         },
         refs=[_ref("calendar_events", e) for e in events],
         source_updated_at=_latest(*(e.updated_at for e in events)),
-        flags=[] if events else [_flag("no_upcoming_events", Category.CALENDAR)],
+        flags=flags,
     )
 
 

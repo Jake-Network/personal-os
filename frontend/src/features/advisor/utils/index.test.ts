@@ -17,7 +17,7 @@ describe('optionsFor', () => {
   it('switches to an explicit category list when something is forced on', () => {
     expect(optionsFor(base, new Set<Category>(['career']), new Set<Category>(['goals']))).toEqual({
       categories: ['financial', 'career'],
-      exclude: [],
+      exclude: ['goals'],
     });
   });
 });
