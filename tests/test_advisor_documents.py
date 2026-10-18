@@ -23,7 +23,7 @@ def ask(session, conv, query, options=None):
 
 
 def context(request):
-    return json.loads(next(i['content'] for i in request.input if i['role'] == 'developer').split('\n', 1)[1])
+    return json.loads(next(i['content'] for i in request.input if i['role'] == 'developer' and i['content'].startswith('Context Package')).split('\n', 1)[1])
 
 
 @pytest.fixture

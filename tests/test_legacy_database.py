@@ -61,16 +61,14 @@ def test_drift_is_rejected_without_stamping(tmp_path, drift):
     engine.dispose()
 
 
-def test_startup_rejects_legacy_before_ddl_and_can_retry(tmp_path):
+def test_startup_leaves_legacy_untouched_until_explicit_adoption(tmp_path):
     engine = legacy_database(tmp_path)
     database = Database()
     database.init(str(engine.url))
     before = inspect(engine).get_table_names()
-    with pytest.raises(RuntimeError, match="make db-adopt-legacy"):
-        database.migrate_schema()
-    assert database.engine is None
-    assert database._sessionmaker is None
+    database.migrate_schema()
     assert inspect(engine).get_table_names() == before
+    database.engine.dispose()
     adopt_legacy(engine, apply=True)
     database.init(str(engine.url))
     database.migrate_schema()
@@ -178,8 +176,8 @@ def test_empty_version_table_is_treated_as_unversioned(tmp_path):
         connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
     database = Database()
     database.init(str(engine.url))
-    with pytest.raises(RuntimeError, match="make db-adopt-legacy"):
-        database.migrate_schema()
+    database.migrate_schema()
+    database.engine.dispose()
     assert adopt_legacy(engine) == '0004_portfolio_identity'
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM alembic_version")) == 0

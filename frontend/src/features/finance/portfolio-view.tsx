@@ -117,7 +117,7 @@ function GoogleConnectionControls() {
   const params = useSearchParams();
   const connection = useQuery({ queryKey: ['finance', 'google'], queryFn: financeApi.googleStatus });
   const login = useMutation({
-    mutationFn: financeApi.googleLogin,
+    mutationFn: () => financeApi.googleLogin(),
     onSuccess: ({ authorize_url }) => window.location.assign(authorize_url),
   });
   const disconnect = useMutation({
@@ -261,7 +261,7 @@ export function PortfolioView() {
     <PageContainer className='space-y-4'>
       <PageHeader
         title='포트폴리오'
-        description='Google Sheets의 수동 입력을 기준으로 평가합니다. 금액과 수량은 시트에서 수정하세요.'
+        description='Google Sheets의 입력값을 기준으로 평가합니다. 보유 종목 화면에서도 시트에 종목과 수량을 저장할 수 있습니다.'
         actions={
           <Button asChild>
             <Link href='/finance/history'>월별 순자산 기록</Link>
@@ -274,6 +274,9 @@ export function PortfolioView() {
           <CardTitle>비공개 Google Sheets 연결</CardTitle>
         </CardHeader>
         <CardContent className='space-y-3'>
+          <Link href='/data/holdings' className='text-sm underline'>
+            보유 종목 입력 · 자동 시세 보기
+          </Link>
           <Suspense fallback={<p role='status'>Google 연결 상태를 확인하는 중…</p>}>
             <GoogleConnectionControls />
           </Suspense>

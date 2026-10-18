@@ -26,6 +26,7 @@ import type {
 import type {
   HTTPValidationError,
   HistoryParams,
+  HoldingInput,
   SheetsSettingsInput,
   SnapshotCorrection,
   SnapshotInput
@@ -720,3 +721,287 @@ export function useAudit<TData = Awaited<ReturnType<typeof audit>>, TError = Err
 
   return query;
 }
+
+
+
+
+/**
+ * @summary Holdings
+ */
+export const holdings = (
+
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<unknown>(
+      {url: `/api/finance/holdings`, method: 'GET', signal
+    },
+      options);
+    }
+
+
+
+
+export const getHoldingsQueryKey = () => {
+    return [
+    `/api/finance/holdings`
+    ] as const;
+    }
+
+
+export const getHoldingsQueryOptions = <TData = Awaited<ReturnType<typeof holdings>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getHoldingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof holdings>>> = ({ signal }) => holdings(requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type HoldingsQueryResult = NonNullable<Awaited<ReturnType<typeof holdings>>>
+export type HoldingsQueryError = ErrorType<unknown>
+
+
+export function useHoldings<TData = Awaited<ReturnType<typeof holdings>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof holdings>>,
+          TError,
+          Awaited<ReturnType<typeof holdings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHoldings<TData = Awaited<ReturnType<typeof holdings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof holdings>>,
+          TError,
+          Awaited<ReturnType<typeof holdings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useHoldings<TData = Awaited<ReturnType<typeof holdings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Holdings
+ */
+
+export function useHoldings<TData = Awaited<ReturnType<typeof holdings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof holdings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getHoldingsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+/**
+ * @summary Save Holding
+ */
+export const saveHolding = (
+    holdingInput: BodyType<HoldingInput>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<unknown>(
+      {url: `/api/finance/holdings`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: holdingInput, signal
+    },
+      options);
+    }
+
+
+
+export const getSaveHoldingMutationOptions = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveHolding>>, TError,{data: BodyType<HoldingInput>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveHolding>>, TError,{data: BodyType<HoldingInput>}, TContext> => {
+
+const mutationKey = ['saveHolding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveHolding>>, {data: BodyType<HoldingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveHolding(data,requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveHoldingMutationResult = NonNullable<Awaited<ReturnType<typeof saveHolding>>>
+    export type SaveHoldingMutationBody = BodyType<HoldingInput>
+    export type SaveHoldingMutationError = ErrorType<HTTPValidationError>
+
+    /**
+ * @summary Save Holding
+ */
+export const useSaveHolding = <TError = ErrorType<HTTPValidationError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveHolding>>, TError,{data: BodyType<HoldingInput>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveHolding>>,
+        TError,
+        {data: BodyType<HoldingInput>},
+        TContext
+      > => {
+
+      const mutationOptions = getSaveHoldingMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * @summary Initialize Holdings
+ */
+export const initializeHoldings = (
+
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<unknown>(
+      {url: `/api/finance/holdings/initialize`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getInitializeHoldingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeHoldings>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof initializeHoldings>>, TError,void, TContext> => {
+
+const mutationKey = ['initializeHoldings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof initializeHoldings>>, void> = () => {
+
+
+          return  initializeHoldings(requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InitializeHoldingsMutationResult = NonNullable<Awaited<ReturnType<typeof initializeHoldings>>>
+
+    export type InitializeHoldingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Initialize Holdings
+ */
+export const useInitializeHoldings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeHoldings>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof initializeHoldings>>,
+        TError,
+        void,
+        TContext
+      > => {
+
+      const mutationOptions = getInitializeHoldingsMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * @summary Refresh Holdings
+ */
+export const refreshHoldings = (
+
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<unknown>(
+      {url: `/api/finance/holdings/refresh`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getRefreshHoldingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshHoldings>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshHoldings>>, TError,void, TContext> => {
+
+const mutationKey = ['refreshHoldings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshHoldings>>, void> = () => {
+
+
+          return  refreshHoldings(requestOptions)
+        }
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshHoldingsMutationResult = NonNullable<Awaited<ReturnType<typeof refreshHoldings>>>
+
+    export type RefreshHoldingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Refresh Holdings
+ */
+export const useRefreshHoldings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshHoldings>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof refreshHoldings>>,
+        TError,
+        void,
+        TContext
+      > => {
+
+      const mutationOptions = getRefreshHoldingsMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }

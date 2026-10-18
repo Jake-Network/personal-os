@@ -45,17 +45,17 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary Get Status
  */
 export const getStatus = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<AIProviderStatus>(
       {url: `/api/settings/ai-provider`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -65,7 +65,7 @@ export const getGetStatusQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getGetStatusQueryOptions = <TData = Awaited<ReturnType<typeof getStatus>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStatus>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -73,13 +73,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getGetStatusQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getStatus>>> = ({ signal }) => getStatus(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -118,7 +118,7 @@ export function useGetStatus<TData = Awaited<ReturnType<typeof getStatus>>, TErr
 
 export function useGetStatus<TData = Awaited<ReturnType<typeof getStatus>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStatus>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetStatusQueryOptions(options)
@@ -141,15 +141,15 @@ export const startLogin = (
     params?: StartLoginParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<LoginStartResponse>(
       {url: `/api/settings/ai-provider/chatgpt/login`, method: 'POST',
         params, signal
     },
       options);
     }
-  
+
 
 
 export const getStartLoginMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -163,7 +163,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof startLogin>>, {params?: StartLoginParams}> = (props) => {
@@ -172,13 +172,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  startLogin(params,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type StartLoginMutationResult = NonNullable<Awaited<ReturnType<typeof startLogin>>>
-    
+
     export type StartLoginMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -201,16 +201,16 @@ export const useStartLogin = <TError = ErrorType<HTTPValidationError>,
  * @summary Disconnect
  */
 export const disconnect = (
-    
+
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/settings/ai-provider/chatgpt`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDisconnectMutationOptions = <TError = ErrorType<unknown>,
@@ -224,22 +224,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnect>>, void> = () => {
-          
+
 
           return  disconnect(requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DisconnectMutationResult = NonNullable<Awaited<ReturnType<typeof disconnect>>>
-    
+
     export type DisconnectMutationError = ErrorType<unknown>
 
     /**
@@ -262,17 +262,17 @@ export const useDisconnect = <TError = ErrorType<unknown>,
  * @summary List Models
  */
 export const listModels = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<string[]>(
       {url: `/api/settings/ai-provider/models`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -282,7 +282,7 @@ export const getListModelsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListModelsQueryOptions = <TData = Awaited<ReturnType<typeof listModels>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listModels>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -290,13 +290,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListModelsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listModels>>> = ({ signal }) => listModels(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listModels>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -335,7 +335,7 @@ export function useListModels<TData = Awaited<ReturnType<typeof listModels>>, TE
 
 export function useListModels<TData = Awaited<ReturnType<typeof listModels>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listModels>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListModelsQueryOptions(options)
@@ -356,8 +356,8 @@ export function useListModels<TData = Awaited<ReturnType<typeof listModels>>, TE
 export const selectProvider = (
     providerSelection: BodyType<ProviderSelection>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/settings/ai-provider/selection`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -365,7 +365,7 @@ export const selectProvider = (
     },
       options);
     }
-  
+
 
 
 export const getSelectProviderMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -379,7 +379,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof selectProvider>>, {data: BodyType<ProviderSelection>}> = (props) => {
@@ -388,7 +388,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  selectProvider(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -420,15 +420,15 @@ export const usageEvents = (
     params?: UsageEventsParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<UsageEventItem[]>(
       {url: `/api/settings/ai-provider/usage-events`, method: 'GET',
         params, signal
     },
       options);
     }
-  
+
 
 
 
@@ -438,7 +438,7 @@ export const getUsageEventsQueryKey = (params?: UsageEventsParams,) => {
     ] as const;
     }
 
-    
+
 export const getUsageEventsQueryOptions = <TData = Awaited<ReturnType<typeof usageEvents>>, TError = ErrorType<HTTPValidationError>>(params?: UsageEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof usageEvents>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -446,13 +446,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getUsageEventsQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof usageEvents>>> = ({ signal }) => usageEvents(params, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof usageEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -491,7 +491,7 @@ export function useUsageEvents<TData = Awaited<ReturnType<typeof usageEvents>>, 
 
 export function useUsageEvents<TData = Awaited<ReturnType<typeof usageEvents>>, TError = ErrorType<HTTPValidationError>>(
  params?: UsageEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof usageEvents>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getUsageEventsQueryOptions(params,options)

@@ -6,6 +6,7 @@ from ipaddress import ip_address
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlsplit
+from typing import Literal
 
 import httpx
 from google.auth.exceptions import RefreshError
@@ -20,7 +21,9 @@ from app.modules.auth.crypto import TokenCipher, load_or_create_key
 from app.modules.crud.audit_log_handler import audit_log_handler
 from app.modules.database.model.google_oauth import GoogleOAuthConnection, GoogleOAuthPending
 
-SCOPES = ("openid", "email", "https://www.googleapis.com/auth/spreadsheets.readonly")
+READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
+WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+SCOPES = ("openid", "email", READ_SCOPE)
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 PENDING_TTL = 600
@@ -102,12 +105,16 @@ class GoogleOAuthManager:
         return {"configured": self.configured, "connected": bool(conn and conn.status == "connected"),
                 "status": conn.status if conn else "not_connected", "email": conn.email if conn else None,
                 "scopes": conn.scopes if conn else [],
+                "can_write": bool(conn and conn.status == "connected" and WRITE_SCOPE in conn.scopes),
                 "access_expires_at": conn.access_expires_at.isoformat() if conn and conn.access_expires_at else None,
                 "last_error_code": conn.last_error_code if conn else None,
                 "credential_source": "oauth" if conn and conn.status == "connected" else (
                     "none" if conn else "application_default"), "setup": self.setup()}
 
-    def start_login(self, session: Session) -> tuple[str, str]:
+    def start_login(self, session: Session, write_access: bool = False,
+                    return_to: Literal["finance", "holdings"] = "finance") -> tuple[str, str]:
+        if return_to not in {"finance", "holdings"}:
+            raise GoogleOAuthError("invalid_return_target")
         if not self.configured:
             raise GoogleOAuthError("not_configured")
         setup = self.setup()
@@ -115,15 +122,18 @@ class GoogleOAuthManager:
             raise GoogleOAuthError("unsupported_redirect_uri")
         if not setup["callback_host_matches_frontend"]:
             raise GoogleOAuthError("callback_host_mismatch")
+        required_scope = WRITE_SCOPE if write_access else READ_SCOPE
+        requested_scopes = ("openid", "email", required_scope)
         state, binding, nonce, verifier = (secrets.token_urlsafe(48) for _ in range(4))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         session.execute(delete(GoogleOAuthPending).where(GoogleOAuthPending.expires_at < datetime.now(UTC)))
         session.add(GoogleOAuthPending(state_hash=_hash(state), binding_hash=_hash(binding),
-                    ciphertext=self.cipher.encrypt({"verifier": verifier, "nonce": nonce}),
+                    ciphertext=self.cipher.encrypt({"verifier": verifier, "nonce": nonce,
+                                                    "required_scope": required_scope, "return_to": return_to}),
                     expires_at=datetime.now(UTC) + timedelta(seconds=PENDING_TTL)))
         session.commit()
         params = {"client_id": self.settings.google_oauth_client_id, "redirect_uri": self.settings.google_oauth_redirect_uri,
-                  "response_type": "code", "scope": " ".join(SCOPES), "state": state, "nonce": nonce,
+                  "response_type": "code", "scope": " ".join(requested_scopes), "state": state, "nonce": nonce,
                   "code_challenge": challenge, "code_challenge_method": "S256", "access_type": "offline",
                   "prompt": "consent", "include_granted_scopes": "false"}
         return f"{AUTHORIZE_URL}?{urlencode(params)}", binding
@@ -163,9 +173,11 @@ class GoogleOAuthManager:
                     or not secrets.compare_digest(str(claims.get("nonce", "")), secret["nonce"])):
                 raise GoogleOAuthError("invalid_identity")
             # OAuth permits omitting scope when it matches the requested grant.
-            scopes = tokens.get("scope", " ".join(SCOPES)).split()
+            required_scope = secret.get("required_scope", READ_SCOPE)
+            scopes = tokens.get("scope", f"openid email {required_scope}").split()
             normalized = {"email" if scope == "https://www.googleapis.com/auth/userinfo.email" else scope for scope in scopes}
-            if not set(SCOPES).issubset(normalized) or not claims.get("sub"):
+            allowed_sheets = {WRITE_SCOPE} if required_scope == WRITE_SCOPE else {READ_SCOPE, WRITE_SCOPE}
+            if not {"openid", "email"}.issubset(normalized) or not allowed_sheets.intersection(normalized):
                 raise GoogleOAuthError("missing_scope")
             if not tokens.get("access_token") or not tokens.get("refresh_token"):
                 raise GoogleOAuthError("missing_refresh_token")
@@ -197,15 +209,20 @@ class GoogleOAuthManager:
         conn.access_expires_at, conn.last_error_code = expires, None
         audit_log_handler.record(session, "user", "google_oauth.connect", "google_oauth_connections:1", {"scopes": scopes})
         session.commit()
+        conn._google_return_to = secret.get("return_to", "finance")
         return conn
 
-    def get_credentials(self, session: Session) -> Credentials | None:
+    def get_credentials(self, session: Session, require_write: bool = False) -> Credentials | None:
         conn = session.scalar(select(GoogleOAuthConnection).where(GoogleOAuthConnection.id == 1).with_for_update()
                               .execution_options(populate_existing=True))
         if conn is None:
+            if require_write:
+                raise GoogleOAuthError("write_access_required")
             return None  # Existing explicitly configured service-account/ADC deployments remain supported.
         if conn.status != "connected" or not conn.ciphertext:
             raise GoogleOAuthError("needs_reauth" if conn.status == "needs_reauth" else "disconnected")
+        if require_write and WRITE_SCOPE not in conn.scopes:
+            raise GoogleOAuthError("write_access_required")
         if not self.configured:
             raise GoogleOAuthError("not_configured")
         try:

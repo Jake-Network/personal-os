@@ -1,5 +1,6 @@
 """Google authorization for Sheets; credentials never leave the backend."""
 from urllib.parse import urlsplit
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -25,17 +26,18 @@ def _check_origin(request: Request) -> None:
         raise HTTPException(403, "Cross-site request is not allowed")
 
 
-@router.get("/status")
+@router.get("/status", operation_id="get_google_status")
 def get_status(response: Response, session: Session = Depends(get_session)):
     response.headers["Cache-Control"] = "no-store"
     return google_oauth_manager.status(session)
 
 
-@router.post("/login")
-def start_login(request: Request, response: Response, session: Session = Depends(get_session)):
+@router.post("/login", operation_id="start_google_login")
+def start_login(request: Request, response: Response, write_access: bool = False,
+                return_to: Literal["finance", "holdings"] = "finance", session: Session = Depends(get_session)):
     _check_origin(request)
     try:
-        authorize_url, binding = google_oauth_manager.start_login(session)
+        authorize_url, binding = google_oauth_manager.start_login(session, write_access=write_access, return_to=return_to)
     except GoogleOAuthError as exc:
         raise HTTPException(400, exc.code) from exc
     response.headers["Cache-Control"] = "no-store"
@@ -47,13 +49,15 @@ def start_login(request: Request, response: Response, session: Session = Depends
 
 @router.get("/callback", include_in_schema=False)
 async def callback(request: Request, session: Session = Depends(get_session)):
-    result = "error"
+    result, target = "error", "/finance"
     try:
-        await google_oauth_manager.handle_callback(session, dict(request.query_params), request.cookies.get(COOKIE))
+        conn = await google_oauth_manager.handle_callback(session, dict(request.query_params), request.cookies.get(COOKIE))
         result = "connected"
+        target = {"finance": "/finance", "holdings": "/data/holdings"}.get(
+            getattr(conn, "_google_return_to", "finance"), "/finance")
     except Exception:
         session.rollback()
-    response = RedirectResponse(f"{settings.frontend_url.rstrip('/')}/finance?google_oauth={result}", status_code=303)
+    response = RedirectResponse(f"{settings.frontend_url.rstrip('/')}{target}?google_oauth={result}", status_code=303)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.delete_cookie(COOKIE, path=COOKIE_PATH, httponly=True, samesite="lax",
@@ -61,7 +65,7 @@ async def callback(request: Request, session: Session = Depends(get_session)):
     return response
 
 
-@router.post("/disconnect", status_code=204)
+@router.post("/disconnect", status_code=204, operation_id="disconnect_google")
 async def disconnect(request: Request, response: Response, session: Session = Depends(get_session)):
     _check_origin(request)
     await google_oauth_manager.disconnect(session)

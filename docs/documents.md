@@ -46,7 +46,7 @@ DenseCore 임베딩 응답의 `model` 필드는 요청을 그대로 돌려주므
 
 Qwen3-Embedding-0.6B Q8_0의 실제 Docker·API·PostgreSQL 실행 결과와 품질 한계는 [E2E 평가 보고서](evaluations/densecore-qwen3-rag-2026-10-18.md)에 있습니다. 이 검증에는 DenseCore의 계산 그래프 등록, EOS 메타데이터, Qwen3 RoPE 수정이 포함되므로 같은 모델 이름을 쓰는 기존 이미지가 동일하게 동작한다고 가정하면 안 됩니다.
 
-DB 이미지는 기존 `postgres:17-alpine`과 같은 Alpine/musl 기반에 고정된 pgvector 소스를 빌드해 추가합니다. 런타임은 커밋된 Alembic revision만 적용하며 스키마를 자동 생성하거나 이력을 자동 stamp하지 않습니다. 이전 Alembic head `0004_portfolio_identity` 또는 문서 기능 head `6581e3048ce0`에서 업그레이드할 수 있습니다. 이력이 없는 기존 DB에는 아래 명시적 전환 절차를 사용합니다. 이미 Debian/glibc 이미지로 초기화한 볼륨은 Alpine에 직접 연결하지 말고 아래 이미지 전환 절차를 먼저 읽으세요.
+DB 이미지는 기존 `postgres:17-alpine`과 같은 Alpine/musl 기반에 고정된 pgvector 소스를 빌드해 추가합니다. 앱 시작 시에는 빈 DB만 커밋된 Alembic revision으로 만들고, 테이블이 있는 기존 DB는 변경·마이그레이션·stamp하지 않습니다(head보다 뒤처지면 경고만 남깁니다). 기존 DB 업그레이드는 `uv run python -m app.modules.database.migration_manager --apply`로 명시적으로 실행합니다([Finance 문서](finance.md#database-upgrades)). 문서 기능 branch와 `0005_manual_value_history`는 `0006_merge_documents_value_history`에서 합쳐집니다. 이력이 없는 기존 DB에는 아래 명시적 전환 절차를 사용합니다. 이미 Debian/glibc 이미지로 초기화한 볼륨은 Alpine에 직접 연결하지 말고 아래 이미지 전환 절차를 먼저 읽으세요.
 
 ```sh
 make db-current db-history db-check COMPOSE='docker compose --env-file docker/.env -f docker/docker-compose.yml'
@@ -56,7 +56,7 @@ make db-current db-history db-check COMPOSE='docker compose --env-file docker/.e
 
 ## 기존 create_all DB의 명시적 전환
 
-테이블은 있지만 Alembic 이력이 없는 DB에서 앱은 baseline DDL을 재실행하지 않고 전환 안내와 함께 중단합니다. 먼저 기존 DB와 OAuth 암호화 키·`app_data`를 백업하고 쓰기를 중지합니다. 앱을 띄우지 않아도 일회성 컨테이너로 검사할 수 있습니다. 새 의존성이 들어간 앱 이미지를 먼저 빌드하세요.
+테이블은 있지만 Alembic 이력이 없는 DB는 앱이 그대로 사용하며 baseline DDL을 실행하지 않습니다. 먼저 기존 DB와 OAuth 암호화 키·`app_data`를 백업하고 쓰기를 중지합니다. 앱을 띄우지 않아도 일회성 컨테이너로 검사할 수 있습니다. 새 의존성이 들어간 앱 이미지를 먼저 빌드하세요.
 
 ```sh
 docker compose --env-file docker/.env -f docker/docker-compose.yml build app

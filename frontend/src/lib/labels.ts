@@ -45,7 +45,7 @@ const FLAG_TEXT: Record<string, string> = {
   net_worth_incomplete: '순자산 계산에서 빠진 항목이 있습니다',
   cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
   monthly_expense_unknown: '월평균 지출 데이터가 없습니다',
-  monthly_expense_partial: '최근 3개월 중 일부 달만 지출 기록이 있습니다',
+  monthly_expense_insufficient_coverage: '최근 3개월 중 일부 달만 지출 기록이 있어 월평균을 확정하지 않았습니다',
   no_holdings: '보유 종목이 없습니다',
   missing_fx: '환율이 없어 원화 환산을 못한 항목이 있습니다',
   news_source_not_configured: '뉴스 소스가 연결되지 않았습니다',
@@ -59,7 +59,11 @@ const FLAG_TEXT: Record<string, string> = {
   no_workout_logs: '최근 운동 기록이 없습니다',
   category_excluded_by_user: '사용자가 공유를 제외한 영역입니다',
   context_text_trimmed: '길이 제한으로 긴 텍스트 일부를 줄였습니다',
-  context_over_budget: 'Context가 길이 제한을 넘었습니다',
+  context_text_omitted: '길이 제한으로 메모 등 자유 텍스트를 뺐습니다',
+  context_rows_omitted: '길이 제한으로 일부 레코드를 뺐습니다 (질문 관련 레코드 우선 유지)',
+  context_section_omitted: '길이 제한으로 우선순위가 낮은 영역을 뺐습니다',
+  context_records_summarized: '길이 제한으로 계산된 수치만 남기고 세부 레코드를 뺐습니다',
+  data_quality_flags_omitted: '반복되는 데이터 경고 일부를 생략했습니다',
 };
 
 // Their backend `detail` is guidance for the model (English); the Korean text above says it all.

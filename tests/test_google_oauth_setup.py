@@ -43,7 +43,8 @@ def test_wsl_frontend_cannot_start_cookie_bound_loopback_callback(session):
         manager.start_login(session)
 
 
-def test_wsl_login_rejection_points_to_the_configured_login_page(client):
+def test_wsl_login_rejection_points_to_the_configured_frontend(client):
+    # The local trust middleware refuses the foreign origin before the router runs.
     response = client.post("/api/finance/google/login", headers={"Origin": "http://172.18.224.169:5173"})
     assert response.status_code == 403
-    assert "http://127.0.0.1:5173/finance" in response.json()["detail"]
+    assert "http://127.0.0.1:5173" in response.json()["detail"]

@@ -28,6 +28,7 @@ from app.modules.crud.finance_handler import (
 from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
 from app.modules.database.model import CalendarEvent, FxRate, Holding
 from app.modules.finance.financial_calculator import financial_calculator
+from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
 from app.schema.context_schema import ToolContext, ToolResult
 from app.schema.finance_schema import FxTable, Position, q2
 from app.modules.context.portfolio_tools import (
@@ -87,13 +88,17 @@ def fx_table(session: Session) -> tuple[FxTable, list[FxRate]]:
 
 
 def _holding_positions(ctx: ToolContext) -> tuple[list[Position], list[Holding], list[dict]]:
+    """Holdings at market value. Never spendable: selling them is the user's decision, not an assumption."""
     holdings = holding_handler.get_all(ctx.session)
+    account_kinds = {a.id: a.kind for a in account_handler.get_all(ctx.session)}
     positions, flags = [], []
     for h in holdings:
+        bucket = holding_bucket(account_kinds.get(h.account_id))
         if h.last_price is None:
-            positions.append(Position(f"holdings:{h.id}", h.symbol, None, h.currency, True, "no_price"))
+            positions.append(Position(f"holdings:{h.id}", h.symbol, None, h.currency, bucket,
+                                      unavailable_reason="no_price"))
             continue
-        positions.append(Position(f"holdings:{h.id}", h.symbol, h.quantity * h.last_price, h.currency, True))
+        positions.append(Position(f"holdings:{h.id}", h.symbol, h.quantity * h.last_price, h.currency, bucket))
         if h.price_as_of is None or ctx.now - _aware(h.price_as_of) > timedelta(days=STALE_PRICE_DAYS):
             flags.append(_flag("stale_price", Category.INVESTMENT, h.symbol))
     return positions, holdings, flags
@@ -119,8 +124,10 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
         if (ctx.today - a.balance_as_of).days > STALE_BALANCE_DAYS:
             flags.append(_flag("stale_balance", Category.FINANCIAL, f"{a.name} as of {a.balance_as_of}"))
 
-    assets = [Position(f"accounts:{a.id}", a.name, a.balance, a.currency, a.is_liquid) for a in accounts]
-    assets += [Position(f"other_assets:{o.id}", o.name, o.value, o.currency, o.is_liquid) for o in others]
+    assets = [Position(f"accounts:{a.id}", a.name, a.balance, a.currency, account_bucket(a.kind),
+                       account_spendable(a.kind, a.is_liquid)) for a in accounts]
+    # Other assets (property, vehicles, severance estimates) are never spendable, whatever is_liquid says.
+    assets += [Position(f"other_assets:{o.id}", o.name, o.value, o.currency, "other") for o in others]
     holding_rows: list[Holding] = []
     if Category.INVESTMENT in ctx.allowed:
         holding_positions, holding_rows, holding_flags = _holding_positions(ctx)
@@ -140,7 +147,8 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
             "accounts": [
                 {"ref": f"accounts:{a.id}", "name": a.name, "institution": a.institution, "kind": a.kind,
                  "currency": a.currency, "balance": str(a.balance), "as_of": a.balance_as_of.isoformat(),
-                 "liquid": a.is_liquid}
+                 "liquid": a.is_liquid, "liquidity_bucket": account_bucket(a.kind),
+                 "spendable": account_spendable(a.kind, a.is_liquid)}
                 for a in accounts
             ],
             "other_assets": [
@@ -182,11 +190,13 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
         [(e.occurred_on, e.amount) for e in usable if e.kind == "expense"], ctx.today)
     income = financial_calculator.monthly_average(
         [(e.occurred_on, e.amount) for e in usable if e.kind == "income"], ctx.today)
-    if not expense["available"]:
+    if expense.get("reason") == "insufficient_coverage":
+        flags.append(_flag("monthly_expense_insufficient_coverage", Category.FINANCIAL,
+                           f"recorded {expense['months_with_data']}/{expense['months_considered']} months; "
+                           "estimate is an assumption, not an observed average"))
+    elif not expense["available"]:
         flags.append(_flag("monthly_expense_unknown", Category.FINANCIAL,
                            "ask the user for monthly spending or state an explicit assumption"))
-    elif expense.get("partial"):
-        flags.append(_flag("monthly_expense_partial", Category.FINANCIAL))
 
     categories: dict[str, Decimal] = {}
     for e in usable:
@@ -447,6 +457,16 @@ def get_profile(ctx: ToolContext) -> ToolResult:
         refs=[{"table": "personal_memories", "id": m.id, "updated_at": _iso(m.confirmed_at)} for m in memories],
         source_updated_at=_latest(*(m.confirmed_at for m in memories)),
     )
+
+
+def derive_cash_runway(data: dict) -> dict | None:
+    """Runway from the accounts and cashflow sections; None unless both were collected."""
+    accounts, cashflow = data.get("get_accounts_summary"), data.get("get_cashflow_summary")
+    if accounts is None or cashflow is None:
+        return None
+    worth = accounts.get("computed", {}).get("net_worth")
+    return {**financial_calculator.cash_runway(worth, cashflow.get("monthly_expense")),
+            "computed_by": "FinancialCalculator"}
 
 
 Tool = Callable[[ToolContext], ToolResult]

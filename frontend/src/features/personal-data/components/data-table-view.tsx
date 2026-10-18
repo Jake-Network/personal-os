@@ -17,12 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { financeApi } from '@/features/finance/api';
+import { SheetsHoldingsView } from '@/features/holdings/holdings-view';
 
 import { RESOURCE_API, type Row } from '../api/resource-api';
 import { RESOURCES, enumLabel, fieldLabel } from '../consts/resources';
 import { useSchemaFields } from '../hooks/use-schema-fields';
 import type { FieldSpec } from '../utils/schema-fields';
 import { DataForm } from './data-form';
+import { HISTORY_RESOURCES, ValueHistoryDialog } from './value-history-dialog';
 
 const MONEY_FIELDS = new Set(['balance', 'value', 'amount', 'monthly_payment', 'avg_cost', 'last_price']);
 const NUMERIC_FIELDS = new Set([
@@ -48,10 +50,15 @@ function cell(row: Row, col: string, field?: FieldSpec): string {
 }
 
 export function DataTableView({ resource }: { resource: string }) {
+  return resource === 'holdings' ? <SheetsHoldingsView /> : <LegacyDataTableView resource={resource} />;
+}
+
+function LegacyDataTableView({ resource }: { resource: string }) {
   const meta = RESOURCES.find(r => r.name === resource);
   const api = RESOURCE_API[resource];
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Row | 'new' | null>(null);
+  const [historyOf, setHistoryOf] = useState<Row | null>(null);
   const sheetResource = ['accounts', 'holdings', 'fx-rates', 'other-assets', 'liabilities'].includes(resource);
   const sheets = useQuery({ queryKey: ['finance', 'settings'], queryFn: financeApi.settings, enabled: sheetResource });
   const readOnly = sheetResource && (sheets.isPending || !!sheets.error || !!sheets.data?.spreadsheet_id);
@@ -133,6 +140,11 @@ export function DataTableView({ resource }: { resource: string }) {
                   </TableCell>
                 ))}
                 <TableCell className='whitespace-nowrap text-right'>
+                  {HISTORY_RESOURCES.has(resource) && (
+                    <Button size='sm' variant='ghost' onClick={() => setHistoryOf(row)}>
+                      이력
+                    </Button>
+                  )}
                   <Button size='sm' variant='ghost' disabled={readOnly} onClick={() => setEditing(row)}>
                     수정
                   </Button>
@@ -171,6 +183,15 @@ export function DataTableView({ resource }: { resource: string }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {historyOf && (
+        <ValueHistoryDialog
+          resource={resource}
+          id={historyOf.id}
+          label={String(historyOf.name ?? historyOf.symbol ?? meta.label)}
+          onClose={() => setHistoryOf(null)}
+        />
+      )}
     </PageContainer>
   );
 }

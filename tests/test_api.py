@@ -51,3 +51,17 @@ def test_dashboard_summary_uses_backend_calculation(client):
 def test_timestamps_are_serialized_with_utc_offset(client):
     conv = client.post("/api/advisor/conversations", json={"title": "t"}).json()
     assert conv["created_at"].endswith(("Z", "+00:00"))
+
+
+def test_openapi_operation_ids_are_unique():
+    # orval names client functions by operationId; a duplicate silently drops one of the endpoints.
+    import warnings
+
+    from app.main import app
+
+    app.openapi_schema = None
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        spec = app.openapi()
+    ids = [op["operationId"] for path in spec["paths"].values() for op in path.values()]
+    assert len(ids) == len(set(ids))

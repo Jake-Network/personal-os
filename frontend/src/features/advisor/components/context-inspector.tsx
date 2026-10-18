@@ -87,6 +87,13 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
             </div>
           );
         })}
+        {!!data.history_withheld_messages && (
+          <div className='mt-2 text-xs text-faint'>
+            이전 대화 {data.history_withheld_messages}개 메시지는 공유 제외된 영역(
+            {(data.history_withheld_categories ?? []).map(c => CATEGORY_LABEL[c as Category] ?? c).join(', ')})의 정보를 담고 있을 수 있어 AI에
+            전달하지 않습니다.
+          </div>
+        )}
       </Section>
 
       {flags.length > 0 && (

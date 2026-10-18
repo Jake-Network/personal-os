@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.modules.database import db
 from app.modules.llm.errors import AdvisorError
+from app.modules.security.local_trust_middleware import LocalTrustMiddleware
 from app.router import (
     advisor_router,
     ai_provider_router,
@@ -53,6 +54,8 @@ def _operation_id(route: APIRoute) -> str:
 
 app = FastAPI(title="Personal OS", version="0.2.0", lifespan=lifespan, generate_unique_id_function=_operation_id)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_url], allow_methods=["*"], allow_headers=["*"])
+# Added last so it runs first: reject rebound hosts and cross-site writes before anything else.
+app.add_middleware(LocalTrustMiddleware, frontend_url=settings.frontend_url, allowed_hosts=settings.allowed_hosts)
 
 
 @app.exception_handler(AdvisorError)

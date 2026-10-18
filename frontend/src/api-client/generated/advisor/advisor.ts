@@ -53,15 +53,15 @@ export const listConversations = (
     params?: ListConversationsParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ConversationItem[]>(
       {url: `/api/advisor/conversations`, method: 'GET',
         params, signal
     },
       options);
     }
-  
+
 
 
 
@@ -71,7 +71,7 @@ export const getListConversationsQueryKey = (params?: ListConversationsParams,) 
     ] as const;
     }
 
-    
+
 export const getListConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<HTTPValidationError>>(params?: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -79,13 +79,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListConversationsQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listConversations>>> = ({ signal }) => listConversations(params, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -124,7 +124,7 @@ export function useListConversations<TData = Awaited<ReturnType<typeof listConve
 
 export function useListConversations<TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<HTTPValidationError>>(
  params?: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListConversationsQueryOptions(params,options)
@@ -146,8 +146,8 @@ export const createConversation = (
     conversationCreate: BodyType<ConversationCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ConversationItem>(
       {url: `/api/advisor/conversations`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -155,7 +155,7 @@ export const createConversation = (
     },
       options);
     }
-  
+
 
 
 export const getCreateConversationMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -169,7 +169,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createConversation>>, {data: BodyType<ConversationCreate>}> = (props) => {
@@ -178,7 +178,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createConversation(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -210,14 +210,14 @@ export const getConversation = (
     conversationId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ConversationDetail>(
       {url: `/api/advisor/conversations/${conversationId}`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -227,7 +227,7 @@ export const getGetConversationQueryKey = (conversationId?: number,) => {
     ] as const;
     }
 
-    
+
 export const getGetConversationQueryOptions = <TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<HTTPValidationError>>(conversationId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -235,13 +235,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getGetConversationQueryKey(conversationId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getConversation>>> = ({ signal }) => getConversation(conversationId, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(conversationId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -280,7 +280,7 @@ export function useGetConversation<TData = Awaited<ReturnType<typeof getConversa
 
 export function useGetConversation<TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<HTTPValidationError>>(
  conversationId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetConversationQueryOptions(conversationId,options)
@@ -301,14 +301,14 @@ export function useGetConversation<TData = Awaited<ReturnType<typeof getConversa
 export const deleteConversation = (
     conversationId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/advisor/conversations/${conversationId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteConversationMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -322,7 +322,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteConversation>>, {conversationId: number}> = (props) => {
@@ -331,13 +331,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteConversation(conversationId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteConversationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteConversation>>>
-    
+
     export type DeleteConversationMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -363,15 +363,15 @@ export const searchMessages = (
     params: SearchMessagesParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<MessageItem[]>(
       {url: `/api/advisor/messages/search`, method: 'GET',
         params, signal
     },
       options);
     }
-  
+
 
 
 
@@ -381,7 +381,7 @@ export const getSearchMessagesQueryKey = (params?: SearchMessagesParams,) => {
     ] as const;
     }
 
-    
+
 export const getSearchMessagesQueryOptions = <TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<HTTPValidationError>>(params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -389,13 +389,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getSearchMessagesQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof searchMessages>>> = ({ signal }) => searchMessages(params, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -434,7 +434,7 @@ export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessag
 
 export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<HTTPValidationError>>(
  params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getSearchMessagesQueryOptions(params,options)
@@ -458,8 +458,8 @@ export const ask = (
     askRequest: BodyType<AskRequest>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<unknown>(
       {url: `/api/advisor/conversations/${conversationId}/messages`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -467,7 +467,7 @@ export const ask = (
     },
       options);
     }
-  
+
 
 
 export const getAskMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -481,7 +481,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof ask>>, {conversationId: number;data: BodyType<AskRequest>}> = (props) => {
@@ -490,7 +490,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  ask(conversationId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -523,8 +523,8 @@ export const previewContext = (
     contextPreviewRequest: BodyType<ContextPreviewRequest>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<unknown>(
       {url: `/api/advisor/context/preview`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -532,7 +532,7 @@ export const previewContext = (
     },
       options);
     }
-  
+
 
 
 export const getPreviewContextMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -546,7 +546,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewContext>>, {data: BodyType<ContextPreviewRequest>}> = (props) => {
@@ -555,7 +555,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  previewContext(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -587,14 +587,14 @@ export const getSnapshot = (
     snapshotId: string,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<SnapshotResponse>(
       {url: `/api/advisor/snapshots/${snapshotId}`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -604,7 +604,7 @@ export const getGetSnapshotQueryKey = (snapshotId?: string,) => {
     ] as const;
     }
 
-    
+
 export const getGetSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof getSnapshot>>, TError = ErrorType<HTTPValidationError>>(snapshotId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSnapshot>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -612,13 +612,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getGetSnapshotQueryKey(snapshotId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getSnapshot>>> = ({ signal }) => getSnapshot(snapshotId, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(snapshotId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSnapshot>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -657,7 +657,7 @@ export function useGetSnapshot<TData = Awaited<ReturnType<typeof getSnapshot>>, 
 
 export function useGetSnapshot<TData = Awaited<ReturnType<typeof getSnapshot>>, TError = ErrorType<HTTPValidationError>>(
  snapshotId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSnapshot>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetSnapshotQueryOptions(snapshotId,options)
@@ -678,14 +678,14 @@ export function useGetSnapshot<TData = Awaited<ReturnType<typeof getSnapshot>>, 
 export const deleteSnapshot = (
     snapshotId: string,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/advisor/snapshots/${snapshotId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteSnapshotMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -699,7 +699,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSnapshot>>, {snapshotId: string}> = (props) => {
@@ -708,13 +708,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteSnapshot(snapshotId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSnapshot>>>
-    
+
     export type DeleteSnapshotMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -741,14 +741,14 @@ export const compareSnapshot = (
     snapshotId: string,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<SnapshotCompareResponse>(
       {url: `/api/advisor/snapshots/${snapshotId}/compare`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -758,7 +758,7 @@ export const getCompareSnapshotQueryKey = (snapshotId?: string,) => {
     ] as const;
     }
 
-    
+
 export const getCompareSnapshotQueryOptions = <TData = Awaited<ReturnType<typeof compareSnapshot>>, TError = ErrorType<HTTPValidationError>>(snapshotId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareSnapshot>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -766,13 +766,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getCompareSnapshotQueryKey(snapshotId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof compareSnapshot>>> = ({ signal }) => compareSnapshot(snapshotId, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(snapshotId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof compareSnapshot>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -811,7 +811,7 @@ export function useCompareSnapshot<TData = Awaited<ReturnType<typeof compareSnap
 
 export function useCompareSnapshot<TData = Awaited<ReturnType<typeof compareSnapshot>>, TError = ErrorType<HTTPValidationError>>(
  snapshotId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof compareSnapshot>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getCompareSnapshotQueryOptions(snapshotId,options)
@@ -833,8 +833,8 @@ export const rateRecommendation = (
     recommendationFeedback: BodyType<RecommendationFeedback>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<unknown>(
       {url: `/api/advisor/recommendations`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -842,7 +842,7 @@ export const rateRecommendation = (
     },
       options);
     }
-  
+
 
 
 export const getRateRecommendationMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -856,7 +856,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof rateRecommendation>>, {data: BodyType<RecommendationFeedback>}> = (props) => {
@@ -865,7 +865,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  rateRecommendation(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -890,4 +890,3 @@ export const useRateRecommendation = <TError = ErrorType<HTTPValidationError>,
 
       return useMutation(mutationOptions, queryClient);
     }
-    

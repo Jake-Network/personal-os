@@ -20,7 +20,8 @@ def ask(session, conversation, message, provider, options=None):
         return [event async for event in advisor_manager.ask(session, conversation, message, options)]
     events = asyncio.run(collect())
     assert events[-1]["type"] == "done"
-    developer = next(item for item in provider.requests[-1].input if item["role"] == "developer")
+    developer = next(item for item in provider.requests[-1].input if item["role"] == "developer"
+                     and item["content"].startswith("Context Package"))
     return json.loads(developer["content"].split("\n", 1)[1])
 
 
@@ -116,7 +117,7 @@ def test_latest_history_and_before_cursor_use_real_id_bounds(seeded, fake_provid
     ask(seeded, conversation, "내 재무 상태 알려줘", fake_provider)
     ask(seeded, conversation, "그럼 6개월이면?", fake_provider)
     messages = message_handler.get_by_conversation(seeded, conversation.id)
-    latest = message_handler.get_history(seeded, conversation.id, None, 2)
-    earlier = message_handler.get_history(seeded, conversation.id, messages[2].id, 20)
+    latest = message_handler.get_replayable_before(seeded, conversation.id, None)[-2:]
+    earlier = message_handler.get_replayable_before(seeded, conversation.id, messages[2].id)
     assert [m.id for m in latest] == [m.id for m in messages[-2:]]
     assert [m.id for m in earlier] == [m.id for m in messages[:2]]

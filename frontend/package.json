@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 5173",
     "lint": "eslint src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "generate-api": "orval --config orval.config.ts",
     "test": "vitest run",
     "test:watch": "vitest"

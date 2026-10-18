@@ -31,7 +31,7 @@ def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
 
 
 @pytest.mark.parametrize('previous_revision', [None, '0004_portfolio_identity', 'head'])
-def test_startup_applies_committed_revisions_and_preserves_existing_rows(tmp_path, monkeypatch, previous_revision):
+def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, monkeypatch, previous_revision):
     from dataclasses import replace
     from fastapi.testclient import TestClient
     from app.modules.database import Database
@@ -53,9 +53,15 @@ def test_startup_applies_committed_revisions_and_preserves_existing_rows(tmp_pat
     monkeypatch.chdir(tmp_path)
     try:
         with TestClient(main.app):
-            assert set(inspect(database.engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
+            tables = set(inspect(database.engine).get_table_names())
             with database.engine.connect() as connection:
-                assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '25ae62365383'
+                version = connection.scalar(text('SELECT version_num FROM alembic_version'))
+            if previous_revision == '0004_portfolio_identity':  # existing databases are never migrated at startup
+                assert version == previous_revision and 'documents' not in tables
+            else:
+                assert tables == set(Base.metadata.tables) | {'alembic_version'}
+                assert version == '0006_merge_documents_value_history'
+            with database.engine.connect() as connection:
                 if previous_revision:
                     assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
     finally:

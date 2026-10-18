@@ -48,15 +48,15 @@ export const listMemories = (
     params?: ListMemoriesParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<MemoryItem[]>(
       {url: `/api/memories`, method: 'GET',
         params, signal
     },
       options);
     }
-  
+
 
 
 
@@ -66,7 +66,7 @@ export const getListMemoriesQueryKey = (params?: ListMemoriesParams,) => {
     ] as const;
     }
 
-    
+
 export const getListMemoriesQueryOptions = <TData = Awaited<ReturnType<typeof listMemories>>, TError = ErrorType<HTTPValidationError>>(params?: ListMemoriesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMemories>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -74,13 +74,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListMemoriesQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listMemories>>> = ({ signal }) => listMemories(params, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMemories>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -119,7 +119,7 @@ export function useListMemories<TData = Awaited<ReturnType<typeof listMemories>>
 
 export function useListMemories<TData = Awaited<ReturnType<typeof listMemories>>, TError = ErrorType<HTTPValidationError>>(
  params?: ListMemoriesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMemories>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListMemoriesQueryOptions(params,options)
@@ -141,8 +141,8 @@ export const createMemory = (
     memoryCreate: BodyType<MemoryCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<MemoryItem>(
       {url: `/api/memories`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -150,7 +150,7 @@ export const createMemory = (
     },
       options);
     }
-  
+
 
 
 export const getCreateMemoryMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -164,7 +164,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMemory>>, {data: BodyType<MemoryCreate>}> = (props) => {
@@ -173,7 +173,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createMemory(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -205,14 +205,14 @@ export const confirmMemory = (
     memoryId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<MemoryItem>(
       {url: `/api/memories/${memoryId}/confirm`, method: 'POST', signal
     },
       options);
     }
-  
+
 
 
 export const getConfirmMemoryMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -226,7 +226,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmMemory>>, {memoryId: number}> = (props) => {
@@ -235,13 +235,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  confirmMemory(memoryId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type ConfirmMemoryMutationResult = NonNullable<Awaited<ReturnType<typeof confirmMemory>>>
-    
+
     export type ConfirmMemoryMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -267,14 +267,14 @@ export const rejectMemory = (
     memoryId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<MemoryItem>(
       {url: `/api/memories/${memoryId}/reject`, method: 'POST', signal
     },
       options);
     }
-  
+
 
 
 export const getRejectMemoryMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -288,7 +288,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectMemory>>, {memoryId: number}> = (props) => {
@@ -297,13 +297,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  rejectMemory(memoryId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type RejectMemoryMutationResult = NonNullable<Awaited<ReturnType<typeof rejectMemory>>>
-    
+
     export type RejectMemoryMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -328,14 +328,14 @@ export const useRejectMemory = <TError = ErrorType<HTTPValidationError>,
 export const deleteMemory = (
     memoryId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/memories/${memoryId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteMemoryMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -349,7 +349,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMemory>>, {memoryId: number}> = (props) => {
@@ -358,13 +358,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteMemory(memoryId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteMemoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMemory>>>
-    
+
     export type DeleteMemoryMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -387,17 +387,17 @@ export const useDeleteMemory = <TError = ErrorType<HTTPValidationError>,
  * @summary List Decisions
  */
 export const listDecisions = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<DecisionItem[]>(
       {url: `/api/decisions`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -407,7 +407,7 @@ export const getListDecisionsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListDecisionsQueryOptions = <TData = Awaited<ReturnType<typeof listDecisions>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDecisions>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -415,13 +415,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListDecisionsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listDecisions>>> = ({ signal }) => listDecisions(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDecisions>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -460,7 +460,7 @@ export function useListDecisions<TData = Awaited<ReturnType<typeof listDecisions
 
 export function useListDecisions<TData = Awaited<ReturnType<typeof listDecisions>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listDecisions>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListDecisionsQueryOptions(options)
@@ -482,8 +482,8 @@ export const createDecision = (
     decisionCreate: BodyType<DecisionCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<DecisionItem>(
       {url: `/api/decisions`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -491,7 +491,7 @@ export const createDecision = (
     },
       options);
     }
-  
+
 
 
 export const getCreateDecisionMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -505,7 +505,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDecision>>, {data: BodyType<DecisionCreate>}> = (props) => {
@@ -514,7 +514,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createDecision(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -547,8 +547,8 @@ export const reviewDecision = (
     decisionReview: BodyType<DecisionReview>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<DecisionItem>(
       {url: `/api/decisions/${entryId}/review`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -556,7 +556,7 @@ export const reviewDecision = (
     },
       options);
     }
-  
+
 
 
 export const getReviewDecisionMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -570,7 +570,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewDecision>>, {entryId: number;data: BodyType<DecisionReview>}> = (props) => {
@@ -579,7 +579,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  reviewDecision(entryId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -604,4 +604,3 @@ export const useReviewDecision = <TError = ErrorType<HTTPValidationError>,
 
       return useMutation(mutationOptions, queryClient);
     }
-    

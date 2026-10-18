@@ -40,17 +40,17 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary Get Privacy
  */
 export const getPrivacy = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<PrivacySettings>(
       {url: `/api/settings/privacy`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -60,7 +60,7 @@ export const getGetPrivacyQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getGetPrivacyQueryOptions = <TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -68,13 +68,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getGetPrivacyQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getPrivacy>>> = ({ signal }) => getPrivacy(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -113,7 +113,7 @@ export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TE
 
 export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetPrivacyQueryOptions(options)
@@ -134,8 +134,8 @@ export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TE
 export const putPrivacy = (
     privacySettings: BodyType<PrivacySettings>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<PrivacySettings>(
       {url: `/api/settings/privacy`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -143,7 +143,7 @@ export const putPrivacy = (
     },
       options);
     }
-  
+
 
 
 export const getPutPrivacyMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -157,7 +157,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof putPrivacy>>, {data: BodyType<PrivacySettings>}> = (props) => {
@@ -166,7 +166,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  putPrivacy(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -191,4 +191,3 @@ export const usePutPrivacy = <TError = ErrorType<HTTPValidationError>,
 
       return useMutation(mutationOptions, queryClient);
     }
-    

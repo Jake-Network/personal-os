@@ -31,7 +31,9 @@ and the exact callback URI to register; no Google tokens or client secret are di
 2. Configure Google Auth Platform branding, audience and data access. For an External
    application in Testing, add your own Google account as a test user. Request
    `https://www.googleapis.com/auth/spreadsheets.readonly` plus the identity scopes
-   `openid` and `email` used to display the connected account.
+   `openid` and `email` used to display the connected account. To enter holdings from
+   Personal OS, also configure `https://www.googleapis.com/auth/spreadsheets`;
+   the holdings page requests this write permission only when you choose to reconnect.
 3. In [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients),
    create an OAuth client with application type **Web application**. Add the authorized
    redirect URI `http://127.0.0.1:8000/api/finance/google/callback` for native local
@@ -96,8 +98,36 @@ Open `/finance`, save the spreadsheet ID (the part between `/d/` and `/edit` in 
 verify current GOOGLEFINANCE retrieval, then synchronize. Manual prices work without
 GOOGLEFINANCE verification. A failed synchronization retains the previous successful
 import, records the error and attempt time, and warns that displayed data may be stale.
-Changing spreadsheet IDs resets verification. Synchronization is an explicit action;
+Changing spreadsheet IDs resets verification. The holdings page refreshes while visible;
 there is no background scheduler or brokerage connection.
+
+## Enter holdings in Personal OS
+
+Open `/data/holdings` at the configured login origin (normally
+`http://127.0.0.1:5173`). Choose the Google write-permission connection and approve it
+with an account that has **Editor** access to the spreadsheet. Existing read-only
+connections and ADC credentials cannot write holdings. Save the private spreadsheet ID
+on `/finance`, then use the holdings page's worksheet preparation action if needed.
+Preparation creates missing tabs, headers and verification formulas; it does not fill
+historical records or declare account coverage complete.
+
+Enter an exchange-qualified ticker such as `NASDAQ:AAPL`, its currency, quantity and
+optional average cost. Saving writes to the authoritative `Holdings` sheet and installs
+current-price and trade-date GOOGLEFINANCE formulas. Foreign currencies receive a current
+KRW FX formula unless a usable current rate is already present. Unsupported tickers can
+use an explicit manual price and its actual date instead.
+
+The visible page synchronizes every 60 seconds; Google recalculates its own formulas,
+and quotes can be delayed up to 20 minutes. Verification must succeed before automatic
+quotes or FX values contribute to valuations. Formula errors and missing values remain
+unavailable; a successful holding save can show a pending quote. Refresh after calculation
+or supply a manual price. Closing the page stops polling.
+
+Stable IDs and audited request IDs make retries safe, and version checks reject stale
+app edits. App writes are serialized, but Sheets has no conditional row-update transaction:
+avoid sorting, inserting or editing spreadsheet rows simultaneously with an app save.
+The editor does not create monthly history from today's holdings or overwrite historical
+closes and FX evidence. Review `Coverage` separately before treating totals as complete.
 
 ## Worksheet format
 
@@ -131,8 +161,9 @@ such as `manual:exchange-close`; use `googlefinance` for current formula values.
 `as_of` in a live holding is the date of the quantity record; `price_as_of` is the market
 date of its quote. A fresh synchronization does not make an old quote fresh. Enter
 unsupported tickers with literal manual prices and their actual price dates. Edit
-synchronized records in Sheets, then synchronize again. Once a spreadsheet is configured,
-legacy account/holding/FX/liability/other-asset editing APIs and forms are read-only.
+synchronized records in Sheets, then synchronize again, or use `/data/holdings` to write
+holdings directly to Sheets. Once a spreadsheet is configured, legacy local
+account/holding/FX/liability/other-asset editing APIs and forms are read-only.
 Existing local records are preserved, but are excluded from Sheets valuations.
 
 For current data, put `current,TRUE,TRUE,TRUE,TRUE` in `Coverage` only after checking that
@@ -209,11 +240,20 @@ read-only history tool makes this distinction and respects financial/investment 
 
 ## Database upgrades
 
-Back up an existing database before migrations. For a new database, run
-`uv run alembic upgrade head` with the same `DATABASE_URL` used by the app. For an existing
-database created by the previous app, first verify that its schema matches the legacy
-baseline, then run `uv run alembic stamp 0001_baseline` followed by
-`uv run alembic upgrade head`. Do not stamp a database whose schema has not been checked.
-Native development still creates missing tables
-for convenience; migration files are the managed upgrade path. Use a dedicated disposable
+The app never migrates an existing database on startup; it uses the database as it is (an empty
+database is built from the committed migrations) and logs a warning when the schema is behind head. Upgrading is an explicit command run with the same
+`DATABASE_URL` / `PERSONAL_OS_DATA_DIR` as the app:
+
+```bash
+uv run python -m app.modules.database.migration_manager          # show the plan, change nothing
+uv run python -m app.modules.database.migration_manager --apply  # back up, then migrate
+```
+
+For a database created by an earlier version (no `alembic_version` table), its tables and columns
+are compared with the schema of every migration revision. Only an exact match is stamped; the
+append-only triggers that startup never installs are then added and the remaining migrations run.
+If nothing matches exactly, the command lists the differences and changes nothing. SQLite files are
+copied to `<file>.bak-<UTC timestamp>` before any change; back up PostgreSQL yourself
+(`pg_dump`). Migrations only add tables, columns, indexes, triggers and history rows; existing rows
+are never rewritten. `uv run alembic upgrade head` still works for databases already under Alembic. Use a dedicated disposable
 database for tests because the test fixtures drop application tables.

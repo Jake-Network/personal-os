@@ -38,6 +38,9 @@ export interface InspectorData {
   source_updated_at: Record<string, string | null>;
   record_references: RecordRef[];
   data_quality_flags: DataFlag[];
+  /** Earlier messages not replayed because they may hold data from a now-excluded category. */
+  history_withheld_messages?: number;
+  history_withheld_categories?: string[];
 }
 
 export type InspectorMode = 'preview' | 'answer' | 'snapshot';

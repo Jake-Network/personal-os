@@ -31,17 +31,17 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary Summary
  */
 export const summary = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<unknown>(
       {url: `/api/dashboard/summary`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -51,7 +51,7 @@ export const getSummaryQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getSummaryQueryOptions = <TData = Awaited<ReturnType<typeof summary>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof summary>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -59,13 +59,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getSummaryQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof summary>>> = ({ signal }) => summary(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof summary>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -104,7 +104,7 @@ export function useSummary<TData = Awaited<ReturnType<typeof summary>>, TError =
 
 export function useSummary<TData = Awaited<ReturnType<typeof summary>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof summary>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getSummaryQueryOptions(options)

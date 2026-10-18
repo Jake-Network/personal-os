@@ -7,13 +7,14 @@ not modelled: nothing that must never reach an LLM is stored here in the first p
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.database.model.base import Base, UTCDateTime, utcnow
 
 Money = Numeric(20, 4)
 Qty = Numeric(24, 8)
+HistoryValue = Numeric(28, 8)  # holds both Money and Qty without rounding
 
 
 class TimestampMixin:
@@ -69,6 +70,35 @@ class Holding(TimestampMixin, Base):
     avg_cost: Mapped[Decimal | None] = mapped_column(Money)
     last_price: Mapped[Decimal | None] = mapped_column(Money)
     price_as_of: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class ManualValueChange(Base):
+    """Append-only log of manual financial edits: account balances, holding quantities, average cost.
+
+    `accounts` and `holdings` stay the current-state read path; this table keeps every value the
+    user entered so an edit never silently overwrites history. `record_id` has no foreign key so the
+    history outlives a deleted row. A difference between two rows is a recorded edit, not a
+    realized investment return: a quantity change may be a buy, a sell, a transfer or a typo fix.
+    """
+
+    __tablename__ = "manual_value_changes"
+    __table_args__ = (Index("ix_manual_value_changes_record", "table_name", "record_id", "id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(32))  # accounts | holdings
+    record_id: Mapped[int] = mapped_column(Integer)
+    field: Mapped[str] = mapped_column(String(32))  # balance | quantity | avg_cost
+    old_value: Mapped[Decimal | None] = mapped_column(HistoryValue)
+    new_value: Mapped[Decimal | None] = mapped_column(HistoryValue)
+    currency: Mapped[str] = mapped_column(String(3))
+    as_of: Mapped[date] = mapped_column(Date)
+    change_kind: Mapped[str] = mapped_column(String(16))  # baseline | create | update | delete
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+@event.listens_for(ManualValueChange, "before_update")
+@event.listens_for(ManualValueChange, "before_delete")
+def reject_value_change_mutation(mapper, connection, target):
+    raise ValueError("Manual value history is append-only")
 
 
 class FxRate(Base):

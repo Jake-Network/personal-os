@@ -26,6 +26,10 @@ class Settings:
     # Loopback redirect must be 127.0.0.1 and path /auth/callback; only the port may vary.
     oauth_callback_port: int = field(default_factory=lambda: int(_env("OAUTH_CALLBACK_PORT", "8000")))
     frontend_url: str = field(default_factory=lambda: _env("FRONTEND_URL", "http://127.0.0.1:5173"))
+    # Extra hostnames the API answers to besides loopback and IP literals (comma-separated).
+    # Not authentication: see LocalTrustMiddleware before exposing the API anywhere.
+    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(
+        h for h in _env("PERSONAL_OS_ALLOWED_HOSTS", "").split(",") if h.strip()))
     chatgpt_usage_url: str = field(default_factory=lambda: _env("CHATGPT_USAGE_URL", "https://chatgpt.com/#settings"))
 
     openai_api_base: str = "https://api.openai.com/v1"

@@ -1,9 +1,10 @@
 """PRD AdvisorService: query → route → context snapshot → LLM → persisted, grounded answer (§3.1)."""
 
 import asyncio
+import logging
 import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from app.modules.advisor.prompts import SYSTEM_PROMPT
 from app.modules.advisor.proposal_manager import proposal_manager
 from app.modules.context.context_builder_manager import ContextBuilderManager, context_builder_manager
 from app.modules.context.context_routing_manager import ContextRoutingManager, context_routing_manager
+from app.modules.context.history_privacy_manager import HistoryDecision, history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.context.entity_routing import matched_investment_terms
 from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
@@ -24,23 +26,28 @@ from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
 from app.schema.advisor_schema import AskOptions
-from app.schema.context_schema import RouteDecision
+from app.schema.context_schema import ContextPackage, RouteDecision
 from app.schema.llm_schema import LLMRequest
 
+logger = logging.getLogger(__name__)
 
 DOCUMENT_REFERENCE_PATTERN = re.compile(r"\[(document_chunks:\d+)\]")
+HISTORICAL_EVIDENCE_RULES = (
+    "\n- historical=true 문서 발췌와 과거 대화는 당시 맥락입니다. 현재 사실이나 숫자로 재사용하지 말고, "
+    "최신 구조화 데이터와 현재 검색 결과를 우선하며 과거 근거임을 밝히세요. 과거 대화의 [과거 문서 근거 생략]은 "
+    "예산 때문에 원문 근거를 생략했다는 뜻입니다. 현재 제공된 ref만 인용하고 생략된 근거로 현재 사실을 단정하지 마세요."
+)
 
 
 @dataclass
 class PreparedHistory:
     messages: list[AdvisorMessage]
     snapshots: dict[str, ContextSnapshot]
+    withheld_ids: list[int] = field(default_factory=list)
+    withheld_categories: list[str] = field(default_factory=list)
 
-    def llm_messages(self, available_refs):
-        """Keep dialogue continuity while omitting citations outside the excerpt budget."""
-        return [{"role": message.role, "content": DOCUMENT_REFERENCE_PATTERN.sub(
-            lambda match: match.group(0) if match.group(1) in available_refs else "[과거 문서 근거 생략]",
-            message.content)} for message in self.messages]
+    def decision(self) -> HistoryDecision:
+        return HistoryDecision(self.messages, self.withheld_ids, self.withheld_categories)
 
     def citations(self, message):
         snapshot = self.snapshots.get(message.context_snapshot_id)
@@ -57,6 +64,11 @@ class AdvisorManager:
 
     # --- routing / context ---------------------------------------------------------------
 
+    @staticmethod
+    def excluded(session: Session, options: AskOptions) -> frozenset[Category]:
+        """Saved privacy settings plus this request's exclusions."""
+        return privacy_manager.get_excluded(session) | options.exclude
+
     def route(self, session: Session, query: str, conversation: AdvisorConversation | None,
               options: AskOptions) -> RouteDecision:
         previous = None
@@ -64,7 +76,7 @@ class AdvisorManager:
             last = context_snapshot_handler.get_latest_for_conversation(session, conversation.id)
             if last is not None:
                 previous = frozenset(Category(c) for c in [*last.context_categories, *last.excluded_categories])
-        excluded = privacy_manager.get_excluded(session) | options.exclude
+        excluded = self.excluded(session, options)
         route = self.router.route(
             query,
             excluded=excluded,
@@ -90,9 +102,9 @@ class AdvisorManager:
         ids = last.payload.get("document_scope", {}).get("document_ids", []) if last else []
         return replace(options, document_ids=tuple(ids))
 
-    @staticmethod
-    def sharing_exclusions(session, options):
-        excluded = privacy_manager.get_excluded(session) | options.exclude
+    def sharing_exclusions(self, session, options):
+        """The policy for the whole outbound request: an explicit category override also restricts sharing."""
+        excluded = self.excluded(session, options)
         if options.categories is not None:
             excluded |= frozenset(ALL_CATEGORIES) - (options.categories | {Category.PROFILE})
         return excluded
@@ -136,8 +148,11 @@ class AdvisorManager:
         return route, package, options, prepared
 
     def prepare_history(self, session, conversation_id, before_id, options, excluded=None):
-        history = message_handler.get_history(session, conversation_id, before_id, self.history_limit)
+        """Replayable messages minus category-tainted turns (cumulative), then per-turn document checks."""
         excluded = self.sharing_exclusions(session, options) if excluded is None else excluded
+        replayable = message_handler.get_replayable_before(session, conversation_id, before_id)
+        decision = history_privacy_manager.filter(session, replayable, excluded)
+        history = decision.kept[-self.history_limit:] if self.history_limit else []
         snapshot_ids = {m.context_snapshot_id for m in history if m.context_snapshot_id}
         snapshots = {s.id: s for s in session.scalars(select(ContextSnapshot).where(
             ContextSnapshot.id.in_(snapshot_ids)))} if snapshot_ids else {}
@@ -172,7 +187,7 @@ class AdvisorManager:
                    for c in evidence):
                 continue
             safe.append(message)
-        return PreparedHistory(safe, snapshots)
+        return PreparedHistory(safe, snapshots, decision.withheld_ids, decision.withheld_categories)
 
     def safe_history(self, session, conversation_id, before_id, route, options):
         """Compatibility helper: automatic retrieval topics do not restrict sharing."""
@@ -181,11 +196,42 @@ class AdvisorManager:
     def preview(self, session: Session, query: str, conversation: AdvisorConversation | None,
                 options: AskOptions) -> dict:
         """What would be shared for this question — nothing is persisted or sent."""
-        route, package, _ = self.build_context(session, query, conversation, options)
+        route, package, _, prepared = self.prepare_context(session, query, conversation, options)
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
-        return {"route": route.as_dict(), **inspector}
+        return {"route": route.as_dict(), **inspector, **prepared.decision().as_dict()}
+
+    @staticmethod
+    def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
+                      excluded: frozenset[Category]) -> LLMRequest:
+        """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
+        leaked = excluded & {Category(c) for c in package.categories}
+        if leaked:  # a builder bug must fail closed, never send
+            raise AdvisorError("context package contains an excluded category", provider_code="privacy_violation")
+        notes = []
+        if history.withheld_ids:
+            notes.append({"role": "developer", "content": (
+                f"이전 대화 메시지 {len(history.withheld_ids)}개는 사용자가 현재 공유를 막은 범주"
+                f"({', '.join(history.withheld_categories)})의 정보를 포함할 수 있어 전달하지 않았습니다. "
+                "그 내용을 기억하거나 추측하지 말고, 필요하면 사용자에게 다시 물어보세요.")})
+        available_refs = {c["ref"] for c in package.payload.get("data", {}).get("search_documents", {})
+                          .get("citations", [])}
+        # Keep dialogue continuity while omitting citations outside the excerpt budget.
+        replayed = ({"role": m.role, "content": DOCUMENT_REFERENCE_PATTERN.sub(
+            lambda match: match.group(0) if match.group(1) in available_refs else "[과거 문서 근거 생략]",
+            m.content)} for m in history.kept)
+        return LLMRequest(
+            model=model,
+            instructions=SYSTEM_PROMPT + HISTORICAL_EVIDENCE_RULES,
+            input=[
+                *notes,
+                *replayed,
+                {"role": "developer",
+                 "content": "Context Package (JSON, 사용자 데이터의 유일한 출처):\n" + package.text},
+                {"role": "user", "content": query},
+            ],
+        )
 
     # --- conversations -------------------------------------------------------------------
 
@@ -216,33 +262,28 @@ class AdvisorManager:
     async def ask(self, session: Session, conversation: AdvisorConversation, query: str,
                   options: AskOptions | None = None) -> AsyncIterator[dict]:
         options = options or AskOptions()
-        route, package, options, prepared = await asyncio.to_thread(
-            self.prepare_context, session, query, conversation, options, conversation.id)
+        try:
+            route, package, options, prepared = await asyncio.to_thread(
+                self.prepare_context, session, query, conversation, options, conversation.id)
+        except AdvisorError as exc:  # e.g. over the context budget: nothing is sent or stored
+            session.rollback()
+            yield {"type": "error", **exc.as_dict()}
+            return
+        excluded = self.sharing_exclusions(session, options)
         user_msg = message_handler.create(session, {
             "conversation_id": conversation.id, "role": "user", "content": query,
             "context_snapshot_id": package.snapshot_id,
         })
         conversation_handler.update(session, conversation, {"updated_at": datetime.now(UTC)})
         session.commit()
-        yield {"type": "context", "route": route.as_dict(), **package.inspector()}
+        yield {"type": "context", "route": route.as_dict(), **package.inspector(), **prepared.decision().as_dict()}
 
         model = None
         parts: list[str] = []
         settled = False
         try:
             model = await self.gateway.resolve_model(session)
-            available_refs = {c["ref"] for c in package.payload.get("data", {}).get("search_documents", {}).get("citations", [])}
-            history = prepared.llm_messages(available_refs)
-            request = LLMRequest(
-                model=model,
-                instructions=SYSTEM_PROMPT + "\n- historical=true 문서 발췌와 과거 대화는 당시 맥락입니다. 현재 사실이나 숫자로 재사용하지 말고, 최신 구조화 데이터와 현재 검색 결과를 우선하며 과거 근거임을 밝히세요. 과거 대화의 [과거 문서 근거 생략]은 예산 때문에 원문 근거를 생략했다는 뜻입니다. 현재 제공된 ref만 인용하고 생략된 근거로 현재 사실을 단정하지 마세요.",
-                input=[
-                    *history,
-                    {"role": "developer",
-                     "content": "Context Package (JSON, 사용자 데이터의 유일한 출처):\n" + package.text},
-                    {"role": "user", "content": query},
-                ],
-            )
+            request = self.build_request(model, prepared.decision(), package, query, excluded)
             async for event in self.gateway.stream(session, request, conversation_id=conversation.id):
                 if event.type == "delta" and event.text:
                     parts.append(event.text)
@@ -252,6 +293,13 @@ class AdvisorManager:
             self._settle_unanswered(session, conversation.id, user_msg, parts, package.snapshot_id, model)
             settled = True
             yield {"type": "error", **exc.as_dict()}
+            return
+        except Exception:  # transport errors, malformed provider payloads: fail the turn, not the stream
+            logger.exception("advisor turn failed for conversation %s", conversation.id)
+            session.rollback()
+            self._settle_unanswered(session, conversation.id, user_msg, parts, package.snapshot_id, model)
+            settled = True
+            yield {"type": "error", **AdvisorError().as_dict()}
             return
         finally:
             if not settled:  # client went away mid-stream (generator closed)

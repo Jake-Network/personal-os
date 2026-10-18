@@ -22,7 +22,7 @@ def test_sheets_accounts_do_not_leak_excluded_investment(session, monkeypatch):
     assert "SECRET" not in str(result)
     assert "stock" not in str(result)
     assert result.data["computed"]["net_worth"]["net_worth"] is None
-    assert result.data["computed"]["net_worth"]["liquid_assets"] is None
+    assert result.data["computed"]["net_worth"]["spendable_liquidity"] is None
 
 
 def test_missing_sheets_price_is_not_a_zero_valuation(session, monkeypatch):

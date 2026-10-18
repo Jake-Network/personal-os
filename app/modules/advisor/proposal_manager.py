@@ -9,6 +9,7 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.modules.crud.advisor_handler import personal_memory_handler, proposed_action_handler
@@ -77,7 +78,7 @@ class ProposalManager:
         return actions, mems
 
     def approve(self, session: Session, proposal_id: int) -> dict:
-        proposal = self._pending(session, proposal_id)
+        proposal = self._claim(session, proposal_id, "approved")
         try:
             ref = self._apply(session, proposal.action, proposal.payload)
         except ProposalError:
@@ -86,26 +87,37 @@ class ProposalManager:
         except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
             session.rollback()
             raise ProposalError(f"invalid payload: {exc}") from exc
-        proposed_action_handler.update(session, proposal, {
-            "status": "approved", "decided_at": datetime.now(UTC), "result_ref": ref,
-        })
+        proposed_action_handler.update(session, proposal, {"result_ref": ref})
         audit_log_handler.record(session, "user", f"approve.{proposal.action}", f"proposed_actions:{proposal.id}",
                                  {"payload": proposal.payload, "result": ref})
         session.commit()
         return ref
 
     def reject(self, session: Session, proposal_id: int) -> None:
-        proposal = self._pending(session, proposal_id)
-        proposed_action_handler.update(session, proposal, {"status": "rejected", "decided_at": datetime.now(UTC)})
+        proposal = self._claim(session, proposal_id, "rejected")
         audit_log_handler.record(session, "user", f"reject.{proposal.action}", f"proposed_actions:{proposal.id}")
         session.commit()
 
     @staticmethod
-    def _pending(session: Session, proposal_id: int) -> ProposedAction:
+    def _claim(session: Session, proposal_id: int, status: str) -> ProposedAction:
+        """Atomically move pending → `status` inside the caller's transaction.
+
+        A conditional UPDATE (… WHERE status = 'pending') is the concurrency control: of two
+        concurrent approvals exactly one matches the row, the other waits on the row/DB write lock
+        and then matches nothing. A check-then-write would let both read `pending` and apply twice.
+        If applying fails, the caller rolls back and the proposal is pending again.
+        """
+        try:
+            claimed = proposed_action_handler.transition(session, proposal_id, "pending", status,
+                                                         {"decided_at": datetime.now(UTC)})
+        except OperationalError as exc:  # SQLite: the other approval holds the write lock past the timeout
+            session.rollback()
+            raise ProposalError("proposal is being decided by another request") from exc
         proposal = proposed_action_handler.get(session, proposal_id)
         if proposal is None:
             raise LookupError("proposal not found")
-        if proposal.status != "pending":
+        if not claimed:
+            session.rollback()
             raise ProposalError(f"proposal already {proposal.status}")
         return proposal
 
