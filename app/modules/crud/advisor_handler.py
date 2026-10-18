@@ -50,6 +50,17 @@ class ContextSnapshotHandler(BaseCRUDHandler[ContextSnapshot]):
     def __init__(self):
         super().__init__(ContextSnapshot)
 
+    def create(self, session, obj_in):
+        from app.modules.documents.evidence import record_references
+        snapshot = super().create(session, obj_in)
+        record_references(session, snapshot)
+        return snapshot
+
+    def delete(self, session, obj):
+        session.execute(update(AdvisorMessage).where(AdvisorMessage.context_snapshot_id == obj.id)
+                        .values(context_purged=True))
+        super().delete(session, obj)
+
     def get_latest_for_conversation(self, session: Session, conversation_id: int) -> ContextSnapshot | None:
         return self.get_first_with_filters(session, [ContextSnapshot.conversation_id == conversation_id],
                                            [ContextSnapshot.generated_at.desc()])

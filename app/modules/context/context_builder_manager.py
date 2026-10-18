@@ -15,14 +15,15 @@ from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_curren
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.modules.llm.errors import AdvisorError
-from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext
+from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext, data_citations
+from app.modules.documents.retrieval import cited_categories, library_fingerprint, search as search_documents
 
 
 # Budget reduction order, lowest priority first. Sections not listed rank just above news.
 SECTION_PRIORITY: tuple[str, ...] = (
     "get_relevant_news", "get_market_data", "get_health_summary", "get_monthly_asset_history", "get_tasks",
-    "get_calendar_events", "get_interview_schedule", "get_goals", "get_job_applications", "get_profile",
-    "get_portfolio_summary", "get_cashflow_summary", "get_accounts_summary", "cash_runway",
+    "search_documents", "get_calendar_events", "get_interview_schedule", "get_goals", "get_job_applications",
+    "get_profile", "get_portfolio_summary", "get_cashflow_summary", "get_accounts_summary", "cash_runway",
 )
 # Calculated numbers the advisor must never lose; their row lists can be summarized, the section cannot go.
 ESSENTIAL_SECTIONS = frozenset({"get_accounts_summary", "get_cashflow_summary", "get_portfolio_summary",
@@ -56,10 +57,10 @@ class ContextBuilderManager:
     def __init__(self, char_limit: int):
         self.char_limit = char_limit
 
-    def collect(self, session: Session, selected: frozenset[Category], now: datetime
+    def collect(self, session: Session, selected: frozenset[Category], now: datetime, *, query: str = ""
                 ) -> tuple[dict, list[dict], list[dict], dict]:
         """Run every tool for the selected categories. Returns (data, refs, flags, freshness)."""
-        ctx = ToolContext(session=session, now=now, allowed=selected)
+        ctx = ToolContext(session=session, now=now, allowed=selected, query=query)
         data: dict[str, dict] = {}
         refs: list[dict] = []
         flags: list[dict] = []
@@ -82,15 +83,57 @@ class ContextBuilderManager:
         return data, refs, flags, freshness
 
     def build(self, session: Session, route: RouteDecision, conversation_id: int | None = None,
-              now: datetime | None = None, query: str = "") -> ContextPackage:
+              now: datetime | None = None, *, query: str = "", document_search: bool = True,
+              document_ids: tuple[int, ...] = (), excluded: frozenset[Category] = frozenset(),
+              inherited_citations: list[dict] | None = None,
+              inherited_dependencies: list[dict] | None = None,
+              inherited_categories: list[str] | None = None,
+              history_document_refs: set[str] | None = None,
+              inherited_unknown: bool = False) -> ContextPackage:
         now = now or datetime.now(UTC)
-        data, refs, flags, freshness = self.collect(session, route.selected, now)
+        data, refs, flags, freshness = self.collect(session, route.selected, now, query=query)
+        if document_search and query:
+            # Every shared document is searchable whatever the question's topic; privacy exclusions still apply.
+            result = search_documents(session, query, None, document_ids or None,
+                                      excluded_categories=excluded)
+            # Empty libraries keep the original stable structured-data snapshot.
+            if result.data.get("citations") or any(f["code"] != "no_matching_documents" for f in result.flags) or document_ids:
+                data["search_documents"] = result.data
+                refs += [{**r, "category": "documents", "tool": "search_documents"} for r in result.refs]
+                flags += result.flags
+                freshness["documents"] = result.source_updated_at.isoformat() if result.source_updated_at else None
         for category in sorted(route.excluded):
             flags.append({"code": "category_excluded_by_user", "category": category.value})
-        # The snapshot id and timestamp are added to the payload after fitting; reserve their room.
-        overhead = len(json.dumps({"context_snapshot_id": str(uuid.uuid4()), "generated_at": now.isoformat()},
-                                  separators=(",", ":"))) - 1
+        dependencies = {(d["document_id"], d["version_id"]): d for d in inherited_dependencies or []}
+        direct = data_citations(data)
+        for citation in [*direct, *(inherited_citations or [])]:
+            key = (citation["document_id"], citation["version_id"])
+            dependencies[key] = {"document_id": key[0], "version_id": key[1]}
+        if inherited_citations:
+            section = data.setdefault("search_documents", {"query": query, "citations": []})
+            combined = {c["ref"]: dict(c) for c in direct}
+            for citation in inherited_citations:
+                combined.setdefault(citation["ref"], dict(citation))
+            section["citations"] = list(combined.values())[:10]
+        self._fit_document_excerpts(data)
+        cited = data_citations(data)
+        available_refs = {c["ref"] for c in cited}
+        document_categories = cited_categories(session, cited)
+        omitted_refs = (history_document_refs or set()) - available_refs
+        if omitted_refs:
+            flags.append({"code": "history_document_evidence_omitted", "category": "documents",
+                          "count": len(omitted_refs)})
+        # The snapshot id, timestamp and query are added to the payload after fitting; reserve their room.
+        overhead = len(json.dumps({"context_snapshot_id": str(uuid.uuid4()), "generated_at": now.isoformat(),
+                                   "request_query": query}, ensure_ascii=False, separators=(",", ":"))) - 1
         body = self._fit({
+            "document_dependencies": list(dependencies.values()),
+            # Topics of the cited documents: history privacy taints the turn with them too.
+            "document_categories": document_categories,
+            "history_categories": sorted(set(inherited_categories or []) - {c.value for c in route.selected}),
+            **({"history_provenance_unknown": True} if inherited_unknown else {}),
+            "document_scope": {"enabled": document_search, "document_ids": list(document_ids),
+                               "excluded_categories": sorted(str(c) for c in excluded)},
             "base_currency": base_currency(session),
             "categories": sorted(c.value for c in route.selected),
             "excluded_categories": sorted(c.value for c in route.excluded),
@@ -115,7 +158,8 @@ class ContextBuilderManager:
             "record_references": refs,
             "source_updated_at": freshness,
             "data_quality_flags": body["data_quality_flags"],
-            "payload": {"context_snapshot_id": snapshot_id, "generated_at": now.isoformat(), **body},
+            "payload": {"context_snapshot_id": snapshot_id, "generated_at": now.isoformat(),
+                        "request_query": query, **body},
             "content_hash": content_hash,
         })
         return _package(snapshot, reused=False)
@@ -124,11 +168,30 @@ class ContextBuilderManager:
                              now: datetime | None = None) -> tuple[list[str], list[str]]:
         """Which tool sections differ between a past snapshot and today's data (same categories)."""
         selected = frozenset(Category(c) for c in snapshot.context_categories)
-        current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC))
+        current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC),
+                                      query=snapshot.payload.get("request_query", ""))
         past = snapshot.payload.get("data", {})
+        if "search_documents" in past:
+            scope = snapshot.payload.get("document_scope", {})
+            fingerprint = library_fingerprint(session, None, scope.get("document_ids"),
+                                              scope.get("excluded_categories", []))
+            previous = past["search_documents"]
+            current["search_documents"] = previous if previous.get("source_fingerprint") == fingerprint else {
+                "source_fingerprint": fingerprint,
+            }
         changed = sorted(k for k in set(past) | set(current) if _hash(past.get(k) or {}) != _hash(current.get(k) or {}))
         unchanged = sorted(k for k in set(past) & set(current) if k not in changed)
         return changed, unchanged
+
+    def _fit_document_excerpts(self, data: dict) -> None:
+        citations = data_citations(data)
+        if not citations:
+            return
+        budget = min(10_000, max(0, self.char_limit // 2))
+        allowance = budget // len(citations)
+        for citation in citations:
+            if len(citation["text"]) > allowance:
+                citation["text"] = citation["text"][:allowance] + " …[truncated]"
 
     def _fit(self, body: dict, query: str = "", limit: int | None = None) -> dict:
         """Enforce the serialized size budget deterministically, reporting everything left out.

@@ -44,15 +44,15 @@ export const listProposals = (
     params?: ListProposalsParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ProposalItem[]>(
       {url: `/api/proposals`, method: 'GET',
         params, signal
     },
       options);
     }
-  
+
 
 
 
@@ -62,7 +62,7 @@ export const getListProposalsQueryKey = (params?: ListProposalsParams,) => {
     ] as const;
     }
 
-    
+
 export const getListProposalsQueryOptions = <TData = Awaited<ReturnType<typeof listProposals>>, TError = ErrorType<HTTPValidationError>>(params?: ListProposalsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProposals>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -70,13 +70,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListProposalsQueryKey(params);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listProposals>>> = ({ signal }) => listProposals(params, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProposals>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -115,7 +115,7 @@ export function useListProposals<TData = Awaited<ReturnType<typeof listProposals
 
 export function useListProposals<TData = Awaited<ReturnType<typeof listProposals>>, TError = ErrorType<HTTPValidationError>>(
  params?: ListProposalsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listProposals>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListProposalsQueryOptions(params,options)
@@ -137,14 +137,14 @@ export const approve = (
     proposalId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<unknown>(
       {url: `/api/proposals/${proposalId}/approve`, method: 'POST', signal
     },
       options);
     }
-  
+
 
 
 export const getApproveMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -158,7 +158,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof approve>>, {proposalId: number}> = (props) => {
@@ -167,13 +167,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  approve(proposalId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type ApproveMutationResult = NonNullable<Awaited<ReturnType<typeof approve>>>
-    
+
     export type ApproveMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -199,14 +199,14 @@ export const reject = (
     proposalId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/proposals/${proposalId}/reject`, method: 'POST', signal
     },
       options);
     }
-  
+
 
 
 export const getRejectMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -220,7 +220,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof reject>>, {proposalId: number}> = (props) => {
@@ -229,13 +229,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  reject(proposalId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type RejectMutationResult = NonNullable<Awaited<ReturnType<typeof reject>>>
-    
+
     export type RejectMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -254,4 +254,3 @@ export const useReject = <TError = ErrorType<HTTPValidationError>,
 
       return useMutation(mutationOptions, queryClient);
     }
-    

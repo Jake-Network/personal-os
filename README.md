@@ -54,8 +54,10 @@ hosts (DNS-rebinding defence, including the `X-Forwarded-Host` set by the Next.j
 cross-site state-changing requests. Remote deployment needs real authentication and TLS first; see
 [Reliability review](docs/RELIABILITY_REVIEW.md#remote-deployment-requirements).
 Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
-Startup uses the existing database as it is: it only creates tables that do not exist yet and never
-alters, migrates or stamps existing ones. Schema upgrades are an explicit step:
+Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
+Startup builds an empty database from the committed migrations and uses an existing database as it
+is: it never alters, migrates or stamps one that already has tables (it logs a warning when the
+schema is behind the Alembic head). Schema upgrades are an explicit step:
 `uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
 performs it, after backing up a SQLite file (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
@@ -114,17 +116,28 @@ frontend/src/
 
 ## How a question is answered
 
-1. `ContextRoutingManager` maps the question to categories with deterministic keyword rules
-   (e.g. 퇴사 → Financial + Career + Goals), with no LLM call. A follow-up with no keywords reuses the previous turn's categories.
+1. `ContextRoutingManager` selects the needed categories with deterministic rules, without an LLM call.
+   Financial overviews and resignation planning include holdings as well as cash and debt.
+   Explicit follow-ups such as `그럼 6개월이면?` retain the previous subject even when new time keywords match.
+   Registered holding names/tickers can identify an investment question without a generic stock keyword;
+   a company name alone does not add investments to an explicit interview or calendar question.
 2. Categories the user excluded (saved in `/api/settings/privacy` or set for one request) are removed before any data is read.
 3. Read-only tools query the DB through handlers. Numbers (net worth, monthly spending, weights,
    calendar conflicts) are computed in the backend with Decimal. Missing or stale data becomes a `data_quality_flags` entry, never a guessed value.
+   Calendar queries use the requested day, week, month or ISO date instead of always reading the next 14 days.
+   The package records the actual half-open range and timezone (currently UTC in production).
+   Unsupported or multiple date ranges are flagged and only the reported default range is queried.
 4. The package is frozen as a `context_snapshots` row (refs, source freshness, exact payload). If
    nothing changed since the previous turn, that snapshot is reused.
 5. The request goes to `POST /v1/responses` with `store:false, stream:true`. The answer streams back
    as SSE (`context` → `delta`* → `done` | `error`).
 6. ```` ```proposal ```` / ```` ```memory ```` blocks in the answer become pending items. Nothing is applied
    until `/api/proposals/{id}/approve` or `/api/memories/{id}/confirm`. Financial tables have no proposal path.
+
+`tests/test_advisor_product_context.py` checks the complete advisor request path against synthetic personal data:
+exact net worth, refreshed balances on follow-ups, registered stock mentions, requested calendar periods,
+sharing exclusions and bounded history queries. The generation provider is captured in these tests;
+they verify what data reaches the model, rather than grading a live model's free-form answers.
 
 ## Sign in with ChatGPT
 
@@ -138,3 +151,8 @@ scope, and revoked-token errors each map to a distinct user message. None of the
 
 The API-key and Codex app-server providers exist behind the same interface. They become active only via
 `PUT /api/settings/ai-provider/selection`. The Codex app-server provider is a stub.
+
+## 개인 문서 상담
+
+PDF·Markdown·TXT를 주제별로 올리고 기존 DB 정보와 함께 상담할 수 있습니다.
+문서함, 로컬 임베딩, pgvector 설정과 공유·삭제 동작은 [문서 상담 가이드](docs/documents.md)를 참고하세요.

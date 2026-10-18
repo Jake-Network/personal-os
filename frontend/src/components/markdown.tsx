@@ -12,9 +12,17 @@ const REF_HREF = '#ref:';
 const withRefLinks = (text: string) =>
   text.replace(REF, (_m, table: string, id: string) => `[${TABLE_LABEL[table] ?? table} #${id}](${REF_HREF}${table}:${id})`);
 
-const components: Components = {
+const componentsFor = (onDocumentRef?: (ref: string) => void): Components => ({
   a: ({ href, children }) =>
-    href?.startsWith(REF_HREF) ? (
+    href?.startsWith(`${REF_HREF}document_chunks:`) ? (
+      <button
+        type='button'
+        className='inline rounded border px-1 text-xs text-primary underline'
+        onClick={() => onDocumentRef?.(href.slice(REF_HREF.length))}
+        title='답변에 사용한 문서 발췌문 보기'>
+        {children}
+      </button>
+    ) : href?.startsWith(REF_HREF) ? (
       <Badge variant='ref' title={`근거 레코드 ${href.slice(REF_HREF.length)}`}>
         {children}
       </Badge>
@@ -23,13 +31,13 @@ const components: Components = {
         {children}
       </a>
     ),
-};
+});
 
 /** Advisor answers. react-markdown never renders raw HTML, so model output cannot inject markup. */
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, onDocumentRef }: { text: string; onDocumentRef?: (ref: string) => void }) {
   return (
     <div className='markdown'>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={componentsFor(onDocumentRef)}>
         {withRefLinks(text)}
       </ReactMarkdown>
     </div>

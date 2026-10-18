@@ -7,7 +7,7 @@ export function optionsFor(base: InspectorData, on: Set<Category>, off: Set<Cate
   if (on.size === 0 || !base.route) return { exclude: [...off] };
   const categories = new Set<Category>([...base.route.requested, ...on]);
   off.forEach(c => categories.delete(c));
-  return { categories: [...categories], exclude: [] };
+  return { categories: [...categories], exclude: [...off] };
 }
 
 /** Proposal/memory blocks are rendered as cards, not as raw JSON. */
@@ -19,6 +19,8 @@ export function snapshotToInspector(s: SnapshotResponse): InspectorData {
   return {
     context_snapshot_id: s.context_snapshot_id,
     context_reused: false,
+    document_citations:
+      (s.payload as { data?: { search_documents?: { citations?: InspectorData['document_citations'] } } }).data?.search_documents?.citations ?? [],
     categories: s.context_categories,
     excluded_categories: s.excluded_categories,
     source_updated_at: s.source_updated_at as InspectorData['source_updated_at'],

@@ -35,17 +35,17 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary Health
  */
 export const health = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<Health200>(
       {url: `/api/health`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -55,7 +55,7 @@ export const getHealthQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getHealthQueryOptions = <TData = Awaited<ReturnType<typeof health>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof health>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -63,13 +63,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getHealthQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof health>>> = ({ signal }) => health(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof health>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -108,7 +108,7 @@ export function useHealth<TData = Awaited<ReturnType<typeof health>>, TError = E
 
 export function useHealth<TData = Awaited<ReturnType<typeof health>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof health>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHealthQueryOptions(options)

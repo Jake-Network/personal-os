@@ -68,17 +68,17 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary List Items
  */
 export const listAccounts = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<AccountItem[]>(
       {url: `/api/data/accounts`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -88,7 +88,7 @@ export const getListAccountsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListAccountsQueryOptions = <TData = Awaited<ReturnType<typeof listAccounts>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -96,13 +96,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListAccountsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccounts>>> = ({ signal }) => listAccounts(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -141,7 +141,7 @@ export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>
 
 export function useListAccounts<TData = Awaited<ReturnType<typeof listAccounts>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListAccountsQueryOptions(options)
@@ -163,8 +163,8 @@ export const createAccounts = (
     accountCreate: BodyType<AccountCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<AccountItem>(
       {url: `/api/data/accounts`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -172,7 +172,7 @@ export const createAccounts = (
     },
       options);
     }
-  
+
 
 
 export const getCreateAccountsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -186,7 +186,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAccounts>>, {data: BodyType<AccountCreate>}> = (props) => {
@@ -195,7 +195,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createAccounts(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -227,8 +227,8 @@ export const updateAccounts = (
     itemId: number,
     accountCreate: BodyType<AccountCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<AccountItem>(
       {url: `/api/data/accounts/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -236,7 +236,7 @@ export const updateAccounts = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateAccountsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -250,7 +250,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAccounts>>, {itemId: number;data: BodyType<AccountCreate>}> = (props) => {
@@ -259,7 +259,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateAccounts(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -290,14 +290,14 @@ export const useUpdateAccounts = <TError = ErrorType<HTTPValidationError>,
 export const deleteAccounts = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/accounts/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteAccountsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -311,7 +311,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAccounts>>, {itemId: number}> = (props) => {
@@ -320,13 +320,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteAccounts(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteAccountsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAccounts>>>
-    
+
     export type DeleteAccountsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -353,14 +353,14 @@ export const historyAccounts = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ValueChangeItem[]>(
       {url: `/api/data/accounts/${itemId}/history`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -370,7 +370,7 @@ export const getHistoryAccountsQueryKey = (itemId?: number,) => {
     ] as const;
     }
 
-    
+
 export const getHistoryAccountsQueryOptions = <TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -378,13 +378,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getHistoryAccountsQueryKey(itemId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof historyAccounts>>> = ({ signal }) => historyAccounts(itemId, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(itemId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -423,7 +423,7 @@ export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAcco
 
 export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAccounts>>, TError = ErrorType<HTTPValidationError>>(
  itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyAccounts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHistoryAccountsQueryOptions(itemId,options)
@@ -442,17 +442,17 @@ export function useHistoryAccounts<TData = Awaited<ReturnType<typeof historyAcco
  * @summary List Items
  */
 export const listOtherAssets = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<OtherAssetItem[]>(
       {url: `/api/data/other-assets`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -462,7 +462,7 @@ export const getListOtherAssetsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListOtherAssetsQueryOptions = <TData = Awaited<ReturnType<typeof listOtherAssets>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOtherAssets>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -470,13 +470,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListOtherAssetsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listOtherAssets>>> = ({ signal }) => listOtherAssets(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOtherAssets>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -515,7 +515,7 @@ export function useListOtherAssets<TData = Awaited<ReturnType<typeof listOtherAs
 
 export function useListOtherAssets<TData = Awaited<ReturnType<typeof listOtherAssets>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOtherAssets>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListOtherAssetsQueryOptions(options)
@@ -537,8 +537,8 @@ export const createOtherAssets = (
     otherAssetCreate: BodyType<OtherAssetCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<OtherAssetItem>(
       {url: `/api/data/other-assets`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -546,7 +546,7 @@ export const createOtherAssets = (
     },
       options);
     }
-  
+
 
 
 export const getCreateOtherAssetsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -560,7 +560,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOtherAssets>>, {data: BodyType<OtherAssetCreate>}> = (props) => {
@@ -569,7 +569,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createOtherAssets(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -601,8 +601,8 @@ export const updateOtherAssets = (
     itemId: number,
     otherAssetCreate: BodyType<OtherAssetCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<OtherAssetItem>(
       {url: `/api/data/other-assets/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -610,7 +610,7 @@ export const updateOtherAssets = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateOtherAssetsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -624,7 +624,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOtherAssets>>, {itemId: number;data: BodyType<OtherAssetCreate>}> = (props) => {
@@ -633,7 +633,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateOtherAssets(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -664,14 +664,14 @@ export const useUpdateOtherAssets = <TError = ErrorType<HTTPValidationError>,
 export const deleteOtherAssets = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/other-assets/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteOtherAssetsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -685,7 +685,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteOtherAssets>>, {itemId: number}> = (props) => {
@@ -694,13 +694,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteOtherAssets(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteOtherAssetsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteOtherAssets>>>
-    
+
     export type DeleteOtherAssetsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -723,17 +723,17 @@ export const useDeleteOtherAssets = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listLiabilities = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<LiabilityItem[]>(
       {url: `/api/data/liabilities`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -743,7 +743,7 @@ export const getListLiabilitiesQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListLiabilitiesQueryOptions = <TData = Awaited<ReturnType<typeof listLiabilities>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listLiabilities>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -751,13 +751,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListLiabilitiesQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listLiabilities>>> = ({ signal }) => listLiabilities(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLiabilities>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -796,7 +796,7 @@ export function useListLiabilities<TData = Awaited<ReturnType<typeof listLiabili
 
 export function useListLiabilities<TData = Awaited<ReturnType<typeof listLiabilities>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listLiabilities>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListLiabilitiesQueryOptions(options)
@@ -818,8 +818,8 @@ export const createLiabilities = (
     liabilityCreate: BodyType<LiabilityCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<LiabilityItem>(
       {url: `/api/data/liabilities`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -827,7 +827,7 @@ export const createLiabilities = (
     },
       options);
     }
-  
+
 
 
 export const getCreateLiabilitiesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -841,7 +841,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLiabilities>>, {data: BodyType<LiabilityCreate>}> = (props) => {
@@ -850,7 +850,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createLiabilities(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -882,8 +882,8 @@ export const updateLiabilities = (
     itemId: number,
     liabilityCreate: BodyType<LiabilityCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<LiabilityItem>(
       {url: `/api/data/liabilities/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -891,7 +891,7 @@ export const updateLiabilities = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateLiabilitiesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -905,7 +905,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLiabilities>>, {itemId: number;data: BodyType<LiabilityCreate>}> = (props) => {
@@ -914,7 +914,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateLiabilities(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -945,14 +945,14 @@ export const useUpdateLiabilities = <TError = ErrorType<HTTPValidationError>,
 export const deleteLiabilities = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/liabilities/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteLiabilitiesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -966,7 +966,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLiabilities>>, {itemId: number}> = (props) => {
@@ -975,13 +975,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteLiabilities(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteLiabilitiesMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLiabilities>>>
-    
+
     export type DeleteLiabilitiesMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -1004,17 +1004,17 @@ export const useDeleteLiabilities = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listHoldings = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<HoldingItem[]>(
       {url: `/api/data/holdings`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -1024,7 +1024,7 @@ export const getListHoldingsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListHoldingsQueryOptions = <TData = Awaited<ReturnType<typeof listHoldings>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -1032,13 +1032,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListHoldingsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listHoldings>>> = ({ signal }) => listHoldings(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listHoldings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1077,7 +1077,7 @@ export function useListHoldings<TData = Awaited<ReturnType<typeof listHoldings>>
 
 export function useListHoldings<TData = Awaited<ReturnType<typeof listHoldings>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListHoldingsQueryOptions(options)
@@ -1099,8 +1099,8 @@ export const createHoldings = (
     holdingCreate: BodyType<HoldingCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<HoldingItem>(
       {url: `/api/data/holdings`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -1108,7 +1108,7 @@ export const createHoldings = (
     },
       options);
     }
-  
+
 
 
 export const getCreateHoldingsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1122,7 +1122,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createHoldings>>, {data: BodyType<HoldingCreate>}> = (props) => {
@@ -1131,7 +1131,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createHoldings(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1163,8 +1163,8 @@ export const updateHoldings = (
     itemId: number,
     holdingCreate: BodyType<HoldingCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<HoldingItem>(
       {url: `/api/data/holdings/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -1172,7 +1172,7 @@ export const updateHoldings = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateHoldingsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1186,7 +1186,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateHoldings>>, {itemId: number;data: BodyType<HoldingCreate>}> = (props) => {
@@ -1195,7 +1195,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateHoldings(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1226,14 +1226,14 @@ export const useUpdateHoldings = <TError = ErrorType<HTTPValidationError>,
 export const deleteHoldings = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/holdings/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteHoldingsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1247,7 +1247,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteHoldings>>, {itemId: number}> = (props) => {
@@ -1256,13 +1256,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteHoldings(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteHoldingsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteHoldings>>>
-    
+
     export type DeleteHoldingsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -1289,14 +1289,14 @@ export const historyHoldings = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<ValueChangeItem[]>(
       {url: `/api/data/holdings/${itemId}/history`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -1306,7 +1306,7 @@ export const getHistoryHoldingsQueryKey = (itemId?: number,) => {
     ] as const;
     }
 
-    
+
 export const getHistoryHoldingsQueryOptions = <TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -1314,13 +1314,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getHistoryHoldingsQueryKey(itemId);
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof historyHoldings>>> = ({ signal }) => historyHoldings(itemId, requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, enabled: !!(itemId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1359,7 +1359,7 @@ export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHold
 
 export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHoldings>>, TError = ErrorType<HTTPValidationError>>(
  itemId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof historyHoldings>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHistoryHoldingsQueryOptions(itemId,options)
@@ -1378,17 +1378,17 @@ export function useHistoryHoldings<TData = Awaited<ReturnType<typeof historyHold
  * @summary List Items
  */
 export const listFxRates = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<FxRateItem[]>(
       {url: `/api/data/fx-rates`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -1398,7 +1398,7 @@ export const getListFxRatesQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListFxRatesQueryOptions = <TData = Awaited<ReturnType<typeof listFxRates>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listFxRates>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -1406,13 +1406,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListFxRatesQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listFxRates>>> = ({ signal }) => listFxRates(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFxRates>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1451,7 +1451,7 @@ export function useListFxRates<TData = Awaited<ReturnType<typeof listFxRates>>, 
 
 export function useListFxRates<TData = Awaited<ReturnType<typeof listFxRates>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listFxRates>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListFxRatesQueryOptions(options)
@@ -1473,8 +1473,8 @@ export const createFxRates = (
     fxRateCreate: BodyType<FxRateCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<FxRateItem>(
       {url: `/api/data/fx-rates`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -1482,7 +1482,7 @@ export const createFxRates = (
     },
       options);
     }
-  
+
 
 
 export const getCreateFxRatesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1496,7 +1496,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFxRates>>, {data: BodyType<FxRateCreate>}> = (props) => {
@@ -1505,7 +1505,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createFxRates(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1537,8 +1537,8 @@ export const updateFxRates = (
     itemId: number,
     fxRateCreate: BodyType<FxRateCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<FxRateItem>(
       {url: `/api/data/fx-rates/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -1546,7 +1546,7 @@ export const updateFxRates = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateFxRatesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1560,7 +1560,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateFxRates>>, {itemId: number;data: BodyType<FxRateCreate>}> = (props) => {
@@ -1569,7 +1569,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateFxRates(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1600,14 +1600,14 @@ export const useUpdateFxRates = <TError = ErrorType<HTTPValidationError>,
 export const deleteFxRates = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/fx-rates/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteFxRatesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1621,7 +1621,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteFxRates>>, {itemId: number}> = (props) => {
@@ -1630,13 +1630,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteFxRates(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteFxRatesMutationResult = NonNullable<Awaited<ReturnType<typeof deleteFxRates>>>
-    
+
     export type DeleteFxRatesMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -1659,17 +1659,17 @@ export const useDeleteFxRates = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listCashflowEntries = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CashflowEntryItem[]>(
       {url: `/api/data/cashflow-entries`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -1679,7 +1679,7 @@ export const getListCashflowEntriesQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListCashflowEntriesQueryOptions = <TData = Awaited<ReturnType<typeof listCashflowEntries>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCashflowEntries>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -1687,13 +1687,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListCashflowEntriesQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listCashflowEntries>>> = ({ signal }) => listCashflowEntries(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCashflowEntries>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -1732,7 +1732,7 @@ export function useListCashflowEntries<TData = Awaited<ReturnType<typeof listCas
 
 export function useListCashflowEntries<TData = Awaited<ReturnType<typeof listCashflowEntries>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCashflowEntries>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCashflowEntriesQueryOptions(options)
@@ -1754,8 +1754,8 @@ export const createCashflowEntries = (
     cashflowEntryCreate: BodyType<CashflowEntryCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CashflowEntryItem>(
       {url: `/api/data/cashflow-entries`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -1763,7 +1763,7 @@ export const createCashflowEntries = (
     },
       options);
     }
-  
+
 
 
 export const getCreateCashflowEntriesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1777,7 +1777,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCashflowEntries>>, {data: BodyType<CashflowEntryCreate>}> = (props) => {
@@ -1786,7 +1786,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createCashflowEntries(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1818,8 +1818,8 @@ export const updateCashflowEntries = (
     itemId: number,
     cashflowEntryCreate: BodyType<CashflowEntryCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<CashflowEntryItem>(
       {url: `/api/data/cashflow-entries/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -1827,7 +1827,7 @@ export const updateCashflowEntries = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateCashflowEntriesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1841,7 +1841,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCashflowEntries>>, {itemId: number;data: BodyType<CashflowEntryCreate>}> = (props) => {
@@ -1850,7 +1850,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateCashflowEntries(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -1881,14 +1881,14 @@ export const useUpdateCashflowEntries = <TError = ErrorType<HTTPValidationError>
 export const deleteCashflowEntries = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/cashflow-entries/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteCashflowEntriesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -1902,7 +1902,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCashflowEntries>>, {itemId: number}> = (props) => {
@@ -1911,13 +1911,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteCashflowEntries(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteCashflowEntriesMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCashflowEntries>>>
-    
+
     export type DeleteCashflowEntriesMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -1940,17 +1940,17 @@ export const useDeleteCashflowEntries = <TError = ErrorType<HTTPValidationError>
  * @summary List Items
  */
 export const listPlannedExpenses = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<PlannedExpenseItem[]>(
       {url: `/api/data/planned-expenses`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -1960,7 +1960,7 @@ export const getListPlannedExpensesQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListPlannedExpensesQueryOptions = <TData = Awaited<ReturnType<typeof listPlannedExpenses>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlannedExpenses>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -1968,13 +1968,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListPlannedExpensesQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlannedExpenses>>> = ({ signal }) => listPlannedExpenses(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlannedExpenses>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -2013,7 +2013,7 @@ export function useListPlannedExpenses<TData = Awaited<ReturnType<typeof listPla
 
 export function useListPlannedExpenses<TData = Awaited<ReturnType<typeof listPlannedExpenses>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlannedExpenses>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListPlannedExpensesQueryOptions(options)
@@ -2035,8 +2035,8 @@ export const createPlannedExpenses = (
     plannedExpenseCreate: BodyType<PlannedExpenseCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<PlannedExpenseItem>(
       {url: `/api/data/planned-expenses`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -2044,7 +2044,7 @@ export const createPlannedExpenses = (
     },
       options);
     }
-  
+
 
 
 export const getCreatePlannedExpensesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2058,7 +2058,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPlannedExpenses>>, {data: BodyType<PlannedExpenseCreate>}> = (props) => {
@@ -2067,7 +2067,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createPlannedExpenses(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2099,8 +2099,8 @@ export const updatePlannedExpenses = (
     itemId: number,
     plannedExpenseCreate: BodyType<PlannedExpenseCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<PlannedExpenseItem>(
       {url: `/api/data/planned-expenses/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -2108,7 +2108,7 @@ export const updatePlannedExpenses = (
     },
       options);
     }
-  
+
 
 
 export const getUpdatePlannedExpensesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2122,7 +2122,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePlannedExpenses>>, {itemId: number;data: BodyType<PlannedExpenseCreate>}> = (props) => {
@@ -2131,7 +2131,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updatePlannedExpenses(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2162,14 +2162,14 @@ export const useUpdatePlannedExpenses = <TError = ErrorType<HTTPValidationError>
 export const deletePlannedExpenses = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/planned-expenses/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeletePlannedExpensesMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2183,7 +2183,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePlannedExpenses>>, {itemId: number}> = (props) => {
@@ -2192,13 +2192,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deletePlannedExpenses(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeletePlannedExpensesMutationResult = NonNullable<Awaited<ReturnType<typeof deletePlannedExpenses>>>
-    
+
     export type DeletePlannedExpensesMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -2221,17 +2221,17 @@ export const useDeletePlannedExpenses = <TError = ErrorType<HTTPValidationError>
  * @summary List Items
  */
 export const listJobApplications = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<JobApplicationItem[]>(
       {url: `/api/data/job-applications`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -2241,7 +2241,7 @@ export const getListJobApplicationsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListJobApplicationsQueryOptions = <TData = Awaited<ReturnType<typeof listJobApplications>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listJobApplications>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -2249,13 +2249,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListJobApplicationsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobApplications>>> = ({ signal }) => listJobApplications(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listJobApplications>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -2294,7 +2294,7 @@ export function useListJobApplications<TData = Awaited<ReturnType<typeof listJob
 
 export function useListJobApplications<TData = Awaited<ReturnType<typeof listJobApplications>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listJobApplications>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListJobApplicationsQueryOptions(options)
@@ -2316,8 +2316,8 @@ export const createJobApplications = (
     jobApplicationCreate: BodyType<JobApplicationCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<JobApplicationItem>(
       {url: `/api/data/job-applications`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -2325,7 +2325,7 @@ export const createJobApplications = (
     },
       options);
     }
-  
+
 
 
 export const getCreateJobApplicationsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2339,7 +2339,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobApplications>>, {data: BodyType<JobApplicationCreate>}> = (props) => {
@@ -2348,7 +2348,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createJobApplications(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2380,8 +2380,8 @@ export const updateJobApplications = (
     itemId: number,
     jobApplicationCreate: BodyType<JobApplicationCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<JobApplicationItem>(
       {url: `/api/data/job-applications/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -2389,7 +2389,7 @@ export const updateJobApplications = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateJobApplicationsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2403,7 +2403,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateJobApplications>>, {itemId: number;data: BodyType<JobApplicationCreate>}> = (props) => {
@@ -2412,7 +2412,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateJobApplications(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2443,14 +2443,14 @@ export const useUpdateJobApplications = <TError = ErrorType<HTTPValidationError>
 export const deleteJobApplications = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/job-applications/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteJobApplicationsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2464,7 +2464,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteJobApplications>>, {itemId: number}> = (props) => {
@@ -2473,13 +2473,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteJobApplications(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteJobApplicationsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteJobApplications>>>
-    
+
     export type DeleteJobApplicationsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -2502,17 +2502,17 @@ export const useDeleteJobApplications = <TError = ErrorType<HTTPValidationError>
  * @summary List Items
  */
 export const listInterviews = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<InterviewItem[]>(
       {url: `/api/data/interviews`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -2522,7 +2522,7 @@ export const getListInterviewsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListInterviewsQueryOptions = <TData = Awaited<ReturnType<typeof listInterviews>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInterviews>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -2530,13 +2530,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListInterviewsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listInterviews>>> = ({ signal }) => listInterviews(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInterviews>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -2575,7 +2575,7 @@ export function useListInterviews<TData = Awaited<ReturnType<typeof listIntervie
 
 export function useListInterviews<TData = Awaited<ReturnType<typeof listInterviews>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listInterviews>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListInterviewsQueryOptions(options)
@@ -2597,8 +2597,8 @@ export const createInterviews = (
     interviewCreate: BodyType<InterviewCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<InterviewItem>(
       {url: `/api/data/interviews`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -2606,7 +2606,7 @@ export const createInterviews = (
     },
       options);
     }
-  
+
 
 
 export const getCreateInterviewsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2620,7 +2620,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInterviews>>, {data: BodyType<InterviewCreate>}> = (props) => {
@@ -2629,7 +2629,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createInterviews(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2661,8 +2661,8 @@ export const updateInterviews = (
     itemId: number,
     interviewCreate: BodyType<InterviewCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<InterviewItem>(
       {url: `/api/data/interviews/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -2670,7 +2670,7 @@ export const updateInterviews = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateInterviewsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2684,7 +2684,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInterviews>>, {itemId: number;data: BodyType<InterviewCreate>}> = (props) => {
@@ -2693,7 +2693,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateInterviews(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2724,14 +2724,14 @@ export const useUpdateInterviews = <TError = ErrorType<HTTPValidationError>,
 export const deleteInterviews = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/interviews/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteInterviewsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2745,7 +2745,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInterviews>>, {itemId: number}> = (props) => {
@@ -2754,13 +2754,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteInterviews(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteInterviewsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInterviews>>>
-    
+
     export type DeleteInterviewsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -2783,17 +2783,17 @@ export const useDeleteInterviews = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listCareerCriteria = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CareerCriterionItem[]>(
       {url: `/api/data/career-criteria`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -2803,7 +2803,7 @@ export const getListCareerCriteriaQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListCareerCriteriaQueryOptions = <TData = Awaited<ReturnType<typeof listCareerCriteria>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCareerCriteria>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -2811,13 +2811,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListCareerCriteriaQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listCareerCriteria>>> = ({ signal }) => listCareerCriteria(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCareerCriteria>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -2856,7 +2856,7 @@ export function useListCareerCriteria<TData = Awaited<ReturnType<typeof listCare
 
 export function useListCareerCriteria<TData = Awaited<ReturnType<typeof listCareerCriteria>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCareerCriteria>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCareerCriteriaQueryOptions(options)
@@ -2878,8 +2878,8 @@ export const createCareerCriteria = (
     careerCriterionCreate: BodyType<CareerCriterionCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CareerCriterionItem>(
       {url: `/api/data/career-criteria`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -2887,7 +2887,7 @@ export const createCareerCriteria = (
     },
       options);
     }
-  
+
 
 
 export const getCreateCareerCriteriaMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2901,7 +2901,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCareerCriteria>>, {data: BodyType<CareerCriterionCreate>}> = (props) => {
@@ -2910,7 +2910,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createCareerCriteria(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -2942,8 +2942,8 @@ export const updateCareerCriteria = (
     itemId: number,
     careerCriterionCreate: BodyType<CareerCriterionCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<CareerCriterionItem>(
       {url: `/api/data/career-criteria/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -2951,7 +2951,7 @@ export const updateCareerCriteria = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateCareerCriteriaMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -2965,7 +2965,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCareerCriteria>>, {itemId: number;data: BodyType<CareerCriterionCreate>}> = (props) => {
@@ -2974,7 +2974,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateCareerCriteria(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3005,14 +3005,14 @@ export const useUpdateCareerCriteria = <TError = ErrorType<HTTPValidationError>,
 export const deleteCareerCriteria = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/career-criteria/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteCareerCriteriaMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3026,7 +3026,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCareerCriteria>>, {itemId: number}> = (props) => {
@@ -3035,13 +3035,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteCareerCriteria(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteCareerCriteriaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCareerCriteria>>>
-    
+
     export type DeleteCareerCriteriaMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -3064,17 +3064,17 @@ export const useDeleteCareerCriteria = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listCalendarEvents = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CalendarEventItem[]>(
       {url: `/api/data/calendar-events`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -3084,7 +3084,7 @@ export const getListCalendarEventsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListCalendarEventsQueryOptions = <TData = Awaited<ReturnType<typeof listCalendarEvents>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCalendarEvents>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -3092,13 +3092,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListCalendarEventsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listCalendarEvents>>> = ({ signal }) => listCalendarEvents(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCalendarEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -3137,7 +3137,7 @@ export function useListCalendarEvents<TData = Awaited<ReturnType<typeof listCale
 
 export function useListCalendarEvents<TData = Awaited<ReturnType<typeof listCalendarEvents>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listCalendarEvents>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListCalendarEventsQueryOptions(options)
@@ -3159,8 +3159,8 @@ export const createCalendarEvents = (
     calendarEventCreate: BodyType<CalendarEventCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<CalendarEventItem>(
       {url: `/api/data/calendar-events`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -3168,7 +3168,7 @@ export const createCalendarEvents = (
     },
       options);
     }
-  
+
 
 
 export const getCreateCalendarEventsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3182,7 +3182,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCalendarEvents>>, {data: BodyType<CalendarEventCreate>}> = (props) => {
@@ -3191,7 +3191,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createCalendarEvents(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3223,8 +3223,8 @@ export const updateCalendarEvents = (
     itemId: number,
     calendarEventCreate: BodyType<CalendarEventCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<CalendarEventItem>(
       {url: `/api/data/calendar-events/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -3232,7 +3232,7 @@ export const updateCalendarEvents = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateCalendarEventsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3246,7 +3246,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCalendarEvents>>, {itemId: number;data: BodyType<CalendarEventCreate>}> = (props) => {
@@ -3255,7 +3255,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateCalendarEvents(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3286,14 +3286,14 @@ export const useUpdateCalendarEvents = <TError = ErrorType<HTTPValidationError>,
 export const deleteCalendarEvents = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/calendar-events/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteCalendarEventsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3307,7 +3307,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCalendarEvents>>, {itemId: number}> = (props) => {
@@ -3316,13 +3316,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteCalendarEvents(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteCalendarEventsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCalendarEvents>>>
-    
+
     export type DeleteCalendarEventsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -3345,17 +3345,17 @@ export const useDeleteCalendarEvents = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listGoals = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<GoalItem[]>(
       {url: `/api/data/goals`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -3365,7 +3365,7 @@ export const getListGoalsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListGoalsQueryOptions = <TData = Awaited<ReturnType<typeof listGoals>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGoals>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -3373,13 +3373,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListGoalsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listGoals>>> = ({ signal }) => listGoals(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGoals>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -3418,7 +3418,7 @@ export function useListGoals<TData = Awaited<ReturnType<typeof listGoals>>, TErr
 
 export function useListGoals<TData = Awaited<ReturnType<typeof listGoals>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listGoals>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListGoalsQueryOptions(options)
@@ -3440,8 +3440,8 @@ export const createGoals = (
     goalCreate: BodyType<GoalCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<GoalItem>(
       {url: `/api/data/goals`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -3449,7 +3449,7 @@ export const createGoals = (
     },
       options);
     }
-  
+
 
 
 export const getCreateGoalsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3463,7 +3463,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGoals>>, {data: BodyType<GoalCreate>}> = (props) => {
@@ -3472,7 +3472,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createGoals(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3504,8 +3504,8 @@ export const updateGoals = (
     itemId: number,
     goalCreate: BodyType<GoalCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<GoalItem>(
       {url: `/api/data/goals/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -3513,7 +3513,7 @@ export const updateGoals = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateGoalsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3527,7 +3527,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGoals>>, {itemId: number;data: BodyType<GoalCreate>}> = (props) => {
@@ -3536,7 +3536,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateGoals(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3567,14 +3567,14 @@ export const useUpdateGoals = <TError = ErrorType<HTTPValidationError>,
 export const deleteGoals = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/goals/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteGoalsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3588,7 +3588,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteGoals>>, {itemId: number}> = (props) => {
@@ -3597,13 +3597,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteGoals(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteGoalsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteGoals>>>
-    
+
     export type DeleteGoalsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -3626,17 +3626,17 @@ export const useDeleteGoals = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listTasks = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<TaskItem[]>(
       {url: `/api/data/tasks`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -3646,7 +3646,7 @@ export const getListTasksQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListTasksQueryOptions = <TData = Awaited<ReturnType<typeof listTasks>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -3654,13 +3654,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListTasksQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listTasks>>> = ({ signal }) => listTasks(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -3699,7 +3699,7 @@ export function useListTasks<TData = Awaited<ReturnType<typeof listTasks>>, TErr
 
 export function useListTasks<TData = Awaited<ReturnType<typeof listTasks>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListTasksQueryOptions(options)
@@ -3721,8 +3721,8 @@ export const createTasks = (
     taskCreate: BodyType<TaskCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<TaskItem>(
       {url: `/api/data/tasks`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -3730,7 +3730,7 @@ export const createTasks = (
     },
       options);
     }
-  
+
 
 
 export const getCreateTasksMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3744,7 +3744,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTasks>>, {data: BodyType<TaskCreate>}> = (props) => {
@@ -3753,7 +3753,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createTasks(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3785,8 +3785,8 @@ export const updateTasks = (
     itemId: number,
     taskCreate: BodyType<TaskCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<TaskItem>(
       {url: `/api/data/tasks/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -3794,7 +3794,7 @@ export const updateTasks = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateTasksMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3808,7 +3808,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTasks>>, {itemId: number;data: BodyType<TaskCreate>}> = (props) => {
@@ -3817,7 +3817,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateTasks(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -3848,14 +3848,14 @@ export const useUpdateTasks = <TError = ErrorType<HTTPValidationError>,
 export const deleteTasks = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/tasks/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteTasksMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -3869,7 +3869,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTasks>>, {itemId: number}> = (props) => {
@@ -3878,13 +3878,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteTasks(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteTasksMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTasks>>>
-    
+
     export type DeleteTasksMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -3907,17 +3907,17 @@ export const useDeleteTasks = <TError = ErrorType<HTTPValidationError>,
  * @summary List Items
  */
 export const listWorkoutLogs = (
-    
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<WorkoutLogItem[]>(
       {url: `/api/data/workout-logs`, method: 'GET', signal
     },
       options);
     }
-  
+
 
 
 
@@ -3927,7 +3927,7 @@ export const getListWorkoutLogsQueryKey = () => {
     ] as const;
     }
 
-    
+
 export const getListWorkoutLogsQueryOptions = <TData = Awaited<ReturnType<typeof listWorkoutLogs>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkoutLogs>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
@@ -3935,13 +3935,13 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 
   const queryKey =  queryOptions?.queryKey ?? getListWorkoutLogsQueryKey();
 
-  
+
 
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkoutLogs>>> = ({ signal }) => listWorkoutLogs(requestOptions, signal);
 
-      
 
-      
+
+
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkoutLogs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
@@ -3980,7 +3980,7 @@ export function useListWorkoutLogs<TData = Awaited<ReturnType<typeof listWorkout
 
 export function useListWorkoutLogs<TData = Awaited<ReturnType<typeof listWorkoutLogs>>, TError = ErrorType<unknown>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkoutLogs>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient 
+ , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListWorkoutLogsQueryOptions(options)
@@ -4002,8 +4002,8 @@ export const createWorkoutLogs = (
     workoutLogCreate: BodyType<WorkoutLogCreate>,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
-      
-      
+
+
       return customInstance<WorkoutLogItem>(
       {url: `/api/data/workout-logs`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
@@ -4011,7 +4011,7 @@ export const createWorkoutLogs = (
     },
       options);
     }
-  
+
 
 
 export const getCreateWorkoutLogsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -4025,7 +4025,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWorkoutLogs>>, {data: BodyType<WorkoutLogCreate>}> = (props) => {
@@ -4034,7 +4034,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  createWorkoutLogs(data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -4066,8 +4066,8 @@ export const updateWorkoutLogs = (
     itemId: number,
     workoutLogCreate: BodyType<WorkoutLogCreate>,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<WorkoutLogItem>(
       {url: `/api/data/workout-logs/${itemId}`, method: 'PUT',
       headers: {'Content-Type': 'application/json', },
@@ -4075,7 +4075,7 @@ export const updateWorkoutLogs = (
     },
       options);
     }
-  
+
 
 
 export const getUpdateWorkoutLogsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -4089,7 +4089,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWorkoutLogs>>, {itemId: number;data: BodyType<WorkoutLogCreate>}> = (props) => {
@@ -4098,7 +4098,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  updateWorkoutLogs(itemId,data,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -4129,14 +4129,14 @@ export const useUpdateWorkoutLogs = <TError = ErrorType<HTTPValidationError>,
 export const deleteWorkoutLogs = (
     itemId: number,
  options?: SecondParameter<typeof customInstance>,) => {
-      
-      
+
+
       return customInstance<void>(
       {url: `/api/data/workout-logs/${itemId}`, method: 'DELETE'
     },
       options);
     }
-  
+
 
 
 export const getDeleteWorkoutLogsMutationOptions = <TError = ErrorType<HTTPValidationError>,
@@ -4150,7 +4150,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
-      
+
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteWorkoutLogs>>, {itemId: number}> = (props) => {
@@ -4159,13 +4159,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
           return  deleteWorkoutLogs(itemId,requestOptions)
         }
 
-        
+
 
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteWorkoutLogsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteWorkoutLogs>>>
-    
+
     export type DeleteWorkoutLogsMutationError = ErrorType<HTTPValidationError>
 
     /**
@@ -4184,4 +4184,3 @@ export const useDeleteWorkoutLogs = <TError = ErrorType<HTTPValidationError>,
 
       return useMutation(mutationOptions, queryClient);
     }
-    

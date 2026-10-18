@@ -8,6 +8,20 @@ from sqlalchemy.orm import Session
 from app.enums.context_category import Category
 
 
+def data_citations(data: dict) -> list[dict]:
+    """Document excerpts in a package's `data` section (the one place this path is spelled out)."""
+    return data.get("search_documents", {}).get("citations", [])
+
+
+def payload_citations(payload: dict) -> list[dict]:
+    return data_citations(payload.get("data", {}))
+
+
+def payload_evidence(payload: dict) -> list[dict]:
+    """Every (document_id, version_id) a snapshot depends on: inherited dependencies and its own citations."""
+    return [*payload.get("document_dependencies", []), *payload_citations(payload)]
+
+
 @dataclass(frozen=True)
 class RouteDecision:
     requested: frozenset[Category]  # what the question needs
@@ -31,6 +45,7 @@ class ToolContext:
     session: Session
     now: datetime
     allowed: frozenset[Category]
+    query: str = ""
 
     @property
     def today(self) -> date:
@@ -70,6 +85,7 @@ class ContextPackage:
             "source_updated_at": self.source_updated_at,
             "record_references": self.record_references,
             "data_quality_flags": self.data_quality_flags,
+            "document_citations": payload_citations(self.payload),
         }
 
 

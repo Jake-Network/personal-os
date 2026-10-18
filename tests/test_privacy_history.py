@@ -101,17 +101,18 @@ def test_per_request_exclusion_also_filters_history(seeded, fake_provider):
     assert "12,000,000" not in outbound(fake_provider.requests[1])
 
 
-def test_turn_with_deleted_snapshot_is_withheld_once_anything_is_excluded(seeded, fake_provider):
+def test_turn_with_deleted_snapshot_is_never_replayed(seeded, fake_provider):
     conv = advisor_manager.create_conversation(seeded, "x")
     fake_provider.reply = "목표 답변"
     done = run(seeded, conv, "목표 우선순위 정리해줘")[-1]  # goals only
     context_snapshot_handler.delete(seeded, context_snapshot_handler.get(seeded, done["context_snapshot_id"]))
     seeded.commit()
+    fake_provider.reply = "ok"
     run(seeded, conv, "목표는?")
-    assert [i["role"] for i in fake_provider.requests[1].input].count("assistant") == 1  # nothing excluded
+    assert "목표 답변" not in outbound(fake_provider.requests[1])  # deleted context is purged, even unrestricted
     privacy_manager.set_excluded(seeded, [Category.HEALTH])
     run(seeded, conv, "목표는?")
-    assert "목표 답변" not in outbound(fake_provider.requests[2])  # provenance unknown → conservative
+    assert "목표 답변" not in outbound(fake_provider.requests[2])
 
 
 def test_preview_reports_withheld_history(client, seeded, fake_provider):

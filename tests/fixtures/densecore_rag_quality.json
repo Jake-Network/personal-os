@@ -1,0 +1,318 @@
+{
+  "description": "Synthetic Korean personal-os retrieval evaluation; one uploaded Markdown document, 18 section chunks, 24 answerable questions and 4 unanswerable controls. All names, dates and amounts are fictional. Relevance labels are fixed before model execution; multi-section recall uses the fraction of required sections retrieved. Ambiguous means a natural underspecified reference resolved from this document, not permission to invent facts. Retrieval rank cannot establish answer correctness or calibrated abstention, and one-document results do not establish production or broad Korean benchmark quality. Historical and current records are intentionally distinct; compare only when requested. Section labels use concise gold evidence: additional contextual sections may be useful but do not replace the listed evidence.",
+  "sections": [
+    {
+      "id": "career_current",
+      "title": "현재 지원 방향과 근무 조건",
+      "text": "2026년 10월 1일 갱신한 구직 계획이다. 현재 목표는 제품 회사의 백엔드 시니어 엔지니어이며, 실제 사용자의 문제를 해결하고 서비스 운영까지 책임지는 역할을 선호한다. 서울 사무실에 주 2일 출근하고 나머지는 원격으로 일하는 조건을 원한다. 기술 리더 관리직보다 설계와 구현에 직접 참여하는 개인 기여자 경로가 우선이다. 이 기준은 지난봄의 완전 원격 해외 취업 계획을 대체한다."
+    },
+    {
+      "id": "career_old",
+      "title": "지난봄 구직 계획 보관본",
+      "text": "2026년 4월 3일 작성한 과거 계획으로 현재 지원 기준이 아니다. 당시에는 북미 스타트업의 완전 원격 데이터 엔지니어 직무를 찾았고 야간 회의도 감수할 생각이었다. 희망 보상은 연봉 8천만 원 이상이었다. 이후 가족과 보내는 저녁 시간을 지키고 싶어져 이 계획을 중단했다. 10월에 작성한 현재 지원 방향이 최신 결정이며, 이 절은 계획 변화의 이유를 확인하는 용도로만 보관한다."
+    },
+    {
+      "id": "project",
+      "title": "대표 프로젝트 성과",
+      "text": "이력서의 핵심 프로젝트는 가상의 주문 처리 서비스 리팩터링이다. 중복 결제 요청을 막는 멱등성 키와 비동기 작업 큐를 도입했고, 피크 시간의 요청 지연 p95가 820밀리초에서 260밀리초로 줄었다. 장애 복구 절차를 문서화하고 온콜 알림도 정리했다. 본인은 API 설계와 부하 시험을 맡았으며 디자인 작업은 다른 팀원의 기여다. 이 수치는 평가용으로 만든 가상 측정값이다."
+    },
+    {
+      "id": "resume",
+      "title": "이력서 최신본 제출 규칙",
+      "text": "2026년 10월 8일 수정한 이력서 v3가 현재 제출본이다. 첫 페이지에는 주문 처리 개선 성과와 직접 맡은 범위를 적고, 기술 목록을 길게 나열한 부록은 삭제했다. 9월의 v2에는 팀 전체 성과를 개인 성과처럼 읽을 여지가 있어 더 이상 보내지 않는다. 영문본은 국문 v3의 내용을 옮기되 수치를 동일하게 유지한다. 지원 전에 채용 공고의 역할과 맞는 두 가지 경험을 맨 위로 배치한다."
+    },
+    {
+      "id": "offer_a",
+      "title": "오로라 오퍼의 보상과 출근 조건",
+      "text": "2026년 10월 10일 받은 가상 회사 오로라의 제안이다. 기본 연봉은 9천만 원이고 첫해에만 지급하는 입사 보너스는 5백만 원이다. 주식 보상은 없으며 보장된 성과급도 없다. 근무지는 서울이고 일주일에 이틀 사무실에 나온다. 담당 업무는 결제 백엔드 운영과 신규 API 설계다. 수락 기한은 10월 25일이며 아직 서명하지 않았다. 세전 금액이므로 실수령액으로 해석하면 안 된다."
+    },
+    {
+      "id": "offer_b",
+      "title": "바다 오퍼의 보상과 출근 조건",
+      "text": "2026년 10월 11일 받은 가상 회사 바다의 제안이다. 기본 연봉은 1억 원이며 입사 보너스는 없다. 비상장 주식의 회사 제시 평가액은 2천만 원이지만 현금화와 가치가 보장되지 않는다. 부산 사무실에 매일 출근해야 하고 이사비 지원은 없다. 역할은 데이터 플랫폼 개발이다. 수락 기한은 10월 27일이다. 오로라 제안과 비교할 때 확정 현금과 불확실한 지분 가치를 구분한다."
+    },
+    {
+      "id": "interview",
+      "title": "최종 면접 준비 메모",
+      "text": "가상 회사 솔빛의 최종 면접은 2026년 10월 22일 오후 2시에 화상으로 진행한다. 준비 주제는 장애 당시의 판단 근거, 동료와 설계 의견이 달랐던 경험, 그리고 주문 서비스의 트레이드오프다. 답변은 상황과 본인의 행동 및 결과 순서로 연습한다. 특정 알고리즘 문제를 외우기보다 왜 그 결정을 했는지 설명하는 데 집중한다. 면접관의 이름과 화상 회의 접속 주소는 이 문서에 기록하지 않았다."
+    },
+    {
+      "id": "learning",
+      "title": "취업 준비 학습 시간표",
+      "text": "현재 학습 일정은 평일 저녁 40분씩 주 4회다. 월요일과 수요일에는 데이터베이스 실행 계획을 읽고, 화요일과 목요일에는 시스템 설계 답변을 말로 설명한다. 주말에는 모의 면접을 한 번 진행하되 새 강의를 추가로 구매하지 않는다. 당장의 목표는 다양한 도구 이름을 아는 것이 아니라 본인이 만든 시스템의 병목을 설명하는 것이다. 운동이 있는 날에는 학습량을 늘리지 않는다."
+    },
+    {
+      "id": "assets_current",
+      "title": "10월 자산 현황",
+      "text": "2026년 10월 1일 기준 가상 자산 기록이다. 입출금 통장의 현금은 1천8백만 원, 정기예금은 2천만 원, 국내외 주식 평가액은 3천2백만 원이다. 전세보증금 1억 원은 별도이며 즉시 쓸 수 있는 현금으로 계산하지 않는다. 이 절의 수치는 부채를 차감하기 전 잔액이고 정확한 계좌번호나 금융기관 이름은 보관하지 않는다. 4월 자산 현황은 과거 비교용이므로 현재 잔액과 합산하지 않는다."
+    },
+    {
+      "id": "assets_old",
+      "title": "4월 자산 현황 보관본",
+      "text": "2026년 4월 1일의 과거 자산 스냅샷이다. 당시 입출금 현금은 9백만 원, 정기예금은 2천만 원, 주식 평가액은 2천7백만 원이었다. 전세보증금은 당시에도 1억 원이었다. 이 기록은 10월까지 유동자금과 투자 평가액이 어떻게 달라졌는지 비교할 때 사용한다. 계좌 간 이체 때문에 생긴 중복 자산은 없으며 이 금액을 최신 잔액으로 답하면 안 된다. 현재 잔액은 별도의 10월 절에 있다."
+    },
+    {
+      "id": "emergency",
+      "title": "비상 생활비 기준",
+      "text": "직장을 옮기는 동안 소득이 끊기는 상황에 대비해 필수 지출 6개월분을 현금성 자산으로 남겨 두기로 했다. 월 필수 생활비는 250만 원이므로 목표 예비비는 1천5백만 원이다. 입출금 현금 1천8백만 원 가운데 이 목표액을 먼저 떼어 두고 남은 3백만 원만 자유 자금으로 본다. 전세보증금과 주식은 급하게 처분할 비용이 있어 비상 생활비에 포함하지 않는다. 이 기준은 2026년 10월에 정했다."
+    },
+    {
+      "id": "debt",
+      "title": "대출 상환 일정",
+      "text": "2026년 10월 현재 신용대출 원금은 1천2백만 원이며 연 이자율은 5.4퍼센트다. 매달 원금 50만 원을 상환하고 이자는 별도로 낸다. 중도상환 수수료는 없지만 생활 예비비 1천5백만 원을 먼저 확보한 뒤 추가 상환하기로 했다. 전세대출이나 카드 할부 잔액은 없다. 대출 만기일과 금융기관의 이름은 이 문서에 적지 않았다. 주식의 예상 수익을 확정 수입처럼 가정해 상환을 미루지 않는다."
+    },
+    {
+      "id": "investment",
+      "title": "월 투자 배분 원칙",
+      "text": "2026년 10월부터 장기 투자에 넣는 돈은 월 60만 원이다. 이 중 42만 원은 전 세계 주식 지수를 따르는 펀드에, 18만 원은 단기 채권 펀드에 배분한다. 개별 종목을 새로 사거나 빚을 내 투자하지 않는다. 매달 가격을 맞히려 하지 않고 정해진 날짜에 같은 금액을 넣는 방식이다. 이 계획은 확정 수익률을 약속하지 않으며 실직하면 신규 납입을 일시 중단하고 생활비를 우선한다."
+    },
+    {
+      "id": "housing",
+      "title": "주거 계약과 월 고정비",
+      "text": "현재 전세 주거 계약 종료일은 2027년 3월 31일이다. 보증금은 1억 원이며 월세는 내지 않는다. 관리비는 월 18만 원이고 전기와 가스 요금은 별도다. 이사 여부는 취업 지역이 정해진 뒤 결정한다. 부산 매일 출근 조건의 제안을 선택하면 새 집을 구해야 하지만 이 문서에는 부산의 임대료 견적이나 중개수수료 견적이 없다. 기존 보증금을 받을 정확한 날짜도 아직 합의하지 않았다."
+    },
+    {
+      "id": "run_current",
+      "title": "현재 달리기 계획",
+      "text": "2026년 10월 5일부터 적용한 달리기 계획이다. 주 3회 각각 30분씩 편하게 대화할 수 있는 강도로 달린다. 토요일에는 거리를 늘리지 않고 걷기를 섞어 회복한다. 9월의 주 5회 고강도 계획은 오른쪽 무릎이 불편해져 중단했다. 지금은 기록 단축이나 대회 출전보다 통증 없이 규칙적으로 움직이는 것이 목표다. 통증이 계속되면 운동을 멈추고 전문가의 평가를 받는다는 개인 원칙을 적어 두었다."
+    },
+    {
+      "id": "run_old",
+      "title": "지난달 달리기 계획 보관본",
+      "text": "2026년 9월 초에는 주 5회 달리며 한 번은 빠른 구간 훈련을 했다. 주간 총거리는 35킬로미터였고 연말 하프마라톤 참가를 목표로 삼았다. 9월 말에 오른쪽 무릎이 불편해지면서 이 계획을 종료했고 대회 신청도 하지 않았다. 이는 완료된 과거 계획이지 현재 수행량이 아니다. 10월의 새 계획에서는 횟수와 강도를 낮췄으므로 두 달의 운동량을 합쳐 주간 계획으로 해석하지 않는다."
+    },
+    {
+      "id": "strength",
+      "title": "근력 운동 분할",
+      "text": "근력 운동은 화요일과 금요일에 각 45분씩 한다. 화요일에는 당기기와 코어 안정화 동작을, 금요일에는 밀기와 가벼운 하체 동작을 연습한다. 무게보다 통증 없는 가동 범위와 자세를 우선하고 매 세트 두 번 정도 더 할 여유를 남긴다. 달리기가 힘든 주에는 하체 운동량을 줄인다. 현재 최대 중량이나 체지방률은 측정하지 않았으며 대회용 훈련 프로그램을 따르는 것도 아니다."
+    },
+    {
+      "id": "recovery",
+      "title": "수면과 회복 기록",
+      "text": "최근 2주 동안 평균 수면 시간은 하루 6시간 20분이었다. 목표는 평일에도 7시간 30분을 확보하는 것이며 밤 11시 이후에는 취업 준비 화면을 닫기로 했다. 카페인은 오후 2시 이후 마시지 않고 운동 다음 날 피로가 심하면 쉬는 날로 바꾼다. 이 절은 생활 습관 메모이며 혈액 검사 결과나 진단명은 포함하지 않는다. 수면을 줄여 학습 시간을 늘리는 방식은 현재 계획과 맞지 않는다."
+    }
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "query": "지금 이직할 때 원하는 역할과 일하는 방식은 뭐야?",
+      "relevant_sections": [
+        "career_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q02",
+      "query": "지난봄에는 어떤 일을 찾았고 지금은 방향이 어떻게 달라졌어?",
+      "relevant_sections": [
+        "career_old",
+        "career_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q03",
+      "query": "지원서에서 내가 직접 만든 성과로 내세울 만한 사례는?",
+      "relevant_sections": [
+        "project"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q04",
+      "query": "지원할 때 어느 버전의 경력 소개서를 보내야 해?",
+      "relevant_sections": [
+        "resume"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q05",
+      "query": "첫해 확정 현금 보수만 보면 두 제안은 어떻게 달라?",
+      "relevant_sections": [
+        "offer_a",
+        "offer_b"
+      ],
+      "kind": "ambiguous"
+    },
+    {
+      "id": "q06",
+      "query": "가족과 서울에서 지내면서 정기적으로 재택도 할 수 있는 제안은 어느 쪽이야?",
+      "relevant_sections": [
+        "offer_a",
+        "offer_b"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q07",
+      "query": "바다가 제시한 지분을 바로 쓸 수 있는 돈으로 봐도 돼?",
+      "relevant_sections": [
+        "offer_b"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q08",
+      "query": "오로라 수락 기한은 언제야?",
+      "relevant_sections": [
+        "offer_a"
+      ],
+      "kind": "exact"
+    },
+    {
+      "id": "q09",
+      "query": "최종 채용 대화에서는 어떤 이야기를 연습해야 하지?",
+      "relevant_sections": [
+        "interview"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q10",
+      "query": "What is my weekday study routine for job preparation?",
+      "relevant_sections": [
+        "learning"
+      ],
+      "kind": "cross_language"
+    },
+    {
+      "id": "q11",
+      "query": "지금 가진 현금과 예금, 주식은 각각 얼마나 돼?",
+      "relevant_sections": [
+        "assets_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q12",
+      "query": "봄 이후 통장에 남은 돈과 투자 평가액이 얼마나 변했지?",
+      "relevant_sections": [
+        "assets_old",
+        "assets_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q13",
+      "query": "일을 쉬어도 버티려면 얼마를 따로 남겨 두기로 했어?",
+      "relevant_sections": [
+        "emergency"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q14",
+      "query": "통장 잔액 중 마음대로 써도 되는 몫은 얼마야?",
+      "relevant_sections": [
+        "emergency"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q15",
+      "query": "What is the outstanding loan principal and its annual interest rate?",
+      "relevant_sections": [
+        "debt"
+      ],
+      "kind": "cross_language"
+    },
+    {
+      "id": "q16",
+      "query": "빚을 먼저 더 갚기 전에 충족해야 할 조건은 뭐야?",
+      "relevant_sections": [
+        "debt"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q17",
+      "query": "장기적으로 매달 넣는 돈은 어느 자산에 어떤 비중으로 가?",
+      "relevant_sections": [
+        "investment"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q18",
+      "query": "살고 있는 집의 계약이 끝나는 날과 매달 관리비를 알려줘.",
+      "relevant_sections": [
+        "housing"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q19",
+      "query": "요즘 유산소 운동을 일주일에 얼마나 하고 어떤 강도로 해?",
+      "relevant_sections": [
+        "run_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q20",
+      "query": "지난달과 비교해서 달리는 양을 왜 바꿨지?",
+      "relevant_sections": [
+        "run_old",
+        "run_current"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q21",
+      "query": "How is my strength training split across the week?",
+      "relevant_sections": [
+        "strength"
+      ],
+      "kind": "cross_language"
+    },
+    {
+      "id": "q22",
+      "query": "쇠질할 때 무게를 올리는 것보다 무엇을 우선하기로 했어?",
+      "relevant_sections": [
+        "strength"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q23",
+      "query": "밤에 공부를 더 하려고 잠을 줄이는 게 내 현재 계획에 맞아?",
+      "relevant_sections": [
+        "recovery"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "q24",
+      "query": "최근 실제 자는 시간과 목표 수면량은 각각 얼마야?",
+      "relevant_sections": [
+        "recovery"
+      ],
+      "kind": "paraphrase"
+    },
+    {
+      "id": "u01",
+      "query": "내 입출금 통장 계좌번호 전체를 알려줘.",
+      "relevant_sections": [],
+      "kind": "unanswerable"
+    },
+    {
+      "id": "u02",
+      "query": "최근 혈액 검사에서 공복혈당이 정확히 얼마였어?",
+      "relevant_sections": [],
+      "kind": "unanswerable"
+    },
+    {
+      "id": "u03",
+      "query": "솔빛 최종 면접의 화상 회의 접속 URL을 알려줘.",
+      "relevant_sections": [],
+      "kind": "unanswerable"
+    },
+    {
+      "id": "u04",
+      "query": "부산으로 이사할 집의 확정 월세와 중개수수료는 얼마야?",
+      "relevant_sections": [],
+      "kind": "unanswerable"
+    }
+  ]
+}

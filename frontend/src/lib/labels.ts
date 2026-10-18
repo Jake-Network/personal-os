@@ -31,6 +31,12 @@ export const ROUTE_REASON: Record<string, string> = {
 };
 
 const FLAG_TEXT: Record<string, string> = {
+  history_document_evidence_omitted: '대화 맥락은 유지했으며 일부 과거 문서 인용은 길이 제한으로 생략했습니다',
+  no_matching_documents: '검색 범위에 공유 가능한 문서가 없습니다',
+  document_embedding_reindex_required: '문서 검색 설정이 바뀌어 다시 처리가 필요합니다',
+  document_embedding_unavailable: '문서 검색 모델에 연결할 수 없습니다',
+  no_relevant_document_chunks: '질문을 뒷받침할 문서 구간을 찾지 못했습니다',
+  requested_document_unavailable: '지정한 문서 일부를 사용할 수 없습니다',
   no_accounts: '등록된 계좌가 없습니다',
   no_liabilities_recorded: '부채가 기록되지 않았습니다 (0인지 미입력인지 알 수 없음)',
   stale_balance: '잔고 기준일이 오래되었습니다',
@@ -47,6 +53,8 @@ const FLAG_TEXT: Record<string, string> = {
   no_career_criteria: '커리어 평가 기준이 설정되지 않았습니다',
   no_upcoming_interviews: '예정된 면접이 없습니다',
   no_upcoming_events: '예정된 일정이 없습니다',
+  no_events_in_window: '조회 기간에 등록된 일정이 없습니다',
+  calendar_time_scope_unresolved: '날짜를 해석하지 못해 기본 기간의 일정만 조회했습니다',
   no_goals: '진행 중인 목표가 없습니다',
   no_workout_logs: '최근 운동 기록이 없습니다',
   category_excluded_by_user: '사용자가 공유를 제외한 영역입니다',
@@ -70,6 +78,7 @@ export function flagText(code: string): string {
 }
 
 export const TABLE_LABEL: Record<string, string> = {
+  document_chunks: '문서 근거',
   accounts: '계좌',
   other_assets: '기타 자산',
   liabilities: '부채',
@@ -88,6 +97,7 @@ export const TABLE_LABEL: Record<string, string> = {
 };
 
 export const TOOL_LABEL: Record<string, string> = {
+  search_documents: '문서 검색',
   get_accounts_summary: '계좌·자산·부채',
   get_cashflow_summary: '현금흐름',
   get_portfolio_summary: '포트폴리오',

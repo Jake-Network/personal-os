@@ -28,3 +28,49 @@ def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
     command.upgrade(config, "head")
     command.check(config)
     engine.dispose()
+
+
+@pytest.mark.parametrize('previous_revision', [None, '0004_portfolio_identity', 'head'])
+def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, monkeypatch, previous_revision):
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+    from app.modules.database import Database
+    from app.modules.database.model import Base
+    import app.main as main
+
+    url = f"sqlite:///{tmp_path / 'startup.db'}"
+    config = Config('alembic.ini')
+    config.attributes['database_url'] = url
+    if previous_revision:
+        command.upgrade(config, previous_revision)
+        engine = create_engine(url)
+        with engine.begin() as connection:
+            connection.execute(text("INSERT INTO app_settings (key, value, updated_at) VALUES ('preserved', '{}', '2026-10-18')"))
+        engine.dispose()
+    database = Database()
+    monkeypatch.setattr(main, 'db', database)
+    monkeypatch.setattr(main, 'settings', replace(main.settings, database_url=url, data_dir=tmp_path))
+    monkeypatch.chdir(tmp_path)
+    try:
+        with TestClient(main.app):
+            tables = set(inspect(database.engine).get_table_names())
+            with database.engine.connect() as connection:
+                version = connection.scalar(text('SELECT version_num FROM alembic_version'))
+            if previous_revision == '0004_portfolio_identity':  # existing databases are never migrated at startup
+                assert version == previous_revision and 'documents' not in tables
+            else:
+                assert tables == set(Base.metadata.tables) | {'alembic_version'}
+                assert version == '0007_document_job_attempts'
+            with database.engine.connect() as connection:
+                if previous_revision:
+                    assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
+    finally:
+        if database.engine is not None:
+            database.engine.dispose()
+
+
+def test_revision_ids_fit_the_alembic_version_column():
+    # alembic_version.version_num is VARCHAR(32); SQLite does not enforce it, PostgreSQL does.
+    from alembic.script import ScriptDirectory
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    assert [r.revision for r in script.walk_revisions() if len(r.revision) > 32] == []

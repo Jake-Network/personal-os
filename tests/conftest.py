@@ -64,9 +64,16 @@ def fake_provider(monkeypatch):
 
 
 @pytest.fixture
-def client(session):
+def client(session, monkeypatch):
     from app.main import app
+    from app.modules.documents import document_manager
 
+    async def idle_worker(_database, stop):
+        await stop.wait()
+
+    # The lifespan worker would share the single in-memory SQLite connection with the test session
+    # from another thread; tests drive indexing explicitly with process_one instead.
+    monkeypatch.setattr(document_manager, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
     with TestClient(app, base_url="http://127.0.0.1:8000") as c:
         yield c

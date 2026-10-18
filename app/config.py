@@ -41,6 +41,16 @@ class Settings:
     google_oauth_redirect_uri: str = field(default_factory=lambda: _env(
         "GOOGLE_OAUTH_REDIRECT_URI", "http://127.0.0.1:8000/api/finance/google/callback"))
 
+    # Local document embeddings; no paid-provider fallback.
+    embedding_provider: str = field(default_factory=lambda: _env("EMBEDDING_PROVIDER", "ollama"))
+    embedding_url: str = field(default_factory=lambda: _env("EMBEDDING_URL", "http://127.0.0.1:11434"))
+    embedding_model: str = field(default_factory=lambda: _env("EMBEDDING_MODEL", "bge-m3"))
+    embedding_dimensions: int = field(default_factory=lambda: int(_env("EMBEDDING_DIMENSIONS", "1024")))
+    embedding_densecore_model_id: str = field(default_factory=lambda: _env("EMBEDDING_DENSECORE_MODEL_ID", ""))
+
+    # IANA zone for the user's calendar words (오늘, 이번 주, 다음 달); stored datetimes stay UTC.
+    timezone: str = field(default_factory=lambda: _env("PERSONAL_OS_TIMEZONE", "Asia/Seoul"))
+
     # Context / history budgets.
     history_message_limit: int = 20
     context_char_limit: int = 24_000

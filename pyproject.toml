@@ -12,9 +12,13 @@ dependencies = [
     "google-auth>=2.40",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
+    "pgvector>=0.4.1",
+    "pypdf>=6",
+    "python-multipart>=0.0.22",
     "pyjwt[crypto]>=2.10",
     "sqlalchemy>=2.1.5",
     "uvicorn>=0.34",
+    "tzdata>=2026.5",
 ]
 
 [dependency-groups]

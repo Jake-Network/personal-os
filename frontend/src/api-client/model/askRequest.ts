@@ -6,6 +6,7 @@
  */
 import type { AskRequestCategories } from './askRequestCategories';
 import type { Category } from './category';
+import type { AskRequestDocumentIds } from './askRequestDocumentIds';
 
 export interface AskRequest {
   /**
@@ -15,4 +16,6 @@ export interface AskRequest {
   message: string;
   categories?: AskRequestCategories;
   exclude?: Category[];
+  document_search?: boolean;
+  document_ids?: AskRequestDocumentIds;
 }

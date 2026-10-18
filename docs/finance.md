@@ -240,8 +240,8 @@ read-only history tool makes this distinction and respects financial/investment 
 
 ## Database upgrades
 
-The app never migrates an existing database on startup; it uses the database as it is and only
-creates tables that are missing. Upgrading is an explicit command run with the same
+The app never migrates an existing database on startup; it uses the database as it is (an empty
+database is built from the committed migrations) and logs a warning when the schema is behind head. Upgrading is an explicit command run with the same
 `DATABASE_URL` / `PERSONAL_OS_DATA_DIR` as the app:
 
 ```bash

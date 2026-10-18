@@ -67,6 +67,7 @@ class AdvisorMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="complete")  # complete | incomplete | failed
     context_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("context_snapshots.id", ondelete="SET NULL"))
+    context_purged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     model: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     conversation: Mapped[AdvisorConversation] = relationship(back_populates="messages")
