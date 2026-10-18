@@ -32,3 +32,15 @@ class PreparedHistory:
     def citations(self, message):
         snapshot = self.snapshots.get(message.context_snapshot_id)
         return payload_citations(snapshot.payload) if snapshot else []
+
+
+
+@dataclass(frozen=True)
+class InheritedEvidence:
+    """Document evidence and categories that replayed turns carry into the next Context Package."""
+
+    citations: list[dict]  # marked historical=true
+    dependencies: list[dict]
+    categories: list[str]
+    unknown: bool  # some replayed turn has no recorded provenance
+    document_refs: set[str]  # document_chunks refs cited in replayed message text

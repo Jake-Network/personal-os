@@ -141,11 +141,12 @@ def test_decide_is_a_pure_prefix_rule():
 def test_outbound_guard_fails_closed_on_excluded_package_category(seeded):
     from app.modules.context.types import HistoryDecision
     from app.modules.context.types import ContextPackage
+    from app.modules.advisor.requests import build_request
 
     package = ContextPackage("s", {}, False, ["financial"], [], {}, [], [])
     with pytest.raises(AdvisorError):
-        advisor_manager.build_request("m", HistoryDecision([], [], []), package, "q",
-                                      frozenset({Category.FINANCIAL}))
+        build_request("m", HistoryDecision([], [], []), package, "q",
+                      frozenset({Category.FINANCIAL}))
 
 
 def test_history_limit_still_applies_after_filtering(seeded, fake_provider, monkeypatch):
