@@ -16,13 +16,13 @@ from app.modules.advisor.prompts import SYSTEM_PROMPT
 from app.modules.advisor.proposal_manager import proposal_manager
 from app.modules.advisor.types import AskOptions, PreparedHistory
 from app.modules.context.context_builder_manager import ContextBuilderManager, context_builder_manager
-from app.modules.context.context_routing_manager import ContextRoutingManager, context_routing_manager
+from app.modules.context.routing import ContextRouter, context_router
 from app.modules.context.history_privacy_manager import history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.context.types import ContextPackage, HistoryDecision, RouteDecision, payload_citations, payload_evidence
 from app.modules.context.entity_routing import matched_investment_terms
 from app.modules.crud import audit_log_handler, context_snapshot_handler, conversation_handler, message_handler
-from app.modules.database.model import AdvisorConversation, AdvisorMessage, ContextSnapshot, DocumentVersion
+from app.modules.database.model import AdvisorConversation, ContextSnapshot, DocumentVersion
 from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
@@ -39,7 +39,7 @@ HISTORICAL_EVIDENCE_RULES = (
 
 
 class AdvisorManager:
-    def __init__(self, gateway: LLMGatewayManager, router: ContextRoutingManager, builder: ContextBuilderManager,
+    def __init__(self, gateway: LLMGatewayManager, router: ContextRouter, builder: ContextBuilderManager,
                  history_limit: int):
         self.gateway = gateway
         self.router = router
@@ -312,7 +312,7 @@ class AdvisorManager:
 
 advisor_manager = AdvisorManager(
     gateway=llm_gateway_manager,
-    router=context_routing_manager,
+    router=context_router,
     builder=context_builder_manager,
     history_limit=settings.history_message_limit,
 )

@@ -52,7 +52,7 @@ _CONTINUATION = re.compile(
 _TOPIC_RESET = re.compile(r"다른 질문|다른 얘기|주제 바꿔|새 질문|새로운 질문|new topic|unrelated question|switch topic", re.IGNORECASE)
 
 
-class ContextRoutingManager:
+class ContextRouter:
     def route(
         self,
         query: str,
@@ -100,4 +100,4 @@ class ContextRoutingManager:
         )
 
 
-context_routing_manager = ContextRoutingManager()
+context_router = ContextRouter()

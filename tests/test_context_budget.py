@@ -7,8 +7,9 @@ import pytest
 
 from app.enums.context_category import Category
 from app.modules.advisor.advisor_manager import AdvisorManager
-from app.modules.context.context_builder_manager import BudgetExceeded, ContextBuilderManager
-from app.modules.context.context_routing_manager import context_routing_manager
+from app.modules.context.context_builder_manager import ContextBuilderManager
+from app.modules.context.errors import BudgetExceeded
+from app.modules.context.routing import context_router
 from app.modules.database.model import CalendarEvent, JobApplication
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
 from app.modules.context.types import RouteDecision
@@ -91,7 +92,7 @@ def test_budget_too_small_for_essentials_fails_closed(seeded, fake_provider):
     with pytest.raises(BudgetExceeded):
         ContextBuilderManager(300).build(seeded, route())
 
-    manager = AdvisorManager(gateway=llm_gateway_manager, router=context_routing_manager,
+    manager = AdvisorManager(gateway=llm_gateway_manager, router=context_router,
                              builder=ContextBuilderManager(300), history_limit=20)
     conv = manager.create_conversation(seeded, "x")
 
