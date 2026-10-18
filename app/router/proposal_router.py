@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.modules.advisor.proposal_manager import ProposalError, proposal_manager
-from app.modules.crud.advisor_handler import proposed_action_handler
+from app.modules.crud import proposed_action_handler
 from app.modules.database import get_session
 from app.schema.advisor_schema import ProposalItem
 

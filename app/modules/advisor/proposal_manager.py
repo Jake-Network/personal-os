@@ -12,9 +12,14 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.modules.crud.advisor_handler import personal_memory_handler, proposed_action_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler
+from app.modules.crud import (
+    audit_log_handler,
+    calendar_event_handler,
+    goal_handler,
+    personal_memory_handler,
+    proposed_action_handler,
+    task_handler,
+)
 from app.modules.database.model import PersonalMemory, ProposedAction
 
 ALLOWED_ACTIONS = {"create_task", "calendar_update", "goal_update"}

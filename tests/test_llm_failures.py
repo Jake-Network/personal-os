@@ -4,7 +4,7 @@ import asyncio
 import httpx
 
 from app.modules.advisor.advisor_manager import advisor_manager
-from app.modules.crud.advisor_handler import llm_usage_event_handler, message_handler
+from app.modules.crud import llm_usage_event_handler, message_handler
 from app.modules.llm.errors import AuthRequired, QuotaExceeded
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
 from app.modules.llm.types import StreamEvent

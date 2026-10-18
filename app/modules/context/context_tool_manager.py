@@ -15,19 +15,24 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums.context_category import Category
 from app.modules.context.calendar_scope import calendar_scope
-from app.modules.crud.advisor_handler import personal_memory_handler
-from app.modules.crud.app_setting_handler import app_setting_handler
-from app.modules.crud.career_handler import career_criterion_handler, interview_handler, job_application_handler
-from app.modules.crud.finance_handler import (
+from app.modules.crud import (
     account_handler,
+    app_setting_handler,
+    calendar_event_handler,
+    career_criterion_handler,
     cashflow_entry_handler,
     fx_rate_handler,
+    goal_handler,
     holding_handler,
+    interview_handler,
+    job_application_handler,
     liability_handler,
     other_asset_handler,
+    personal_memory_handler,
     planned_expense_handler,
+    task_handler,
+    workout_log_handler,
 )
-from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
 from app.modules.database.model import CalendarEvent, FxRate, Holding
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket

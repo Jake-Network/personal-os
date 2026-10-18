@@ -11,7 +11,7 @@ from app.modules.advisor.advisor_manager import advisor_manager
 from app.modules.context.context_routing_manager import context_routing_manager
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.database.model import Account, CalendarEvent
-from app.modules.crud.advisor_handler import message_handler
+from app.modules.crud import message_handler
 from app.modules.advisor.types import AskOptions
 
 

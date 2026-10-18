@@ -9,18 +9,23 @@ from datetime import date
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.career_handler import career_criterion_handler, interview_handler, job_application_handler
-from app.modules.crud.finance_handler import (
+from app.modules.crud import (
     account_handler,
+    audit_log_handler,
+    calendar_event_handler,
+    career_criterion_handler,
     cashflow_entry_handler,
     fx_rate_handler,
+    goal_handler,
     holding_handler,
+    interview_handler,
+    job_application_handler,
     liability_handler,
     other_asset_handler,
     planned_expense_handler,
+    task_handler,
+    workout_log_handler,
 )
-from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
 from app.modules.finance.value_history_manager import HISTORY_ONLY_FIELDS, value_history_manager
 from app.modules.personal_data.types import Resource
 from app.schema import domain_schema as s

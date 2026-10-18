@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from sqlalchemy.orm import Session
 
 from app.enums.context_category import ALL_CATEGORIES, Category
-from app.modules.crud.advisor_handler import context_snapshot_handler
+from app.modules.crud import context_snapshot_handler
 from app.modules.context.types import HistoryDecision
 from app.modules.database.model import AdvisorMessage
 

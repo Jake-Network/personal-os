@@ -21,8 +21,7 @@ from app.modules.context.history_privacy_manager import history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.context.types import ContextPackage, HistoryDecision, RouteDecision, payload_citations, payload_evidence
 from app.modules.context.entity_routing import matched_investment_terms
-from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
+from app.modules.crud import audit_log_handler, context_snapshot_handler, conversation_handler, message_handler
 from app.modules.database.model import AdvisorConversation, AdvisorMessage, ContextSnapshot, DocumentVersion
 from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError

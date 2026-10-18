@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.modules.crud.finance_handler import manual_value_change_handler
+from app.modules.crud import manual_value_change_handler
 from app.modules.database.model import ManualValueChange
 
 # resource name -> (table name, as-of attribute on the row, tracked fields)

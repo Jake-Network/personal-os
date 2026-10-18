@@ -8,7 +8,7 @@ from app.enums.context_category import Category
 from app.modules.advisor.advisor_manager import advisor_manager
 from app.modules.context.history_privacy_manager import HistoryPrivacyManager
 from app.modules.context.privacy_manager import privacy_manager
-from app.modules.crud.advisor_handler import context_snapshot_handler, message_handler
+from app.modules.crud import context_snapshot_handler, message_handler
 from app.modules.database.model import AdvisorMessage
 from app.modules.llm.errors import AdvisorError
 from app.modules.advisor.types import AskOptions

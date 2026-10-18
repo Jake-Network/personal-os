@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.oauth_manager import oauth_manager
 from app.modules.database import get_session
 from app.modules.llm.llm_gateway_manager import MODEL_KEY, llm_gateway_manager
-from app.modules.crud.app_setting_handler import app_setting_handler
+from app.modules.crud import app_setting_handler
 from app.schema.llm_schema import ProviderSelection, UsageEventItem
 from app.schema.oauth_schema import AIProviderStatus, LoginStartResponse
 

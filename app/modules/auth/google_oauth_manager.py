@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
 from app.modules.auth.crypto import TokenCipher, load_or_create_key
-from app.modules.crud.audit_log_handler import audit_log_handler
+from app.modules.crud import audit_log_handler
 from app.modules.database.model.google_oauth import GoogleOAuthConnection, GoogleOAuthPending
 
 READ_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"

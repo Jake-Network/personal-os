@@ -1,7 +1,7 @@
 """Revocation addresses indexed provenance, rather than scanning archived payloads."""
 from sqlalchemy import event, select
 
-from app.modules.crud.advisor_handler import context_snapshot_handler, message_handler
+from app.modules.crud import context_snapshot_handler, message_handler
 from app.modules.database.model import AdvisorConversation, ContextDocumentReference, ContextSnapshot, AdvisorMessage
 from app.modules.documents.evidence import purge_document_evidence
 

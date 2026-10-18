@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums.context_category import ALL_CATEGORIES, Category
 from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_currency, derive_cash_runway
-from app.modules.crud.advisor_handler import context_snapshot_handler
+from app.modules.crud import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.modules.llm.errors import AdvisorError
 from app.modules.context.types import (

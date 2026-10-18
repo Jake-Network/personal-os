@@ -22,9 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
 from app.modules.auth.crypto import TokenCipher, load_or_create_key
-from app.modules.crud.app_setting_handler import app_setting_handler
-from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.oauth_handler import oauth_connection_handler, oauth_credential_handler
+from app.modules.crud import app_setting_handler, audit_log_handler, oauth_connection_handler, oauth_credential_handler
 from app.modules.database.model import OAuthConnection
 from app.modules.llm.errors import AuthRequired, ConsentDeclined, NotConnected
 from app.modules.auth.types import PendingLogin

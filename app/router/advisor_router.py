@@ -7,13 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.modules.advisor.advisor_manager import advisor_manager
 from app.modules.context.context_builder_manager import context_builder_manager
-from app.modules.crud.advisor_handler import (
+from app.modules.crud import (
+    audit_log_handler,
     context_snapshot_handler,
     conversation_handler,
     message_handler,
     recommendation_handler,
 )
-from app.modules.crud.audit_log_handler import audit_log_handler
 from app.modules.database import get_session
 from app.schema.advisor_schema import (
     AskRequest,
