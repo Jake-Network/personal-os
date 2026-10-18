@@ -30,11 +30,12 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U personal_os" --health-interval 5s --health-timeout 3s --health-retries 10
-    env:
-      # Tests use mocked LLM providers only; no OAuth tokens or API keys exist in CI.
-      PERSONAL_OS_DATA_DIR: ${{ runner.temp }}/personal-os-data
     steps:
       - uses: actions/checkout@v4
+      # Job-level env cannot use runner context; initialize it on the runner.
+      # Tests use mocked LLM providers only; no OAuth tokens or API keys exist in CI.
+      - name: Configure test data directory
+        run: echo "PERSONAL_OS_DATA_DIR=$RUNNER_TEMP/personal-os-data" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
