@@ -1,17 +1,12 @@
-"""Durable uploads, atomic version promotion, and bounded document parsing."""
+"""Durable uploads, atomic version promotion, and the indexing worker."""
 import asyncio
 import hashlib
-import io
 import logging
-import re
 import threading
 from contextlib import suppress
 from datetime import timedelta
 from uuid import uuid4
-from pathlib import PurePath
 
-import httpx
-from pypdf import PdfReader
 from sqlalchemy import delete, select, update, or_, and_
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -19,15 +14,13 @@ from app.config import settings
 from app.modules.database.model import Document, DocumentVersion, DocumentChunk
 from app.modules.database.model.base import utcnow
 from app.modules.documents import embedding
+from app.modules.documents.job_failures import failure_code, is_transient, retry_delay
+from app.modules.documents.parsing import parse_chunks, validated_filename
 
-MAX_BYTES = 10 * 1024 * 1024
-MAX_TEXT = 500_000
-MAX_CHUNKS = 500
 LEASE_SECONDS = 120
 HEARTBEAT_SECONDS = 30
 POLL_SECONDS = 15
 MAX_ATTEMPTS = 4
-RETRY_BASE_SECONDS = 30
 _worker_signals = set()
 _signal_lock = threading.Lock()
 
@@ -38,9 +31,6 @@ def notify_workers():
         for loop, event in _worker_signals:
             if not loop.is_closed():
                 loop.call_soon_threadsafe(event.set)
-
-
-EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"}
 
 
 def get_document(session, document_id):
@@ -65,13 +55,7 @@ def item(session, document):
 
 
 def add_version(session, document, filename, content, as_of=None):
-    filename = filename.replace("\\", "/").rsplit("/", 1)[-1]
-    if PurePath(filename).suffix.lower() not in EXTENSIONS:
-        raise ValueError("supported_formats_pdf_md_txt")
-    if not content or len(content) > MAX_BYTES:
-        raise ValueError("file_size_must_be_between_1_byte_and_10_mb")
-    if len(filename) > 255:
-        raise ValueError("filename_too_long")
+    filename = validated_filename(filename, content)
     version = DocumentVersion(document_id=document.id, filename=filename, content=content,
                               content_hash=hashlib.sha256(content).hexdigest(), as_of=as_of, status="pending")
     document.updated_at = utcnow()
@@ -79,51 +63,6 @@ def add_version(session, document, filename, content, as_of=None):
     session.commit()
     notify_workers()
     return item(session, document)
-
-
-def parse_chunks(filename, content):
-    if PurePath(filename).suffix.lower() == ".pdf":
-        reader = PdfReader(io.BytesIO(content))
-        if reader.is_encrypted or len(reader.pages) > 500:
-            raise ValueError("encrypted_or_too_many_pdf_pages")
-        pages = [(i + 1, page.extract_text() or "") for i, page in enumerate(reader.pages)]
-    else:
-        pages = [(None, content.decode("utf-8-sig"))]
-    if sum(len(text) for _, text in pages) > MAX_TEXT:
-        raise ValueError("document_text_too_large")
-    result = []
-    for page, text in pages:
-        text = text.replace("\x00", "").strip()
-        section, pending = None, ""
-        def flush():
-            nonlocal pending
-            if pending.strip():
-                result.append({"text": pending.strip(), "page": page, "section": section})
-            pending = ""
-        # Keep paragraphs and headings together; only oversized paragraphs split.
-        for paragraph in re.split(r"\n\s*\n", text):
-            for segment in re.split(r"(?m)(?=^#{1,6} )", paragraph):
-                segment = segment.strip()
-                if not segment:
-                    continue
-                if segment.startswith("#"):
-                    flush()
-                    section = segment.splitlines()[0].lstrip("# ")[:200]
-                if pending and len(pending) + len(segment) + 2 > 1600:
-                    flush()
-                while len(segment) > 1600:
-                    flush()
-                    boundary = segment.rfind(" ", 800, 1600)
-                    boundary = boundary if boundary > 0 else 1600
-                    result.append({"text": segment[:boundary], "page": page, "section": section})
-                    segment = segment[max(0, boundary-150):].strip()
-                pending = (pending + "\n\n" + segment).strip()
-        flush()
-        if len(result) > MAX_CHUNKS:
-            raise ValueError("too_many_document_chunks")
-    if not result:
-        raise ValueError("no_extractable_text_ocr_not_supported")
-    return result
 
 
 def _expired():
@@ -238,27 +177,17 @@ async def process_one(database):
         await asyncio.to_thread(_finish, database, version_id, owner, cancelled=True)
         raise
     except Exception as exc:
-        safe_codes = {"embedding_model_mismatch", "embedding_count_mismatch", "invalid_embedding_vector",
-                      "encrypted_or_too_many_pdf_pages", "document_text_too_large",
-                      "too_many_document_chunks", "no_extractable_text_ocr_not_supported"}
-        error = str(exc) if str(exc) in safe_codes else type(exc).__name__
+        error = failure_code(exc)
         retry_after = None
-        if _transient(exc) and attempt < MAX_ATTEMPTS:
+        if is_transient(exc) and attempt < MAX_ATTEMPTS:
             # The embedding server may still be starting or loading its model: back off, then retry.
-            retry_after = utcnow() + timedelta(seconds=RETRY_BASE_SECONDS * 2 ** (attempt - 1))
+            retry_after = utcnow() + retry_delay(attempt)
         await asyncio.to_thread(_finish, database, version_id, owner, error=error, retry_after=retry_after)
     finally:
         heartbeat.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat
     return True
-
-
-def _transient(exc):
-    """Errors that a later attempt can succeed past: transport failures, timeouts, 429 and 5xx."""
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code == 429 or exc.response.status_code >= 500
-    return isinstance(exc, httpx.TransportError)
 
 
 def _next_retry_delay(database):

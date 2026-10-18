@@ -12,6 +12,7 @@ from app.modules.context.privacy_manager import privacy_manager
 from app.modules.database import db, get_session
 from app.modules.database.model import Document, DocumentVersion, DocumentChunk
 from app.modules.documents import document_manager as manager, embedding, retrieval
+from app.modules.documents.parsing import parse_chunks
 from app.router.document_router import router
 
 REAL_EMBED_TEXTS = embedding.embed_texts
@@ -93,9 +94,9 @@ def test_failed_embedding_retry_and_recovery(documents, monkeypatch):
 
 
 def test_parser_and_vector_validation(documents):
-    assert manager.parse_chunks("test.md", "# Heading\n한국어 문서".encode())[0]["section"] == "Heading"
+    assert parse_chunks("test.md", "# Heading\n한국어 문서".encode())[0]["section"] == "Heading"
     with pytest.raises(ValueError, match="no_extractable"):
-        manager.parse_chunks("test.txt", b" ")
+        parse_chunks("test.txt", b" ")
     for vector in ([0., 0., 0.], [1., float("nan"), 0.], [1., 0.], [True, 1., 0.]):
         with pytest.raises(ValueError):
             embedding.validate_vectors({"model": settings.embedding_model, "embeddings": [vector]}, 1)
@@ -269,14 +270,14 @@ def test_pdf_text_page_references_blank_and_encrypted(documents):
         writer.write(result)
         return result.getvalue()
 
-    chunks = manager.parse_chunks("resume.pdf", make_pdf("Python platform experience"))
+    chunks = parse_chunks("resume.pdf", make_pdf("Python platform experience"))
     assert len(chunks) == 1
     assert chunks[0]["page"] == 1
     assert "Python platform experience" in chunks[0]["text"]
     with pytest.raises(ValueError, match="no_extractable_text_ocr_not_supported"):
-        manager.parse_chunks("scanned.pdf", make_pdf())
+        parse_chunks("scanned.pdf", make_pdf())
     with pytest.raises(ValueError, match="encrypted_or_too_many_pdf_pages"):
-        manager.parse_chunks("encrypted.pdf", make_pdf("private", True))
+        parse_chunks("encrypted.pdf", make_pdf("private", True))
 
 
 def test_purge_evidence_removes_direct_and_transitive_snapshots(documents):

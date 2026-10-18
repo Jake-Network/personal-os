@@ -1,6 +1,8 @@
-"""Types passed between migration planning and applying."""
+"""Types passed between migration planning and applying, and the schema shape they compare."""
 
 from dataclasses import dataclass, field
+
+Schema = dict[str, frozenset[str]]  # table -> column names
 
 
 @dataclass

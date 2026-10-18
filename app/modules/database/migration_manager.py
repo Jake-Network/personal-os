@@ -27,10 +27,10 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 
-from app.modules.database.types import MigrationPlan
+from app.modules.database.schema_diff import schema_differences
+from app.modules.database.types import MigrationPlan, Schema
 
 ROOT = Path(__file__).resolve().parents[3]
-Schema = dict[str, frozenset[str]]
 
 # Append-only tables guarded by triggers in migrations 0002 and 0005 (same names, so downgrades work).
 APPEND_ONLY = {
@@ -87,21 +87,12 @@ def plan(url: str) -> MigrationPlan:
         if expected == tables:
             result.stamp = rev.revision
             return result
-        diff = _differences(expected, tables)
+        diff = schema_differences(expected, tables)
         if closest is None or len(diff) < closest[0]:
             closest = (len(diff), rev.revision, diff)
     assert closest is not None
     result.differences = [f"closest revision {closest[1]}:"] + closest[2]
     return result
-
-
-def _differences(expected: Schema, actual: Schema) -> list[str]:
-    out = [f"missing table {t}" for t in sorted(expected.keys() - actual.keys())]
-    out += [f"unexpected table {t}" for t in sorted(actual.keys() - expected.keys())]
-    for t in sorted(expected.keys() & actual.keys()):
-        out += [f"{t}: missing column {c}" for c in sorted(expected[t] - actual[t])]
-        out += [f"{t}: unexpected column {c}" for c in sorted(actual[t] - expected[t])]
-    return out
 
 
 def backup_sqlite(url: str, now: datetime | None = None) -> Path | None:
