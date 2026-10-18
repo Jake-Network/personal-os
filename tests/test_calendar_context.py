@@ -7,7 +7,7 @@ from app.modules.context import context_tool_manager
 from app.modules.context.calendar_scope import calendar_scope
 from app.modules.context.context_tool_manager import get_calendar_events
 from app.modules.database.model import CalendarEvent
-from app.schema.context_schema import ToolContext
+from app.modules.context.types import ToolContext
 
 
 NOW = datetime(2026, 10, 18, 9, tzinfo=UTC)

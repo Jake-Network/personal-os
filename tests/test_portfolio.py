@@ -493,7 +493,7 @@ def test_last_valid_close_skips_unavailable_later_row(portfolio_api):
 def test_advisor_stock_proportion_respects_financial_privacy(portfolio_api, session, share_financial):
     from app.enums.context_category import Category
     from app.modules.context.portfolio_tools import sheets_portfolio
-    from app.schema.context_schema import ToolContext
+    from app.modules.context.types import ToolContext
 
     client, fake = portfolio_api
     fake.data["Holdings"][0]["asset_class"] = "equity"
@@ -515,7 +515,7 @@ def test_advisor_stock_proportion_respects_financial_privacy(portfolio_api, sess
 def test_advisor_history_withholds_aggregate_if_either_category_excluded(portfolio_api, session, allowed_names):
     from app.enums.context_category import Category
     from app.modules.context.portfolio_tools import get_monthly_asset_history
-    from app.schema.context_schema import ToolContext
+    from app.modules.context.types import ToolContext
 
     client, _, _ = import_sheet(portfolio_api)
     client.post("/api/finance/history", json={"month": "2026-09-01"})

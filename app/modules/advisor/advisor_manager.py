@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -14,10 +14,12 @@ from app.config import settings
 from app.enums.context_category import ALL_CATEGORIES, Category
 from app.modules.advisor.prompts import SYSTEM_PROMPT
 from app.modules.advisor.proposal_manager import proposal_manager
+from app.modules.advisor.types import AskOptions, PreparedHistory
 from app.modules.context.context_builder_manager import ContextBuilderManager, context_builder_manager
 from app.modules.context.context_routing_manager import ContextRoutingManager, context_routing_manager
-from app.modules.context.history_privacy_manager import HistoryDecision, history_privacy_manager
+from app.modules.context.history_privacy_manager import history_privacy_manager
 from app.modules.context.privacy_manager import privacy_manager
+from app.modules.context.types import ContextPackage, HistoryDecision, RouteDecision, payload_citations, payload_evidence
 from app.modules.context.entity_routing import matched_investment_terms
 from app.modules.crud.advisor_handler import context_snapshot_handler, conversation_handler, message_handler
 from app.modules.crud.audit_log_handler import audit_log_handler
@@ -25,9 +27,7 @@ from app.modules.database.model import AdvisorConversation, AdvisorMessage, Cont
 from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
-from app.schema.advisor_schema import AskOptions
-from app.schema.context_schema import ContextPackage, RouteDecision, payload_citations, payload_evidence
-from app.schema.llm_schema import LLMRequest
+from app.modules.llm.types import LLMRequest
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +37,6 @@ HISTORICAL_EVIDENCE_RULES = (
     "최신 구조화 데이터와 현재 검색 결과를 우선하며 과거 근거임을 밝히세요. 과거 대화의 [과거 문서 근거 생략]은 "
     "예산 때문에 원문 근거를 생략했다는 뜻입니다. 현재 제공된 ref만 인용하고 생략된 근거로 현재 사실을 단정하지 마세요."
 )
-
-
-@dataclass
-class PreparedHistory:
-    messages: list[AdvisorMessage]
-    snapshots: dict[str, ContextSnapshot]
-    withheld_ids: list[int] = field(default_factory=list)
-    withheld_categories: list[str] = field(default_factory=list)
-
-    def decision(self) -> HistoryDecision:
-        return HistoryDecision(self.messages, self.withheld_ids, self.withheld_categories)
-
-    def citations(self, message):
-        snapshot = self.snapshots.get(message.context_snapshot_id)
-        return payload_citations(snapshot.payload) if snapshot else []
 
 
 class AdvisorManager:

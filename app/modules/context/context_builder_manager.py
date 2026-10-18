@@ -15,7 +15,7 @@ from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_curren
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.modules.llm.errors import AdvisorError
-from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext, data_citations
+from app.modules.context.types import ContextPackage, RouteDecision, ToolContext, data_citations
 from app.modules.documents.retrieval import cited_categories, library_fingerprint, search as search_documents
 
 

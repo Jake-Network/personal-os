@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.enums.context_category import Category
-from app.schema.context_schema import ToolContext, ToolResult
+from app.modules.context.types import ToolContext, ToolResult
 
 
 def sheets_enabled(ctx: ToolContext) -> bool:

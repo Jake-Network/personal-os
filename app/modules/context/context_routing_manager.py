@@ -8,7 +8,7 @@ so "퇴사" pulls Financial + Career + Goals as the PRD examples require.
 import re
 
 from app.enums.context_category import Category
-from app.schema.context_schema import RouteDecision
+from app.modules.context.types import RouteDecision
 
 C = Category
 

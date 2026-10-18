@@ -1,20 +1,4 @@
-from dataclasses import dataclass, field
-
 from pydantic import BaseModel
-
-
-@dataclass
-class LLMRequest:
-    model: str
-    instructions: str
-    input: list[dict]
-
-
-@dataclass
-class StreamEvent:
-    type: str  # delta | completed
-    text: str = ""
-    usage: dict = field(default_factory=dict)
 
 
 class ProviderSelection(BaseModel):

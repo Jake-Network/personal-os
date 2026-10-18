@@ -27,7 +27,7 @@ from app.modules.crud.audit_log_handler import audit_log_handler
 from app.modules.crud.oauth_handler import oauth_connection_handler, oauth_credential_handler
 from app.modules.database.model import OAuthConnection
 from app.modules.llm.errors import AuthRequired, ConsentDeclined, NotConnected
-from app.schema.oauth_schema import PendingLogin
+from app.modules.auth.types import PendingLogin
 
 IDENTITY_SCOPES = ("openid", "profile", "email")
 PLAN_SCOPES = ("offline_access", "resource.invoke", "chatgpt.tokens.use.direct")

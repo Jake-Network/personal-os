@@ -13,7 +13,7 @@ from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database import db
 from app.modules.database.model import Document
 from app.modules.documents import document_manager as manager, embedding, retrieval
-from app.schema.advisor_schema import AskOptions
+from app.modules.advisor.types import AskOptions
 
 
 def ask(session, conv, query, options=None):

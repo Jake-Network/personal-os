@@ -11,7 +11,7 @@ from app.modules.context.context_builder_manager import BudgetExceeded, ContextB
 from app.modules.context.context_routing_manager import context_routing_manager
 from app.modules.database.model import CalendarEvent, JobApplication
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
-from app.schema.context_schema import RouteDecision
+from app.modules.context.types import RouteDecision
 
 ALL = frozenset(Category)
 

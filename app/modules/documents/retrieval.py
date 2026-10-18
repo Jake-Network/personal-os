@@ -9,7 +9,7 @@ from app.config import settings
 from app.modules.context.privacy_manager import privacy_manager
 from app.modules.database.model import Document, DocumentVersion, DocumentChunk
 from app.modules.documents import embedding
-from app.schema.context_schema import ToolResult
+from app.modules.context.types import ToolResult
 
 
 def _tokens(text):

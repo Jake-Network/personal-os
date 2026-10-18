@@ -31,8 +31,8 @@ from app.modules.crud.planning_handler import calendar_event_handler, goal_handl
 from app.modules.database.model import CalendarEvent, FxRate, Holding
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
-from app.schema.context_schema import ToolContext, ToolResult
-from app.schema.finance_schema import FxTable, Position, q2
+from app.modules.context.types import ToolContext, ToolResult
+from app.modules.finance.types import FxTable, Position, q2
 from app.modules.context.portfolio_tools import (
     get_monthly_asset_history, sheets_enabled, sheets_accounts, sheets_portfolio, sheets_market,
 )

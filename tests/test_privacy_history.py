@@ -11,7 +11,7 @@ from app.modules.context.privacy_manager import privacy_manager
 from app.modules.crud.advisor_handler import context_snapshot_handler, message_handler
 from app.modules.database.model import AdvisorMessage
 from app.modules.llm.errors import AdvisorError
-from app.schema.advisor_schema import AskOptions
+from app.modules.advisor.types import AskOptions
 
 # Values that only exist in the financial category of the `seeded` fixture or in answers built on it.
 FINANCIAL_SECRETS = ("12000000", "12,000,000", "급여통장", "9,100,000", "9100000", "신용대출")
@@ -139,8 +139,8 @@ def test_decide_is_a_pure_prefix_rule():
 
 
 def test_outbound_guard_fails_closed_on_excluded_package_category(seeded):
-    from app.modules.context.history_privacy_manager import HistoryDecision
-    from app.schema.context_schema import ContextPackage
+    from app.modules.context.types import HistoryDecision
+    from app.modules.context.types import ContextPackage
 
     package = ContextPackage("s", {}, False, ["financial"], [], {}, [], [])
     with pytest.raises(AdvisorError):

@@ -20,7 +20,7 @@ from app.modules.llm.errors import (
     ScopeNotAuthorized,
     UsageUnavailable,
 )
-from app.schema.llm_schema import LLMRequest, StreamEvent
+from app.modules.llm.types import LLMRequest, StreamEvent
 
 if TYPE_CHECKING:
     from app.modules.auth.oauth_manager import OAuthManager

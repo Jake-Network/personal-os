@@ -21,24 +21,13 @@ category.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
 from app.enums.context_category import ALL_CATEGORIES, Category
 from app.modules.crud.advisor_handler import context_snapshot_handler
+from app.modules.context.types import HistoryDecision
 from app.modules.database.model import AdvisorMessage
-
-
-@dataclass(frozen=True)
-class HistoryDecision:
-    kept: list[AdvisorMessage]
-    withheld_ids: list[int]
-    withheld_categories: list[str]  # excluded categories that caused withholding
-
-    def as_dict(self) -> dict:
-        return {"history_withheld_messages": len(self.withheld_ids),
-                "history_withheld_categories": self.withheld_categories}
 
 
 class HistoryPrivacyManager:

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from app.enums.context_category import Category as C
 from app.modules.context import portfolio_tools as tools
 from app.modules.context.context_routing_manager import context_routing_manager
-from app.schema.context_schema import ToolContext
+from app.modules.context.types import ToolContext
 
 
 def sample():

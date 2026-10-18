@@ -2,7 +2,7 @@
 from sqlalchemy import delete, select, update
 
 from app.modules.database.model import AdvisorMessage, ContextDocumentReference, ContextSnapshot
-from app.schema.context_schema import payload_evidence
+from app.modules.context.types import payload_evidence
 
 
 def reference_rows(snapshot_id: str, payload: dict) -> list[dict]:

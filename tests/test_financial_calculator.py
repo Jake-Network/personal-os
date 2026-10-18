@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from app.modules.finance.financial_calculator import financial_calculator as calc
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
-from app.schema.finance_schema import FxTable, Position
+from app.modules.finance.types import FxTable, Position
 
 FX = FxTable(base="KRW", rates={"USD": Decimal("1400")})
 

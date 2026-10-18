@@ -1,14 +1,4 @@
-from dataclasses import dataclass
-
 from pydantic import BaseModel
-
-
-@dataclass
-class PendingLogin:
-    verifier: str
-    nonce: str
-    client_id: str
-    created: float
 
 
 class LoginStartResponse(BaseModel):

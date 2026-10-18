@@ -8,7 +8,7 @@ from app.modules.context.privacy_manager import privacy_manager
 from app.modules.crud.advisor_handler import llm_usage_event_handler, proposed_action_handler
 from app.modules.database.model import AuditLog, Task
 from app.modules.llm.errors import QuotaExceeded
-from app.schema.advisor_schema import AskOptions
+from app.modules.advisor.types import AskOptions
 
 
 def run(session, conv, text, options=None):

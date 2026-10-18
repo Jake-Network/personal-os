@@ -4,14 +4,12 @@ These endpoints are the user's own edits. The advisor has no path to them: its o
 channel is proposal_manager, which cannot touch financial tables (AC-18).
 """
 
-from dataclasses import dataclass
 from datetime import date
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.modules.crud.audit_log_handler import audit_log_handler
-from app.modules.crud.base import BaseCRUDHandler
 from app.modules.crud.career_handler import career_criterion_handler, interview_handler, job_application_handler
 from app.modules.crud.finance_handler import (
     account_handler,
@@ -24,15 +22,8 @@ from app.modules.crud.finance_handler import (
 )
 from app.modules.crud.planning_handler import calendar_event_handler, goal_handler, task_handler, workout_log_handler
 from app.modules.finance.value_history_manager import HISTORY_ONLY_FIELDS, value_history_manager
+from app.modules.personal_data.types import Resource
 from app.schema import domain_schema as s
-
-
-@dataclass(frozen=True)
-class Resource:
-    handler: BaseCRUDHandler
-    create_schema: type[BaseModel]
-    item_schema: type[BaseModel]
-    financial: bool = False
 
 
 RESOURCES: dict[str, Resource] = {

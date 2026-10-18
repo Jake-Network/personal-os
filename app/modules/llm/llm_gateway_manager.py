@@ -25,7 +25,7 @@ from app.modules.llm.providers import (
     LLMProvider,
     ResponsesApiClient,
 )
-from app.schema.llm_schema import LLMRequest, StreamEvent
+from app.modules.llm.types import LLMRequest, StreamEvent
 
 PROVIDER_KEY = "llm.provider"
 MODEL_KEY = "llm.model"

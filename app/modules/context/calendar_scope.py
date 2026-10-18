@@ -1,20 +1,9 @@
 """Small, explicit calendar scope grammar; unsupported dates are never guessed."""
 
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-
-@dataclass(frozen=True)
-class CalendarScope:
-    start: datetime
-    end: datetime
-    status: str
-    label: str
-
-    def as_dict(self) -> dict:
-        return {"start": self.start.isoformat(), "end_exclusive": self.end.isoformat(),
-                "timezone": str(self.start.tzinfo), "status": self.status, "label": self.label}
+from app.modules.context.types import CalendarScope
 
 
 _RELATIVE = re.compile(

@@ -8,7 +8,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.modules.finance.liquidity_policy import BUCKETS, POLICY_SUMMARY
-from app.schema.finance_schema import ZERO, FxTable, NetWorth, Position, q2
+from app.modules.finance.types import ZERO, FxTable, NetWorth, Position, q2
 
 
 def _month_label(index: int) -> str:

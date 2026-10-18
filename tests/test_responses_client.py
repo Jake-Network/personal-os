@@ -6,7 +6,7 @@ import pytest
 
 from app.modules.llm.errors import IncompleteResponse, QuotaExceeded, ScopeNotAuthorized
 from app.modules.llm.providers import ResponsesApiClient
-from app.schema.llm_schema import LLMRequest
+from app.modules.llm.types import LLMRequest
 
 REQ = LLMRequest(model="m", instructions="i", input=[{"role": "user", "content": "hi"}])
 

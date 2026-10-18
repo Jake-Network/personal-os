@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.modules.database import db
 from app.modules.database.model import Base
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
-from app.schema.llm_schema import LLMRequest, StreamEvent
+from app.modules.llm.types import LLMRequest, StreamEvent
 
 
 class FakeProvider:
