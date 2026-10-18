@@ -59,7 +59,7 @@ class ScenarioComparison(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 class ScenarioSelect(BaseModel):
-    scenario_id: str
+    scenario_id: str | None
     expected_revision: int = Field(ge=1)
 
 class ActionProposalView(BaseModel):
@@ -90,6 +90,7 @@ class RunResult(BaseModel):
 class RunView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    request_id: str
     conversation_id: int
     status: RunStatus
     revision: int

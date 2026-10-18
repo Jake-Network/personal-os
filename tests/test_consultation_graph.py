@@ -187,12 +187,25 @@ def test_review_discovers_missing_issue_and_replans_with_dependency_invalidation
     assert result['results']['c']['data'] == {'value': '100'}
 
 
-def test_clarifications_exhaust_budget_into_partial_answer(monkeypatch):
+@pytest.mark.parametrize('response', ['미정', '모름', '잘 모르겠어요', '아직 몰라요', 'unknown'])
+def test_unknown_clarification_finishes_conditionally_without_asking_again(monkeypatch, response):
     question = '{"objective":"확인","clarification":{"question":"어느 기간인가요?"}}'
-    result, calls = run_graph(monkeypatch, [question] * 11 + ['{"answer":"추가 확인 한도로 현재 한계만 반환합니다."}'],
-                              resume=['미정'] * 11)
-    assert result['model_calls'] == 12
+    result, calls = run_graph(monkeypatch, [question, question, '{"valid":true}',
+        '{"answer":"기간이 정해지지 않아 조건부로 안내합니다."}'], resume=response)
+    assert result['model_calls'] == 4
     assert result['answer']
+    assert result['limitations']
+    assert not result.get('__interrupt__')
+    assert '추가 확인 질문을 하지' in calls[1][1]['instruction']
+
+
+def test_clarification_rounds_are_bounded_independently_of_provider_budget(monkeypatch):
+    question = '{"objective":"확인","clarification":{"question":"어느 기간인가요?"}}'
+    result, calls = run_graph(monkeypatch, [question, question, question, '{"valid":true}',
+        '{"answer":"확인한 조건과 남은 한계를 안내합니다."}'], resume=['3개월', '3개월'])
+    assert result['clarification_count'] == 2
+    assert result['model_calls'] == 5
+    assert not result.get('__interrupt__')
     assert result['limitations']
 
 
@@ -239,6 +252,47 @@ def test_numeric_answer_uses_values_and_server_calculations_not_row_ids():
     assert '1,200원' in answer and '10.0개월' in answer
     assert '123원' not in answer and '999원' not in answer
     assert module.validated_numeric_answer('2026년 10월 18일부터 3개월입니다.', basis)[1] is False
+
+
+@pytest.mark.parametrize('answer', [
+    '목표 달성 확률은 90%입니다.',
+    '완주 성공률은 95%입니다.',
+    '완주 가능성은 90%입니다.',
+    '500원입니다.',
+    '채권 가격은 500달러입니다.',
+    '계좌 잔고는 900만원입니다.',
+    '런웨이는 18개월입니다.',
+    '수익률은 15%입니다.',
+    '증가율은 90%입니다.',
+    '보유 금액은 $500입니다.',
+    'Your balance is 500 USD.',
+    'Your chance of success is 90%.',
+])
+def test_sensitive_numeric_claims_still_need_evidence(answer):
+    validated, withheld = module.validated_numeric_answer(answer, {})
+    assert withheld
+    assert answer not in validated
+
+
+def test_mixed_advice_preserves_training_but_withholds_unbacked_probability():
+    advice = '주 3회 훈련을 예시로 고려하세요.'
+    validated, withheld = module.validated_numeric_answer(
+        advice + '\n완주 확률은 99%입니다.', {})
+    assert withheld
+    assert advice in validated
+    assert '99%' not in validated
+
+
+def test_numeric_answer_trusts_supplied_user_records():
+    answer = '계좌 잔고는 900만원입니다.\n기록한 목표는 1시간 35분입니다.'
+    basis = {'current_data': {'accounts': [{'balance': '9000000'}],
+                              'goals': [{'target': '1시간 35분'}]}}
+    assert module.validated_numeric_answer(answer, basis) == (answer, False)
+
+
+def test_numeric_answer_keeps_nonstatistical_feasibility_discussion():
+    answer = '13분 단축 가능성은 최근 훈련 기록을 보고 판단해야 합니다.'
+    assert module.validated_numeric_answer(answer, {}) == (answer, False)
 
 
 def test_discovered_finance_task_supplies_common_calculation_baseline(monkeypatch):

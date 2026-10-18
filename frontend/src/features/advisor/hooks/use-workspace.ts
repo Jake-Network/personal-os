@@ -29,7 +29,7 @@ export function useWorkspace(conversationId: number | null, observe = true) {
   const [connection, setConnection] = useState<{ id?: string; reconnecting: boolean }>({ reconnecting: false });
   const [live, setLive] = useState<{ id?: string; revision: number; text: string }>({ revision: 0, text: '' });
   const [context, setContext] = useState<{ id: string; data: InspectorData } | null>(null);
-  const [progress, setProgress] = useState<{ id: string; stage: string } | null>(null);
+  const [progress, setProgress] = useState<{ id: string; stage: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!observe || !runId || !executing || conversationId === null) return;
@@ -50,7 +50,11 @@ export function useWorkspace(conversationId: number | null, observe = true) {
             cursor = next.cursor;
             setConnection({ id: runId, reconnecting: false });
             if (event.type === 'progress') {
-              setProgress({ id: runId, stage: String(event.payload.stage ?? '') });
+              setProgress({
+                id: runId,
+                stage: String(event.payload.stage ?? ''),
+                message: typeof event.payload.message === 'string' ? event.payload.message : '',
+              });
             } else if (event.type === 'context') {
               setContext({ id: runId, data: event.payload as unknown as InspectorData });
             } else if (event.type === 'delta') {
@@ -95,6 +99,7 @@ export function useWorkspace(conversationId: number | null, observe = true) {
     refresh,
     save,
     progress: progress && progress.id === runId ? progress.stage : '',
+    progressMessage: progress && progress.id === runId ? progress.message : '',
     context: context && context.id === runId ? context.data : (run?.result?.context as InspectorData | undefined),
     liveText: live.id === runId && live.revision === run?.answer_revision ? live.text : '',
     reconnecting: connection.id === runId && connection.reconnecting,

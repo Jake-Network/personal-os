@@ -32,7 +32,7 @@ def _store_problem(session, conversation_id, problem):
 
 async def process_one(database):
     from app.modules.advisor.advisor_manager import advisor_manager
-    from app.modules.advisor.runtime.graph import build_conversation_graph, initial_state
+    from app.modules.advisor.runtime.graph import build_conversation_graph, initial_state, needs_analysis, scenario_followup
     from app.modules.advisor.runtime.checkpoints import run_checkpointer, CheckpointLeaseLost
     from app.modules.advisor.proposal_manager import proposal_manager
     from app.modules.crud import message_handler
@@ -69,7 +69,8 @@ async def process_one(database):
             with database.session() as observing:
                 repository = RunRepository(observing)
                 owned = repository.fence(run_id, owner, generation)
-                if event.get('stage') == 'model_started':
+                if event.get('stage') in {'model_started', 'web_searching'}:
+                    # Keep the persisted compatibility key for all uncertain external I/O.
                     owned.runtime_metadata = {**(owned.runtime_metadata or {}), 'model_inflight': True}
                 repository.append_event(run_id, 'progress', event, worker_id=owner, generation=generation)
                 observing.commit()
@@ -90,7 +91,8 @@ async def process_one(database):
                     selected = None
                     from app.modules.database.model.advisor_runtime import AdvisorScenario
                     workspace = session.get(AdvisorWorkspace, run.conversation_id)
-                    selected_id = body.scenario_id or (workspace.selected_scenario_id if workspace else None)
+                    selected_id = body.scenario_id or (
+                        workspace.selected_scenario_id if workspace and scenario_followup(body.message) else None)
                     if selected_id:
                         scenario = session.get(AdvisorScenario, selected_id)
                         if scenario and scenario.conversation_id == run.conversation_id:
@@ -106,8 +108,22 @@ async def process_one(database):
                             selected = {'title': scenario.title, 'assumptions': scenario.assumptions,
                                         'constraints': scenario.constraints, 'source_snapshot_id': source_id,
                                         'prior_results': scenario.results}
+                    from sqlalchemy import select
+                    previous = session.scalar(select(AdvisorRun).where(
+                        AdvisorRun.conversation_id == run.conversation_id,
+                        AdvisorRun.user_message_id < run.user_message_id)
+                        .order_by(AdvisorRun.user_message_id.desc()).limit(1))
+                    previous_analysis = False
+                    if previous is not None and previous.status == 'completed':
+                        # Routing inherits intent only. Historical text/amounts still pass exclusively
+                        # through ContextAssembler's current sharing and source checks.
+                        previous_analysis = bool((previous.runtime_metadata or {}).get('analysis_used'))
+                        if not previous_analysis:
+                            previous_analysis = needs_analysis(initial_state(
+                                previous.input_payload.get('message', ''), previous.depth))
                     value = None if saved.values else initial_state(body.message, body.depth,
-                        single_response=bool(metadata.get('single_response')), selected_scenario=selected)
+                        single_response=bool(metadata.get('single_response')), selected_scenario=selected,
+                        explicit_scenario=body.scenario_id is not None, previous_analysis=previous_analysis)
                 with tracing_context(enabled=False):
                     task = asyncio.create_task(graph.ainvoke(value, config, durability='sync'))
                 # A failed heartbeat (including cancel/lock) also interrupts an in-flight provider request.
@@ -126,6 +142,7 @@ async def process_one(database):
                 state = task.result()
             await guard()
             row = repo.fence(run_id, owner, generation)
+            row.runtime_metadata = {**(row.runtime_metadata or {}), 'analysis_used': needs_analysis(state)}
             row.checkpoint = {k: v for k, v in row.checkpoint.items() if k != 'resume'}
             if state.get('__interrupt__'):
                 question = dict(state['__interrupt__'][0].value)
@@ -143,7 +160,7 @@ async def process_one(database):
                 return True
             snapshot_id = state.get('snapshot_id')
             answer, proposals, memories = state.get('answer', ''), state.get('proposals', []), state.get('memories', [])
-            if metadata.get('single_response'):
+            if metadata.get('single_response') and state.get('single_response'):
                 from app.modules.advisor.proposals import extract_blocks
                 answer, proposals, memories = extract_blocks(answer)
             reply = message_handler.create(session, {'conversation_id': row.conversation_id,

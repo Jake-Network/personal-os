@@ -31,7 +31,7 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_p
     Base.metadata.create_all(engine)  # what native startup produces: no triggers, no version
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0012_manual_history_precision"
+    assert plan.head == "0013_goal_values_as_text"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())

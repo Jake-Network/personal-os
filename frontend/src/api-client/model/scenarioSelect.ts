@@ -4,9 +4,10 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { ScenarioSelectScenarioId } from './scenarioSelectScenarioId';
 
 export interface ScenarioSelect {
-  scenario_id: string;
+  scenario_id: ScenarioSelectScenarioId;
   /** @minimum 1 */
   expected_revision: number;
 }

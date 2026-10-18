@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 
 import { EmptyState } from '@/components/empty-state';
+import { QueryStatus } from '@/components/query-status';
 import { notify } from '@/components/notify';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -100,7 +101,8 @@ export function DecisionJournal() {
           </form>
         </Card>
       )}
-      {list.data?.length === 0 && (
+      <QueryStatus pending={list.isPending} error={list.error} retry={list.refetch} label='의사결정 기록' />
+      {!list.error && list.data?.length === 0 && (
         <Card>
           <EmptyState>기록된 의사결정이 없습니다.</EmptyState>
         </Card>

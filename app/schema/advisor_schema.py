@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.enums.context_category import Category
 from app.modules.advisor.types import AskOptions
@@ -49,6 +49,14 @@ class AskRequest(BaseModel):
     exclude: list[Category] = []
     document_search: bool = True
     document_ids: list[int] | None = Field(default=None, max_length=5)
+    web_search: bool = False
+    web_query: str | None = Field(default=None, min_length=1, max_length=300)
+
+    @model_validator(mode='after')
+    def public_web_query(self):
+        if self.web_search and (not self.web_query or not self.web_query.strip()):
+            raise ValueError('웹 검색을 켜려면 외부에 전송할 공개 검색어를 입력하세요.')
+        return self
 
     history_since: AwareDatetime | None = None
     history_until: AwareDatetime | None = None
@@ -61,6 +69,7 @@ class AskRequest(BaseModel):
             categories=frozenset(self.categories) if self.categories is not None else None,
             exclude=frozenset(self.exclude),
             document_search=self.document_search,
+            web_search=self.web_search, web_query=self.web_query,
             document_ids=tuple(self.document_ids) if self.document_ids is not None else None,
             history_since=self.history_since, history_until=self.history_until,
             history_company=self.history_company, history_project=self.history_project, history_decision=self.history_decision,

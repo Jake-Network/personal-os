@@ -122,10 +122,7 @@ function GoogleConnectionControls() {
   });
   const disconnect = useMutation({
     mutationFn: financeApi.googleDisconnect,
-    onSettled: () => Promise.all([
-      client.invalidateQueries({ queryKey: ['finance'] }),
-      client.invalidateQueries({ queryKey: ['market-data'] }),
-    ]),
+    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: ['market-data'] })]),
   });
   const data = connection.data;
   const origin = useSyncExternalStore(subscribeToOrigin, browserOrigin, serverOrigin);
@@ -253,6 +250,15 @@ export function Holdings({ data }: { data: Portfolio }) {
   );
 }
 
+function GoogleSettingsDetails({ children }: { children: React.ReactNode }) {
+  const params = useSearchParams();
+  return (
+    <details className='rounded-lg border bg-card p-4' open={params.has('google_oauth')}>
+      {children}
+    </details>
+  );
+}
+
 export function PortfolioView() {
   const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
   const error = portfolio.error;
@@ -268,25 +274,20 @@ export function PortfolioView() {
         }
       />
       {error && <Alert variant='destructive'>{error.message}</Alert>}
-      <Card>
-        <CardHeader>
-          <CardTitle>Google 시세 전용 연결</CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-3'>
-          <Link href='/data/holdings' className='text-sm underline'>
-            보유 종목 입력 · 자동 시세 보기
-          </Link>
-          <Suspense fallback={<p role='status'>Google 연결 상태를 확인하는 중…</p>}>
-            <GoogleConnectionControls />
-            <MarketConnection />
-          </Suspense>
-          <p className='text-xs text-muted-foreground'>
-            새 전용 파일에 Quotes와 FX만 저장합니다. 계좌·수량·원가·개인 메모는 전송하지 않습니다. Google에는 조회 티커가 남으며 무료 시세는
-            지연되거나 지원되지 않을 수 있습니다. 기존 자산 시트의 개인정보는 자동 삭제되지 않습니다. 이전 후 Google에서 승인과 원격 파일을 직접
-            확인하세요.
-          </p>
-        </CardContent>
-      </Card>
+      <div className='flex flex-wrap gap-2'>
+        <Button variant='primary' asChild>
+          <Link href='/data/accounts'>계좌 · 현금 입력</Link>
+        </Button>
+        <Button asChild>
+          <Link href='/data/holdings'>보유 종목 입력</Link>
+        </Button>
+        <Button asChild>
+          <Link href='/data/liabilities'>부채 입력</Link>
+        </Button>
+      </div>
+      <p className='text-sm text-muted-foreground'>
+        Google 연결 없이도 자산을 기록하고 확인할 수 있습니다. 자동 시세가 필요하면 아래 연결 설정을 이용하세요.
+      </p>
       {portfolio.isPending && <p role='status'>평가 정보를 불러오는 중…</p>}
       {portfolio.data && (
         <>
@@ -319,6 +320,20 @@ export function PortfolioView() {
           <Holdings data={portfolio.data} />
         </>
       )}
+      <Suspense fallback={<p role='status'>Google 연결 상태를 확인하는 중…</p>}>
+        <GoogleSettingsDetails>
+          <summary className='cursor-pointer font-medium'>자동 시세 연결 · Google 설정 (선택)</summary>
+          <div className='mt-4 space-y-3'>
+            <GoogleConnectionControls />
+            <MarketConnection />
+            <p className='text-xs text-muted-foreground'>
+              새 전용 파일에 Quotes와 FX만 저장합니다. 계좌·수량·원가·개인 메모는 전송하지 않습니다. Google에는 조회 티커가 남으며 무료 시세는
+              지연되거나 지원되지 않을 수 있습니다. 기존 자산 시트의 개인정보는 자동 삭제되지 않습니다. 이전 후 Google에서 승인과 원격 파일을 직접
+              확인하세요.
+            </p>
+          </div>
+        </GoogleSettingsDetails>
+      </Suspense>
     </PageContainer>
   );
 }

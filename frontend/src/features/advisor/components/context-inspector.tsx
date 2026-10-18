@@ -15,7 +15,7 @@ import { dateTime, relative } from '@/lib/utils/format';
 
 import { INSPECTOR_TITLE } from '../consts';
 import type { InspectorData, InspectorMode } from '../types';
-import { groupBy } from '../utils';
+import { groupBy, publicWebUrl } from '../utils';
 
 interface Props {
   data: InspectorData | null;
@@ -130,6 +130,32 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
           </details>
         ))}
       </Section>
+      {!!data.web_sources?.length && (
+        <Section>
+          <SectionTitle>웹 근거</SectionTitle>
+          {data.web_sources.map(source => {
+            const url = publicWebUrl(source.url);
+            return (
+              <details key={source.ref} className='mb-2 text-xs'>
+                <summary className='cursor-pointer'>{source.title}{source.historical ? ' · 과거 근거' : ''}</summary>
+                {url && (
+                  <a className='mt-1 block break-all underline' href={url} target='_blank' rel='noopener noreferrer'>
+                    {source.url}
+                  </a>
+                )}
+                <p className='mt-1 text-faint'>
+                  {source.published_at ? `발행일 ${source.published_at} · ` : ''}조회 {dateTime(source.retrieved_at)}
+                </p>
+                {source.excerpts.map((excerpt, index) => (
+                  <p key={index} className='mt-2 whitespace-pre-wrap'>
+                    {excerpt}
+                  </p>
+                ))}
+              </details>
+            );
+          })}
+        </Section>
+      )}
       <Section>
         <SectionTitle>조회한 레코드</SectionTitle>
         {Object.keys(refsByTool).length === 0 && <div className='text-xs text-faint'>조회된 레코드가 없습니다.</div>}
@@ -169,12 +195,13 @@ function SnapshotSection({ snapshotId, reused }: { snapshotId: string; reused: b
       <div className='break-all font-mono text-xs text-faint'>{snapshotId}</div>
       {reused && <div className='text-xs text-faint'>직전 질문과 데이터가 같아 기존 스냅샷을 재사용했습니다.</div>}
       <Button size='sm' className='mt-2' disabled={compare.isFetching} onClick={() => (requested ? compare.refetch() : setRequested(true))}>
-        현재 데이터와 비교
+        현재 개인 데이터와 비교
       </Button>
+      <p className='mt-1 text-xs text-faint'>웹 근거는 답변 당시 자료이며 이 비교에서 재조회하지 않습니다.</p>
       {result && (
         <div className='mt-2 text-xs'>
           {result.changed_sections.length === 0 ? (
-            <Badge variant='success'>상담 이후 변경 없음</Badge>
+            <Badge variant='success'>개인 데이터 변경 없음</Badge>
           ) : (
             <>
               <div>상담 이후 바뀐 데이터:</div>

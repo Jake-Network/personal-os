@@ -21,7 +21,9 @@ class ContextSnapshotHandler(BaseCRUDHandler[ContextSnapshot]):
         super().delete(session, obj)
 
     def get_latest_for_conversation(self, session: Session, conversation_id: int) -> ContextSnapshot | None:
-        return self.get_first_with_filters(session, [ContextSnapshot.conversation_id == conversation_id],
+        # A retrieval artifact must not replace the last conversation routing/pin state.
+        return self.get_first_with_filters(session, [ContextSnapshot.conversation_id == conversation_id,
+                                           ContextSnapshot.payload['web_research_only'].as_boolean().is_not(True)],
                                            [ContextSnapshot.generated_at.desc()])
 
     def get_many(self, session: Session, ids: set[str]) -> list[ContextSnapshot]:

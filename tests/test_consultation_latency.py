@@ -53,6 +53,9 @@ def test_auto_dialogue_one_validated_call(monkeypatch, query):
     result, requests, events = execute(monkeypatch, query, ['{"answer":"조건을 확인해 판단할 수 있습니다."}'])
     assert result['model_calls'] == len(requests) == 1
     assert 'FinalAnswer' in requests[0]['instruction']
+    schema = json.loads(requests[0]['instruction'].split('스키마: ', 1)[1])
+    assert set(schema['properties']) == {'answer', 'proposals', 'memories'}
+    assert result['limitations'] == []
     assert not {'planning', 'reviewing', 'summarizing'} & {e['stage'] for e in events}
     assert next(e for e in events if e['stage'] == 'model_started')['schema'] == 'FinalAnswer'
 
@@ -61,6 +64,16 @@ def test_auto_final_still_withholds_unbacked_numbers(monkeypatch):
     result, _, _ = execute(monkeypatch, '내 성장 가능성', ['{"answer":"승진 확률은 99%입니다."}'])
     assert '99%' not in result['answer']
     assert result['limitations']
+
+
+def test_auto_running_advice_keeps_derived_numbers_and_training_suggestions(monkeypatch):
+    answer = ('1시간 48분에서 1시간 35분은 13분 단축, 약 12% 개선입니다.\n'
+              '목표 페이스는 km당 약 4분 30초입니다.\n'
+              '약 6주 동안 주 3회 훈련하는 예시를 고려할 수 있습니다.')
+    result, _, _ = execute(monkeypatch, '하프 마라톤 1시간 35분은 무리일까?',
+                           [json.dumps({'answer': answer})])
+    assert result['answer'] == answer
+    assert result['limitations'] == []
 
 
 def test_auto_comparison_keeps_tools_and_server_calculations(monkeypatch):
@@ -128,3 +141,17 @@ def test_surrounding_prose_and_multiple_objects_remain_invalid():
 ])
 def test_quantitative_followup_keeps_calculation_path(query):
     assert module.needs_analysis(module.initial_state(query))
+
+
+def test_elliptical_followup_uses_previous_analysis_without_reusing_old_data():
+    state = module.initial_state('그럼 월 200만원이면?', previous_analysis=True)
+    assert module.needs_analysis(state)
+    assert not module.needs_analysis(module.initial_state('그럼 월 200만원이면?'))
+    assert not module.needs_analysis(module.initial_state('다른 질문. 오늘 할 일 알려줘', previous_analysis=True))
+    assert not module.needs_analysis(module.initial_state('그럼 오늘 할 일 알려줘', previous_analysis=True))
+
+
+def test_workspace_selection_does_not_follow_unrelated_query():
+    state = module.initial_state('다른 질문. 오늘 할 일 알려줘', selected_scenario={'title': '기존 대안'})
+    assert not state['selected_scenarios']
+    assert not module.needs_analysis(state)

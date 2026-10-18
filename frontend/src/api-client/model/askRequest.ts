@@ -7,6 +7,7 @@
 import type { AskRequestCategories } from './askRequestCategories';
 import type { Category } from './category';
 import type { AskRequestDocumentIds } from './askRequestDocumentIds';
+import type { AskRequestWebQuery } from './askRequestWebQuery';
 import type { AskRequestHistorySince } from './askRequestHistorySince';
 import type { AskRequestHistoryUntil } from './askRequestHistoryUntil';
 import type { AskRequestHistoryCompany } from './askRequestHistoryCompany';
@@ -23,6 +24,8 @@ export interface AskRequest {
   exclude?: Category[];
   document_search?: boolean;
   document_ids?: AskRequestDocumentIds;
+  web_search?: boolean;
+  web_query?: AskRequestWebQuery;
   history_since?: AskRequestHistorySince;
   history_until?: AskRequestHistoryUntil;
   history_company?: AskRequestHistoryCompany;

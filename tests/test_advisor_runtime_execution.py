@@ -24,7 +24,7 @@ from app.schema.advisor_runtime_schema import RunResult
 
 PLAN = {"objective": "synthetic", "tasks": [], "scenarios": []}
 REVIEW = {"valid": True, "issues": [], "retry_tasks": []}
-FINAL = {"answer": "합성 상담 결과입니다.", "proposals": [], "memories": [], "limitations": []}
+FINAL = {"answer": "합성 상담 결과입니다.", "proposals": [], "memories": []}
 
 
 class ScriptedProvider:
@@ -120,6 +120,80 @@ def test_legacy_subscriber_has_terminal_error_after_cancel(runtime_env):
     body = asyncio.run(collect())
     assert 'event: error' in body and 'run_cancelled' in body
     assert not provider.requests
+
+
+def test_quantitative_followup_recalculates_current_cash_and_respects_exclusion(runtime_env):
+    from datetime import date
+    from decimal import Decimal
+    from app.modules.database.model import Account
+
+    client, database, provider = runtime_env
+    with database.session() as session:
+        account = Account(name='합성 생활비 계좌', kind='checking', currency='KRW',
+                          balance=Decimal('24000000'), balance_as_of=date.today(), is_liquid=True)
+        session.add(account)
+        session.commit()
+        account_id = account.id
+    scenario = {'title': '생활비 가정', 'assumptions': {'financial': {
+        'monthly_expense': '3000000', 'monthly_income': '0'}}}
+    provider.replies.extend([{**PLAN, 'scenarios': [scenario]}, {'answer': '조건부 런웨이는 8개월입니다.'}])
+    first = client.post('/api/advisor/conversations/1/runs', json={
+        'request_id': 'runway-first', 'message': '현재 현금으로 생활비 월 300만원이면 얼마나 버틸까?'}).json()
+    finish(database)
+    first = client.get(f"/api/advisor/runs/{first['id']}").json()
+    assert first['status'] == 'completed', first
+    assert first['request_id'] == 'runway-first'
+    assert first['result']['comparison']['scenarios'][0]['results']['server_calculations']['financial']['months'] == '8.0'
+
+    with database.session() as session:
+        session.get(Account, account_id).balance = Decimal('18000000')
+        session.commit()
+    revised = {**scenario, 'assumptions': {'financial': {'monthly_expense': '2000000', 'monthly_income': '0'}}}
+    provider.replies.extend([{**PLAN, 'scenarios': [revised]}, {'answer': '조건부 런웨이는 9개월입니다.'}])
+    followup = client.post('/api/advisor/conversations/1/runs', json={
+        'request_id': 'runway-followup', 'message': '그럼 월 200만원이면?'}).json()
+    finish(database)
+    followup = client.get(f"/api/advisor/runs/{followup['id']}").json()
+    assert followup['status'] == 'completed', followup
+    assert followup['result']['model_calls'] == 2
+    calculation = followup['result']['comparison']['scenarios'][0]['results']['server_calculations']['financial']
+    assert calculation['months'] == '9.0'
+    assert calculation['usable_cash'] == '18000000.00'
+
+    offset = len(provider.requests)
+    provider.replies.extend([PLAN, {'answer': '현금 공유를 제외하여 현재 조건을 계산할 수 없습니다.'}])
+    restricted = client.post('/api/advisor/conversations/1/runs', json={
+        'request_id': 'runway-restricted', 'message': '그럼 월 100만원이면?', 'exclude': ['financial']}).json()
+    finish(database)
+    restricted = client.get(f"/api/advisor/runs/{restricted['id']}").json()
+    assert restricted['status'] == 'completed', restricted
+    assert restricted['result']['model_calls'] == 2
+    for request in provider.requests[offset:]:
+        outbound = json.dumps([request.instructions, request.input], ensure_ascii=False)
+        for private in ['24000000', '18000000', '합성 생활비 계좌', '생활비 월 300만원']:
+            assert private not in outbound
+
+
+def test_selected_workspace_scenario_does_not_force_unrelated_question_into_analysis(runtime_env):
+    client, database, provider = runtime_env
+    scenario = client.post('/api/advisor/conversations/1/scenarios', json={
+        'request_id': 'old-scenario', 'title': '지난 재무 대안', 'assumptions': {'financial': {'monthly_expense': '1234567'}}}).json()
+    selected = client.post('/api/advisor/conversations/1/scenarios/select', json={
+        'scenario_id': scenario['id'], 'expected_revision': 1})
+    assert selected.status_code == 200, selected.text
+    provider.replies.append(FINAL)
+    run = client.post('/api/advisor/conversations/1/runs', json={
+        'request_id': 'unrelated', 'message': '다른 질문. 오늘 할 일 알려줘'}).json()
+    finish(database)
+    completed = client.get(f"/api/advisor/runs/{run['id']}").json()
+    assert completed['status'] == 'completed', completed
+    assert completed['result']['model_calls'] == 1
+    assert '1234567' not in json.dumps([provider.requests[0].instructions, provider.requests[0].input], ensure_ascii=False)
+    workspace = client.get('/api/advisor/conversations/1/workspace').json()
+    cleared = client.post('/api/advisor/conversations/1/scenarios/select', json={
+        'scenario_id': None, 'expected_revision': workspace['revision']})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()['selected_scenario_id'] is None
 
 
 def test_server_finishes_without_subscriber_and_restores_workspace_events(runtime_env):

@@ -21,6 +21,8 @@ class AskOptions:
     history_company: str | None = None
     history_project: int | None = None
     history_decision: int | None = None
+    web_search: bool = False
+    web_query: str | None = None
 
 
 @dataclass

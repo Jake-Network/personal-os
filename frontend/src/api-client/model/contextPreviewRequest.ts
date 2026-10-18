@@ -7,6 +7,7 @@
 import type { ContextPreviewRequestCategories } from './contextPreviewRequestCategories';
 import type { Category } from './category';
 import type { ContextPreviewRequestDocumentIds } from './contextPreviewRequestDocumentIds';
+import type { ContextPreviewRequestWebQuery } from './contextPreviewRequestWebQuery';
 import type { ContextPreviewRequestHistorySince } from './contextPreviewRequestHistorySince';
 import type { ContextPreviewRequestHistoryUntil } from './contextPreviewRequestHistoryUntil';
 import type { ContextPreviewRequestHistoryCompany } from './contextPreviewRequestHistoryCompany';
@@ -24,6 +25,8 @@ export interface ContextPreviewRequest {
   exclude?: Category[];
   document_search?: boolean;
   document_ids?: ContextPreviewRequestDocumentIds;
+  web_search?: boolean;
+  web_query?: ContextPreviewRequestWebQuery;
   history_since?: ContextPreviewRequestHistorySince;
   history_until?: ContextPreviewRequestHistoryUntil;
   history_company?: ContextPreviewRequestHistoryCompany;

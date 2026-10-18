@@ -6,6 +6,7 @@ import { customInstance } from '@/api-client/custom-client';
 import type { ConversationLinkItem } from '@/api-client/model';
 import { Button } from '@/components/ui/button';
 import { notify } from '@/components/notify';
+import { RecordSelect } from '@/features/personal-data/components/record-select';
 
 export function ConversationLinks({ conversationId }: { conversationId: number }) {
   const client = useQueryClient();
@@ -28,19 +29,36 @@ export function ConversationLinks({ conversationId }: { conversationId: number }
           e.preventDefault();
           mutate.mutate(undefined);
         }}>
-        <select aria-label='연결 종류' value={kind} onChange={e => setKind(e.target.value as typeof kind)} className='rounded border p-2'>
+        <select
+          aria-label='연결 종류'
+          value={kind}
+          onChange={e => {
+            setKind(e.target.value as typeof kind);
+            setTarget('');
+          }}
+          className='rounded border p-2'>
           <option value='company'>회사</option>
           <option value='project'>프로젝트</option>
           <option value='decision'>결정</option>
         </select>
-        <input
-          aria-label='회사명 또는 연결 기록 ID'
-          required
-          value={target}
-          onChange={e => setTarget(e.target.value)}
-          placeholder={kind === 'company' ? '회사명' : '기록 ID'}
-          className='rounded border p-2'
-        />
+        {kind === 'company' ? (
+          <input
+            aria-label='회사명'
+            required
+            value={target}
+            onChange={e => setTarget(e.target.value)}
+            placeholder='회사명'
+            className='rounded border p-2'
+          />
+        ) : (
+          <RecordSelect
+            fieldName={kind === 'project' ? 'project_id' : 'decision_id'}
+            required
+            aria-label={kind === 'project' ? '연결할 프로젝트' : '연결할 결정'}
+            value={target}
+            onChange={e => setTarget(e.target.value)}
+          />
+        )}
         <Button disabled={mutate.isPending}>대화 연결</Button>
       </form>
       {list.data?.map(link => (

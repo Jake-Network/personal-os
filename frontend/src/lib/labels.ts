@@ -31,6 +31,15 @@ export const ROUTE_REASON: Record<string, string> = {
 };
 
 const FLAG_TEXT: Record<string, string> = {
+  web_page_blocked: '공개 웹 주소가 아닌 페이지 수집 차단',
+  web_page_encoding: '압축 응답으로 본문 수집 불가',
+  web_page_too_large: '본문 수집 크기 한도 초과',
+  web_page_redirect_limit: '웹페이지 이동 한도 초과',
+  web_page_fetch_failed: '일부 웹 본문 수집 실패',
+  web_page_unsupported_type: '지원하지 않는 웹 문서 형식',
+  web_page_empty: '웹 본문 추출 불가',
+  web_search_no_body_evidence: '확보한 웹 본문 근거 없음',
+  web_excerpts_trimmed: '전송 예산에 맞춰 웹 발췌 일부 생략',
   history_document_evidence_omitted: '대화 맥락은 유지했으며 일부 과거 문서 인용은 길이 제한으로 생략했습니다',
   no_matching_documents: '검색 범위에 공유 가능한 문서가 없습니다',
   document_embedding_reindex_required: '문서 검색 설정이 바뀌어 다시 처리가 필요합니다',
@@ -44,6 +53,8 @@ const FLAG_TEXT: Record<string, string> = {
   investment_excluded_from_net_worth: '투자 영역이 공유 제외되어 순자산에서 증권이 빠졌습니다',
   net_worth_incomplete: '순자산 계산에서 빠진 항목이 있습니다',
   cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
+  cashflow_mixed_sources: '수입·지출과 거래 기록 함께 사용',
+  spendable_liquidity_unknown: '생활비 현금 미기록',
   monthly_expense_unknown: '월평균 지출 데이터가 없습니다',
   monthly_expense_insufficient_coverage: '최근 3개월 중 일부 달만 지출 기록이 있어 월평균을 확정하지 않았습니다',
   no_holdings: '보유 종목이 없습니다',
@@ -85,6 +96,7 @@ export const TABLE_LABEL: Record<string, string> = {
   holdings: '보유 종목',
   fx_rates: '환율',
   cashflow_entries: '수입·지출',
+  financial_transactions: '거래 기록',
   planned_expenses: '예정 지출',
   job_applications: '채용 지원',
   interviews: '면접',

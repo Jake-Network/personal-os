@@ -6,10 +6,11 @@ the model never receives connection strings or SQL.
 """
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -34,7 +35,7 @@ from app.modules.crud import (
     task_handler,
     workout_log_handler,
 )
-from app.modules.database.model import FxRate, Holding
+from app.modules.database.model import FinancialTransaction, FxRate, Holding, LocalFinanceCoverage
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
 from app.modules.context.derived import calendar_conflicts, fx_table_from_rates
@@ -114,6 +115,13 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
                            ", ".join(f"{e['label']}({e['reason']})" for e in worth.excluded)))
 
     worth_data = worth.as_dict()
+    coverage = s.get(LocalFinanceCoverage, 1)
+    # No accounts is an unknown scope until the user explicitly confirms cash coverage.
+    if not any(account_bucket(a.kind) == "cash" for a in accounts) and (coverage is None or "cash" not in coverage.kinds):
+        worth_data.update(spendable_liquidity=None, spendable_liquidity_complete=False,
+                          cash_and_equivalents=None)
+        flags.append(quality_flag("spendable_liquidity_unknown", Category.FINANCIAL,
+                                  "생활비로 사용할 현금 계좌와 현금 기록 범위를 확인하세요."))
     from app.modules.portfolio.local_portfolio import portfolio as local_portfolio
     allowed_kinds = ("cash", "liability", "other", "holding") if Category.INVESTMENT in ctx.allowed else ("cash", "liability", "other")
     valuation = local_portfolio(s, kinds=allowed_kinds)
@@ -164,19 +172,41 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
 
 def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
     s = ctx.session
-    since = date(ctx.today.year - 1, ctx.today.month, 1)
-    entries = cashflow_entry_handler.get_since(s, since)
-    planned = planned_expense_handler.get_upcoming(s, ctx.today)
+    zone = ZoneInfo(settings.timezone)
+    today = as_aware(ctx.now).astimezone(zone).date()
+    since = date(today.year - 1, today.month, 1)
+    entries = [e for e in cashflow_entry_handler.get_since(s, since) if e.occurred_on <= today]
+    # A reversal may be recorded outside this reporting window. It still removes
+    # its original fact, and remains a dependency of this calculation.
+    transactions = list(s.scalars(select(FinancialTransaction).where(
+        FinancialTransaction.occurred_at >= datetime.combine(since, time.min, zone),
+        FinancialTransaction.occurred_at <= ctx.now,
+        FinancialTransaction.kind.in_(("income", "dividend", "interest", "expense", "fee", "tax")),
+    )))
+    reversals = list(s.scalars(select(FinancialTransaction).where(
+        FinancialTransaction.reverses_id.in_([t.id for t in transactions]),
+        FinancialTransaction.kind == "reversal",
+    ))) if transactions else []
+    reversed_ids = {r.reverses_id for r in reversals}
+    from app.modules.finance.ledger import INCOME
+    flows = [(e.occurred_on, e.amount, e.currency, e.kind, e.category or "uncategorized") for e in entries]
+    flows += [(as_aware(t.occurred_at).astimezone(zone).date(), Decimal(t.payload["amount"]),
+               t.payload["currency"], "income" if t.kind in INCOME else "expense", "uncategorized")
+              for t in transactions if t.id not in reversed_ids]
+    planned = planned_expense_handler.get_upcoming(s, today)
     base = base_currency(s)
-    foreign = [e for e in entries if e.currency != base]
-    usable = [e for e in entries if e.currency == base]
+    foreign = [e for e in flows if e[2] != base]
+    usable = [e for e in flows if e[2] == base]
     flags = []
+    if entries and transactions:
+        flags.append(quality_flag("cashflow_mixed_sources", Category.FINANCIAL,
+            "기존 수입·지출과 거래 기록을 함께 합산했습니다. 같은 지출을 두 화면에 중복 입력하지 마세요."))
     if foreign:
         flags.append(quality_flag("cashflow_foreign_currency_ignored", Category.FINANCIAL, f"{len(foreign)} entries"))
     expense = financial_calculator.monthly_average(
-        [(e.occurred_on, e.amount) for e in usable if e.kind == "expense"], ctx.today)
+        [(day, amount) for day, amount, _, kind, _ in usable if kind == "expense"], today)
     income = financial_calculator.monthly_average(
-        [(e.occurred_on, e.amount) for e in usable if e.kind == "income"], ctx.today)
+        [(day, amount) for day, amount, _, kind, _ in usable if kind == "income"], today)
     if expense.get("reason") == "insufficient_coverage":
         flags.append(quality_flag("monthly_expense_insufficient_coverage", Category.FINANCIAL,
                            f"recorded {expense['months_with_data']}/{expense['months_considered']} months; "
@@ -186,9 +216,9 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
                            "ask the user for monthly spending or state an explicit assumption"))
 
     categories: dict[str, Decimal] = {}
-    for e in usable:
-        if e.kind == "expense":
-            categories[e.category or "uncategorized"] = categories.get(e.category or "uncategorized", Decimal(0)) + e.amount
+    for _, amount, _, kind, category in usable:
+        if kind == "expense":
+            categories[category] = categories.get(category, Decimal(0)) + amount
     return ToolResult(
         data={
             "currency": base,
@@ -202,9 +232,15 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
             ],
             "computed_by": "FinancialCalculator",
         },
-        refs=[{"table": "cashflow_entries", "count": len(entries), "since": since.isoformat()}]
+        refs=[record_ref("cashflow_entries", e) for e in entries]
+        + [{"table": "financial_transactions", "id": t.id, "updated_at": t.recorded_at.isoformat()}
+           for t in [*transactions, *reversals]]
+        + [{"table": table, "id": t.payload[field]}
+           for t in transactions for field, table in (("account_id", "accounts"), ("counterparty_account_id", "accounts"), ("holding_id", "holdings"))
+           if t.payload.get(field) is not None]
         + [record_ref("planned_expenses", p) for p in planned],
-        source_updated_at=latest_of(*(e.updated_at for e in [*entries, *planned])),
+        source_updated_at=latest_of(*(e.updated_at for e in [*entries, *planned]),
+                                    *(t.recorded_at for t in [*transactions, *reversals])),
         flags=flags,
     )
 
@@ -336,7 +372,7 @@ def get_job_applications(ctx: ToolContext) -> ToolResult:
 
 def get_interview_schedule(ctx: ToolContext, days: int = 30) -> ToolResult:
     rows = interview_handler.get_with_application_between(
-        ctx.session, ctx.now - timedelta(days=1), ctx.now + timedelta(days=days))
+        ctx.session, ctx.now, ctx.now + timedelta(days=days))
     return ToolResult(
         data={
             "window_days": days,

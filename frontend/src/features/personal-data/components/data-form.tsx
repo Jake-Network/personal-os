@@ -17,18 +17,21 @@ import { cn } from '@/lib/utils';
 import { enumLabel, fieldLabel } from '../consts/resources';
 import { type FormValues, initialValues, toPayload } from '../utils/form-values';
 import type { FieldSpec } from '../utils/schema-fields';
+import type { RecordOption } from '../utils/record-options';
+import { hasRecordChoices, RecordSelect } from './record-select';
 
 interface Props {
   fields: FieldSpec[];
   labels?: Record<string, string>;
   enumLabels?: Record<string, string>;
   current?: Record<string, unknown>;
+  recordChoices?: Record<string, RecordOption[]>;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
   onCancel: () => void;
 }
 
-export function DataForm({ fields, labels, enumLabels, current, submitLabel, onSubmit, onCancel }: Props) {
+export function DataForm({ fields, labels, enumLabels, current, recordChoices, submitLabel, onSubmit, onCancel }: Props) {
   const { register, control, handleSubmit, formState } = useForm<FormValues>({ defaultValues: initialValues(fields, current) });
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +69,25 @@ export function DataForm({ fields, labels, enumLabels, current, submitLabel, onS
               <Label htmlFor={id}>
                 {labels?.[f.name] ?? fieldLabel(f.name)} {f.required && <span className='text-destructive'>*</span>}
               </Label>
-              {f.kind === 'enum' ? (
+              {hasRecordChoices(f.name) || recordChoices?.[f.name] ? (
+                <Controller
+                  name={f.name}
+                  control={control}
+                  render={({ field }) => (
+                    <RecordSelect
+                      id={id}
+                      fieldName={f.name}
+                      options={recordChoices?.[f.name]}
+                      required={f.required}
+                      name={field.name}
+                      ref={field.ref}
+                      value={String(field.value ?? '')}
+                      onBlur={field.onBlur}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+              ) : f.kind === 'enum' ? (
                 <NativeSelect id={id} required={f.required} {...register(f.name)}>
                   <option value='' disabled={f.required}>
                     선택

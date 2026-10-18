@@ -34,6 +34,7 @@ class Settings:
 
     openai_api_base: str = "https://api.openai.com/v1"
     default_model: str = field(default_factory=lambda: _env("ADVISOR_DEFAULT_MODEL", ""))
+    web_search_api_key: str = field(default_factory=lambda: _env("PERSONAL_OS_WEB_SEARCH_API_KEY", ""), repr=False)
 
     # Private Google Sheets connection; separate from ChatGPT OAuth.
     google_oauth_client_id: str = field(default_factory=lambda: _env("GOOGLE_OAUTH_CLIENT_ID", ""))

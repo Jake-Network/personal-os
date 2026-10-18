@@ -11,34 +11,21 @@ import { DataForm } from '@/features/personal-data/components/data-form';
 import { useSchemaFields } from '@/features/personal-data/hooks/use-schema-fields';
 import { money, timestamp } from './presentation';
 import { FinanceImport } from './import-view';
+import { TRANSACTION_KIND_LABEL as kinds } from './transaction-kinds';
 
 const labels = {
   request_id: '요청 ID',
   kind: '거래 종류',
   occurred_at: '실제 거래 시각',
-  account_id: '출금·기록 계좌 ID',
-  counterparty_account_id: '도착 계좌 ID',
-  holding_id: '보유자산 ID',
+  account_id: '출금·기록 계좌',
+  counterparty_account_id: '도착 계좌',
+  holding_id: '보유자산',
   amount: '금액',
   currency: '통화',
   quantity: '변경 수량',
   source: '근거·출처',
   note: '메모',
-  reverses_id: '취소할 원본 거래 ID',
-};
-const kinds: Record<string, string> = {
-  income: '수입',
-  expense: '지출',
-  transfer: '계좌 간 이체',
-  buy: '매수',
-  sell: '매도',
-  dividend: '배당',
-  interest: '이자',
-  fee: '수수료',
-  tax: '세금',
-  repayment: '상환',
-  split: '확인된 권리변동',
-  reversal: '원본 취소',
+  reverses_id: '취소할 원본 거래',
 };
 type Entry = {
   id: number;

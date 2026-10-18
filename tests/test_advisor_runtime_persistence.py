@@ -92,6 +92,17 @@ def test_scenario_versions_preserve_original_and_selection_is_optimistic(session
     with pytest.raises(HTTPException):
         repo.select_scenario(cid, ScenarioSelect(scenario_id=original.id, expected_revision=1))
 
+def test_scenario_can_be_deselected_with_optimistic_revision(session):
+    repo, cid = setup_repo(session)
+    scenario = repo.create_scenario(cid, ScenarioCreate(request_id="selected", title="선택"))
+    repo.select_scenario(cid, ScenarioSelect(scenario_id=scenario.id, expected_revision=1))
+    repo.select_scenario(cid, ScenarioSelect(scenario_id=None, expected_revision=2))
+    assert repo.workspace(cid).selected_scenario_id is None
+    assert repo.workspace(cid).revision == 3
+    with pytest.raises(HTTPException):
+        repo.select_scenario(cid, ScenarioSelect(scenario_id=None, expected_revision=2))
+
+
 def test_expired_safe_checkpoint_requeues_but_uncertain_call_requires_retry(session):
     repo, cid = setup_repo(session)
     run = repo.create(cid, RunCreate(request_id="safe", message="synthetic"))

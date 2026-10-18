@@ -50,6 +50,15 @@ class ContextBuilderManager:
                                   "detail": f"{name}: 관련 기록이 로컬 전용이므로 전체 계산/요약을 제외했습니다."})
                     continue
                 result = tool(ctx)
+                if external_sharing and name == "get_cashflow_summary":
+                    from app.modules.context.source_policy import source_allowed
+                    # Ledger amounts may derive from a holding even when this
+                    # question selected only finance. Omit the aggregate without
+                    # making the rest of the consultation unavailable.
+                    if not source_allowed(session, result.refs, frozenset(ALL_CATEGORIES) - selected):
+                        flags.append({"code": "source_sharing_scope_excluded", "category": category.value,
+                                      "detail": name})
+                        continue
                 if document_scope and name in {"get_profile", "get_career_records"}:
                     from app.modules.context.source_policy import source_allowed
                     if any(not source_allowed(session, [ref], frozenset(ALL_CATEGORIES) - selected,
@@ -161,7 +170,8 @@ class ContextBuilderManager:
         selected = frozenset(Category(c) for c in snapshot.context_categories)
         current, _, _, _ = self.collect(session, selected, now or datetime.now(UTC),
                                       query=snapshot.payload.get("request_query", ""))
-        past = snapshot.payload.get("data", {})
+        # This action re-reads local domains/documents, never performs external research.
+        past = {key: value for key, value in snapshot.payload.get("data", {}).items() if key != 'web_search'}
         if "search_documents" in past:
             scope = snapshot.payload.get("document_scope", {})
             fingerprint = library_fingerprint(session, None, scope.get("document_ids"),

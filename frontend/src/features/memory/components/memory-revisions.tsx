@@ -7,6 +7,7 @@ import type { MemoryItem, MemoryRevisionItem } from '@/api-client/model';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { notify } from '@/components/notify';
+import { QueryStatus } from '@/components/query-status';
 import { dateTime } from '@/lib/utils/format';
 
 export function MemoryRevisions({ memory }: { memory: MemoryItem }) {
@@ -66,7 +67,7 @@ export function MemoryRevisions({ memory }: { memory: MemoryItem }) {
       <Button disabled={save.isPending || revisions.isPending || !!revisions.error || !content.trim()} onClick={() => save.mutate()}>
         수정본 확인 · 저장
       </Button>
-      {revisions.error && <p role='alert'>{revisions.error.message}</p>}
+      <QueryStatus pending={revisions.isPending} error={revisions.error} retry={revisions.refetch} label='기억 수정 이력' />
       <ol>
         {revisions.data?.map(r => (
           <li key={r.id} className='border-t py-2 text-sm'>

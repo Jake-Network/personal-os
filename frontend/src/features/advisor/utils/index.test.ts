@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Category, SnapshotResponse } from '@/api-client/model';
 
 import type { InspectorData } from '../types';
-import { optionsFor, snapshotToInspector, stripBlocks } from './index';
+import { optionsFor, publicWebUrl, sameRunIntent, snapshotToInspector, stripBlocks } from './index';
 
 const base = {
   route: { requested: ['financial', 'goals'], selected: ['financial', 'goals'], excluded: [], matched_terms: [], reason: 'keyword' },
@@ -57,5 +57,56 @@ describe('snapshotToInspector document evidence', () => {
   it('handles legacy snapshots and snapshots with purged evidence', () => {
     const snapshot = { payload: { data: {} } } as unknown as SnapshotResponse;
     expect(snapshotToInspector(snapshot).document_citations).toEqual([]);
+  });
+});
+
+describe('web evidence', () => {
+  it('retains the captured web excerpt and hash for historical answers', () => {
+    const source = {
+      ref: 'web:1',
+      url: 'https://example.com/job',
+      title: '채용',
+      published_at: null,
+      retrieved_at: '2026-10-18T00:00:00Z',
+      excerpts: ['당시 채용 조건'],
+      content_hash: 'captured-hash',
+    };
+    const snapshot = { payload: { data: { web_search: { pages: [source] } } } } as unknown as SnapshotResponse;
+    expect(snapshotToInspector(snapshot).web_sources).toEqual([source]);
+    expect(snapshotToInspector({ payload: {} } as SnapshotResponse).web_sources).toEqual([]);
+  });
+
+  it('only makes HTTP(S) source links clickable without embedded credentials', () => {
+    expect(publicWebUrl('https://example.com/job')).toBe('https://example.com/job');
+    for (const url of ['javascript:alert(1)', 'data:text/html,hello', 'file:///etc/passwd', '//example.com', 'https://user:password@example.com']) {
+      expect(publicWebUrl(url)).toBeNull();
+    }
+  });
+});
+
+describe('sameRunIntent', () => {
+  const original = {
+    message: '생활비는?',
+    request_id: 'first',
+    exclude: ['financial'],
+    document_ids: [2],
+    document_search: true,
+    depth: 'auto',
+    parent_revision: 1,
+  };
+  it('keeps retry identity when only transport identity and observed revision change', () => {
+    expect(sameRunIntent(original, { ...original, request_id: 'second', parent_revision: 2 })).toBe(true);
+  });
+  it.each([
+    { exclude: [] },
+    { categories: ['career'] },
+    { document_ids: [3] },
+    { document_search: false },
+    { depth: 'deep' },
+    { web_search: true, web_query: '공개 정보' },
+    { history_company: '회사' },
+    { scenario_id: 'other' },
+  ])('never reuses a body after changing request controls: %j', change => {
+    expect(sameRunIntent(original, { ...original, ...change })).toBe(false);
   });
 });

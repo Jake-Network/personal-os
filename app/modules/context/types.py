@@ -150,6 +150,7 @@ class ContextPackage:
             "record_references": self.record_references,
             "data_quality_flags": self.data_quality_flags,
             "document_citations": payload_citations(self.payload),
+            "web_sources": self.payload.get('data', {}).get('web_search', {}).get('pages', []),
         }
 
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { EmptyState } from '@/components/empty-state';
 import { PageContainer, PageHeader } from '@/components/page-container';
 import { Card } from '@/components/ui/card';
+import { QueryStatus } from '@/components/query-status';
 
 import { useListMemories } from '@/api-client/generated/memory/memory';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
@@ -18,11 +19,14 @@ export function ApprovalsView() {
   const approved = useListProposals({ status: 'approved' });
   const rejected = useListProposals({ status: 'rejected' });
   const history = [...(approved.data ?? []), ...(rejected.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const empty = proposals.data?.length === 0 && memories.data?.length === 0;
+  const empty =
+    proposals.isSuccess && memories.isSuccess && !proposals.error && !memories.error && proposals.data?.length === 0 && memories.data?.length === 0;
 
   return (
     <PageContainer className='max-w-[820px]'>
       <PageHeader title='승인 대기' description='AI가 제안한 변경과 장기 기억입니다. 승인하기 전에는 아무것도 반영되지 않습니다.' />
+      <QueryStatus pending={proposals.isPending} error={proposals.error} retry={proposals.refetch} label='승인 대기 제안' />
+      <QueryStatus pending={memories.isPending} error={memories.error} retry={memories.refetch} label='확인 대기 기억' />
       {empty && (
         <Card>
           <EmptyState>승인할 항목이 없습니다.</EmptyState>
@@ -47,6 +51,12 @@ export function ApprovalsView() {
         ))}
       </div>
 
+      <QueryStatus
+        pending={approved.isPending || rejected.isPending}
+        error={approved.error ?? rejected.error}
+        retry={() => Promise.all([approved.refetch(), rejected.refetch()])}
+        label='처리 내역'
+      />
       {history.length > 0 && (
         <>
           <h2 className='mb-2.5 mt-7 text-[15px]'>처리 내역</h2>

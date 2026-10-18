@@ -27,18 +27,21 @@ const STAGES: Record<string, string> = {
   summarizing: '이전 대화의 근거와 요약을 정리하는 중',
   planning: '조사할 쟁점을 정리하는 중',
   research_started: '필요한 근거를 조회하는 중',
+  web_searching: '웹 검색과 본문 수집으로 답변 근거를 준비하는 중',
   research_finished: '근거 조회 완료',
   analyzing: '대안별 조건과 결과를 비교하는 중',
   reviewing: '근거와 계산을 검토하는 중',
   answering: '최종 답변을 작성하는 중',
   model_started: '분석 요청을 처리하는 중',
   model_finished: '분석 응답 확인 완료',
+  structured_output_invalid: '분석 결과의 형식을 확인하지 못했습니다. 확인 가능한 근거로 답변을 정리합니다.',
 };
 
 export function RunCard({
   run,
   liveText,
   progress,
+  progressMessage,
   reconnecting,
   onRefresh,
   onChoose,
@@ -46,6 +49,7 @@ export function RunCard({
   run: RunView;
   liveText: string;
   progress: string;
+  progressMessage?: string;
   reconnecting: boolean;
   onRefresh: () => Promise<unknown>;
   onChoose: (text: string) => void;
@@ -61,7 +65,6 @@ export function RunCard({
   });
   const question = run.clarification;
   const memories = (Array.isArray(run.result?.memory_proposals) ? run.result.memory_proposals : []) as MemoryProposal[];
-  const limitations = (Array.isArray(run.result?.limitations) ? run.result.limitations : []) as string[];
   return (
     <section className='mx-auto grid w-full max-w-[760px] gap-2 rounded-lg border bg-card p-3' aria-label='상담 실행' aria-live='polite'>
       <div className='flex flex-wrap items-center gap-2'>
@@ -74,7 +77,7 @@ export function RunCard({
         {reconnecting && <span className='text-xs text-faint'>연결 복구 중 · 저장된 상태 확인 중</span>}
       </div>
       {['queued', 'running'].includes(run.status) && <p className='text-xs text-faint'>다른 화면으로 이동해도 서버에서 분석을 계속합니다.</p>}
-      {run.status === 'running' && STAGES[progress] && <p className='text-sm'>{STAGES[progress]}</p>}
+      {run.status === 'running' && (progressMessage || STAGES[progress]) && <p className='text-sm'>{progressMessage || STAGES[progress]}</p>}
       {run.status === 'waiting_input' && question && (
         <>
           <h3 className='font-medium'>{question.question}</h3>
@@ -96,16 +99,6 @@ export function RunCard({
       )}
       {liveText && ['running', 'cancel_requested'].includes(run.status) && <Markdown text={liveText} />}
       {run.error && <Alert variant='destructive'>{run.error}</Alert>}
-      {limitations.length > 0 && (
-        <div className='text-xs text-warning'>
-          <p>분석 범위와 남은 불확실성</p>
-          <ul className='list-disc pl-4'>
-            {limitations.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
       {memories.map(memory => (
         <MemoryProposalCard key={memory.id} memory={memory} />
       ))}

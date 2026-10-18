@@ -81,7 +81,6 @@ class FinalAnswer(StrictModel):
     answer: str = Field(min_length=1)
     proposals: list[Proposal] = Field(default_factory=list)
     memories: list[Memory] = Field(default_factory=list)
-    limitations: list[str] = Field(default_factory=list)
 
 
 class Review(StrictModel):
@@ -96,9 +95,19 @@ class HistorySummary(StrictModel):
 
 
 NUMBER_PATTERN = re.compile(r'(?<![A-Za-z0-9_])[-+]?\d[\d,]*(?:\.\d+)?')
+# Exact-number membership is only a conservative guard for sensitive claims,
+# not a general fact checker: ordinary arithmetic and advice introduce new numbers.
+SENSITIVE_NUMERIC_CLAIM = re.compile(
+    r'\d[\d,.]*\s*(?:억|만|천)?\s*(?:원|달러|유로|엔)|[₩$€¥]|'
+    r'자산|부채|잔고|잔액|현금|생활비|지출|수입|수익|이익|손익|저축|연금|'
+    r'금액|금리|환율|런웨이|증가율|감소율|확률|성공률|합격률|승진율|발생률|'
+    r'가능성[^\n]*(?:%|퍼센트)|(?:%|퍼센트)[^\n]*가능성|'
+    r'\b(?:KRW|USD|EUR|JPY|balance|cash|income|expense|profit|return|interest|'
+    r'runway|probability|chance|odds)\b', re.IGNORECASE)
 IGNORED_NUMERIC_FIELDS = {'id', 'ref', 'revision', 'revision_id', 'source_reference', 'source_references',
     'record_references', 'context_snapshot_id', 'source_snapshot_id', 'snapshot_id', 'dependency_hash',
-    'calculation_version', 'created_at', 'updated_at', 'generated_at', 'first_message_id', 'last_message_id'}
+    'calculation_version', 'created_at', 'updated_at', 'generated_at', 'first_message_id', 'last_message_id',
+    'url', 'content_hash', 'retrieved_at'}
 
 
 def numeric_values(value):
@@ -113,6 +122,7 @@ def numeric_values(value):
     if isinstance(value, (list, tuple)):
         return set().union(*(numeric_values(item) for item in value)) if value else set()
     text = re.sub(r'\[(?:document_chunks|advisor_messages):\d+\]', '', str(value))
+    text = re.sub(r'https?://[^\s<>]+', '', text)
     text = re.sub(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b', r'\1 \2 \3', text)
     values = set()
     for match in NUMBER_PATTERN.finditer(text):
@@ -127,13 +137,14 @@ def numeric_values(value):
 
 
 def validated_numeric_answer(answer, basis):
+    """Withhold unbacked financial/statistical claims, preserving general numeric advice."""
     allowed = numeric_values(basis)
     chunks = re.split(r'\n|(?<=[.!?。])\s+(?=[^\d])', answer)
     verified, withheld = [], False
     for chunk in chunks:
         # Ordered-list markers organize text; they are not quantitative claims.
         content = re.sub(r'^\s*\d{1,2}[.)]\s+', '', chunk)
-        if numeric_values(content) - allowed:
+        if SENSITIVE_NUMERIC_CLAIM.search(content) and numeric_values(content) - allowed:
             withheld = True
             verified.append('[수치 근거를 확인할 수 없어 해당 설명을 생략했습니다.]')
         else:
@@ -176,15 +187,37 @@ class ConsultationState(TypedDict, total=False):
     problem: dict
     numeric_basis: dict
     summary_id: int
+    web_snapshot_id: str
+    previous_analysis: bool
+    clarification_count: int
+    clarification_unknown: bool
 
 
-def initial_state(query, depth='auto', single_response=False, scenarios=None, selected_scenario=None):
+def scenario_followup(query):
+    """A workspace selection applies to a requested revision, not every later question."""
+    if re.search(r'다른\s*질문|새로운?\s*(?:질문|주제)|주제를?\s*바', query):
+        return False
+    return bool(re.search(r'(?:이|그|선택한)\s*(?:대안|시나리오)|수정해|조건\s*변경', query)
+                or quantitative_followup(query))
+
+
+def quantitative_followup(query):
+    return bool(re.search(r'\d', query) and re.search(r'만원|원|시간|월\s*\d|주\s*\d', query)
+                and re.search(r'그럼|그러면|이면|라면|바꾸면|줄이면|늘리면', query)
+                and not re.search(r'다른\s*질문|새로운?\s*(?:질문|주제)', query))
+
+
+def initial_state(query, depth='auto', single_response=False, scenarios=None, selected_scenario=None,
+                  previous_analysis=False, explicit_scenario=False):
     selected = scenarios or ([selected_scenario] if selected_scenario else [])
+    if not explicit_scenario and not scenario_followup(query):
+        selected = []
     sources = list(dict.fromkeys(item['source_snapshot_id'] for item in selected if item.get('source_snapshot_id')))
     return {'query': query, 'depth': depth, 'single_response': single_response,
             'results': {}, 'scenarios': [], 'model_calls': 0, 'tool_calls': 0,
             'replans': 0, 'sources': sources, 'limitations': [], 'proposals': [], 'memories': [], 'executed_tools': 0,
             'selected_scenarios': selected, 'tool_executions': {}, 'needs_replan': False,
+            'previous_analysis': previous_analysis, 'clarification_count': 0, 'clarification_unknown': False,
             'previous_scenario_results': selected[0].get('prior_results', {}) if selected else {}}
 
 
@@ -193,6 +226,8 @@ def needs_analysis(state):
     if state.get('depth') == 'deep' or state.get('selected_scenarios'):
         return True
     query = state.get('query', '')
+    if state.get('previous_analysis') and quantitative_followup(query):
+        return True
     comparison = re.search(r'비교|시나리오|대안|트레이드오프|장단점|선택|어느.{0,12}(좋|나)|뭐가\s*더|versus|\bvs\b', query, re.I)
     constraints = re.search(r'예산|생활비|지출|소득|잔고|퇴사|런웨이|시간|일정|조건|제약|개월|만원|억|이직|커리어|경력|투자|부채|목표|위험', query)
     explicit = re.search(r'심층|종합\s*분석|상세\s*분석|재무\s*분석|계산해|계산해줘', query)
@@ -223,7 +258,24 @@ def build_conversation_graph(session, manager, conversation, options, model, che
 
     async def progress(stage, **metadata):
         if on_progress:
-            await on_progress({'stage': stage, **metadata})
+            messages = {
+                'planning': '질문과 필요한 근거를 확인하고 있습니다.',
+                'research_started': '공유가 허용된 최신 기록을 확인하고 있습니다.',
+                'research_finished': '기록 확인을 마쳤습니다.',
+                'analyzing': '확인한 근거와 조건을 정리하고 있습니다.',
+                'reviewing': '근거와 제약이 빠지지 않았는지 검토하고 있습니다.',
+                'answering': '답변을 작성하고 있습니다. 검증을 마치면 표시합니다.',
+                'model_finished': '모델 응답을 받았습니다. 결과를 확인하고 있습니다.',
+                'structured_output_invalid': '응답 형식을 확인하고 다시 정리하고 있습니다.',
+                'summarizing': '이전 대화에서 필요한 맥락을 정리하고 있습니다.',
+                'web_searching': '허용한 공개 검색어로 웹 자료를 확인하고 있습니다.',
+            }
+            if stage == 'model_started':
+                message = ('답변을 작성하고 있습니다. 검증을 마치면 표시합니다.'
+                           if metadata.get('schema') == 'FinalAnswer' else '질문에 필요한 내용을 검토하고 있습니다.')
+            else:
+                message = messages.get(stage, '상담을 진행하고 있습니다.')
+            await on_progress({'stage': stage, 'message': message, **metadata})
 
     def limits(state):
         return (12, 24, 3) if state.get('depth') == 'deep' else (6, 12, 2)
@@ -319,6 +371,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             return {**state, 'plan': state.get('plan') or {'objective': state['query'], 'tasks': [], 'scenarios': []},
                     'clarification': None, 'needs_replan': False,
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
+        conditional = state.get('clarification_unknown') or state.get('clarification_count', 0) >= 2
         result = await call(state,
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
             '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
@@ -330,7 +383,10 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             '사용자의 requested_change를 반영한 새 scenarios를 생성하고 기존 가정을 그대로 재사용하지 마세요. '
             '재무 수치 비교는 assumptions.financial의 monthly_expense/monthly_income, 시간 비교는 '
             'assumptions.time의 work_hours_per_week/rest_hours_per_week/committed_hours_per_week/required_hours_per_week로 '
-            '명시된 조건만 구조화하세요. 불명확하면 확인 질문을 하세요. 허용 도구: ' + ', '.join(tools), Plan,
+            '명시된 조건만 구조화하세요. 불명확하면 확인 질문을 하세요. '
+            + ('사용자가 모르는 조건 또는 확인 질문 한도에 도달했습니다. 추가 확인 질문을 하지 마세요. '
+               '모르는 값은 unresolved에 남기고, 가정을 사실로 채우지 말고 가능한 범위의 조건부 답변을 준비하세요. '
+               if conditional else '') + '허용 도구: ' + ', '.join(tools), Plan,
             {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
              'selected_scenarios': state.get('selected_scenarios', []),
              'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})})
@@ -353,6 +409,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'limitations': [*state['limitations'], '추가 조사 계획이 남은 도구 예산을 초과하여 기존 결과만 사용합니다.']}
         problem = {key: getattr(result, key) for key in
                    ('objective', 'period', 'constraints', 'assumptions', 'unresolved', 'confirmed_facts')}
+        if conditional:
+            result.clarification = None
         return {**state, 'results': kept, 'plan': result.model_dump(), 'problem': problem, 'needs_replan': False,
                 'baseline_snapshot_id': '', 'baseline_payload': {},
                 'clarification': result.clarification.model_dump() if result.clarification else None}
@@ -363,7 +421,13 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             response = response.get('answer', response.get('response', ''))
         if not isinstance(response, str) or not response.strip() or len(response) > 10000:
             raise ValueError('확인 질문 응답이 올바르지 않습니다')
+        unknown = bool(re.search(r'모름|모르|몰라|미정|미확인|알\s*수\s*없|정하지\s*않|나중에|건너뛰|unknown|not\s*sure|don.t\s*know', response, re.I))
+        count = state.get('clarification_count', 0) + 1
+        limitations = state.get('limitations', [])
+        if unknown or count >= 2:
+            limitations = [*limitations, '추가 확인 없이 답변합니다. 확인되지 않은 조건은 미정으로 남겨 조건부로 안내합니다.']
         return {'response': response, 'clarification': None,
+                'clarification_count': count, 'clarification_unknown': unknown, 'limitations': limitations,
                 'query': state['query'] + '\n사용자 확인 응답: ' + response}
 
     def dispatch(state):
@@ -482,7 +546,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             return {**state, 'answer': '분석 한도에 도달했습니다. 저장된 조사 결과와 대안을 확인하고 필요한 조건을 보완해 주세요.',
                     'limitations': [*state['limitations'], '모델 호출 한도에 도달하여 최종 답변을 생성하지 않았습니다.']}
         try:
-            result = await call(state, '사용자 질문에 근거와 한계를 밝혀 답하세요. 행동은 승인 대기 제안만 '
+            result = await call(state, '사용자 질문에 근거를 바탕으로 답하세요. 행동은 승인 대기 제안만 '
                 '만들고 기억은 사용자가 확인할 후보만 만드세요. 이번 대안의 가정을 장기 기억으로 제안하지 마세요. '
                 '답변 코드 블록에 행동·기억 데이터를 넣지 마세요.', FinalAnswer,
                 {'plan': state.get('plan'), 'research': state['results'], 'scenarios': state['scenarios'],
@@ -505,16 +569,31 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             'query': state['query'], 'research': [r.get('data') for r in state['results'].values() if r is not None],
             'assumptions': [scenario.get('assumptions', {}) for scenario in state['scenarios']],
             'calculations': [scenario.get('results', {}).get('server_calculations', {}) for scenario in state['scenarios']]})
+        if snapshot is not None:
+            from app.modules.advisor.runtime.web import validate_web_links
+            validate_web_links(answer, snapshot.payload)
         numeric_limits = ['서버 근거·명시적 가정에서 확인되지 않은 수치 설명을 생략했습니다.'] if withheld else []
         return {**state, 'answer': answer, 'proposals': [p.model_dump() for p in result.proposals],
                 'memories': [m.model_dump() for m in result.memories],
-                'limitations': [*state['limitations'], *result.limitations, *numeric_limits]}
+                'limitations': [*state['limitations'], *numeric_limits]}
+
+    async def web_research(state):
+        await progress('web_searching')
+        snapshot_id = await assembler.search_web()
+        return {'web_snapshot_id': snapshot_id, 'sources': [*state['sources'], snapshot_id],
+                'tool_calls': state['tool_calls'] + 1, 'tool_executions': {'web_search': True},
+                'single_response': False}
+
+    def route_analysis(state):
+        return 'finish' if state.get('single_response') or not needs_analysis(state) else 'summarize'
 
     graph = StateGraph(ConsultationState)
     for name, node in [('summarize', summarize), ('plan', plan), ('clarify', clarify), ('research', research),
-                       ('collected', collected), ('analyze', analyze), ('review', review), ('finish', finish)]:
+                       ('collected', collected), ('analyze', analyze), ('review', review), ('finish', finish),
+                       ('web_search', web_research)]:
         graph.add_node(name, node)
-    graph.add_conditional_edges(START, lambda state: 'finish' if state.get('single_response') or not needs_analysis(state) else 'summarize')
+    graph.add_conditional_edges(START, lambda state: 'web_search' if getattr(options, 'web_search', False) else route_analysis(state))
+    graph.add_conditional_edges('web_search', route_analysis)
     graph.add_edge('summarize', 'plan')
     graph.add_conditional_edges('plan', lambda state: 'clarify' if state.get('clarification') else 'collected')
     graph.add_edge('clarify', 'plan')

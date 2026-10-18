@@ -84,6 +84,16 @@ class ConversationRuntime:
                     parts.append(event['text'])
                 yield event
             answer, proposals, memories = extract_blocks(state.get('answer', ''))
+            if user is None:
+                # Web answers are validated as a whole before exposing any text.
+                snapshot_id = state.get('snapshot_id')
+                proposals = state.get('proposals', proposals)
+                memories = state.get('memories', memories)
+                user = message_handler.create(session, {'conversation_id': conversation.id, 'role': 'user',
+                    'content': query, 'context_snapshot_id': snapshot_id})
+                session.commit()
+                yield state.get('context', {'type': 'context'})
+                yield {'type': 'delta', 'text': answer}
             reply = message_handler.create(session, {'conversation_id': conversation.id, 'role': 'assistant',
                 'content': answer, 'context_snapshot_id': snapshot_id, 'model': model})
             actions, mems = proposal_manager.record(session, conversation.id, reply.id, proposals, memories)

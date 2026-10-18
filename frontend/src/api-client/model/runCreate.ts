@@ -7,6 +7,7 @@
 import type { RunCreateCategories } from './runCreateCategories';
 import type { Category } from './category';
 import type { RunCreateDocumentIds } from './runCreateDocumentIds';
+import type { RunCreateWebQuery } from './runCreateWebQuery';
 import type { RunCreateHistorySince } from './runCreateHistorySince';
 import type { RunCreateHistoryUntil } from './runCreateHistoryUntil';
 import type { RunCreateHistoryCompany } from './runCreateHistoryCompany';
@@ -26,6 +27,8 @@ export interface RunCreate {
   exclude?: Category[];
   document_search?: boolean;
   document_ids?: RunCreateDocumentIds;
+  web_search?: boolean;
+  web_query?: RunCreateWebQuery;
   history_since?: RunCreateHistorySince;
   history_until?: RunCreateHistoryUntil;
   history_company?: RunCreateHistoryCompany;

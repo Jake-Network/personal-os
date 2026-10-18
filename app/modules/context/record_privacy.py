@@ -6,13 +6,13 @@ partial results, omit that tool entirely before fetching its records, with an ex
 from app.modules.crud import app_setting_handler, audit_log_handler
 
 KEY = "privacy.local_only_records"
-TABLES = frozenset({"accounts", "holdings", "other_assets", "liabilities", "cashflow_entries",
+TABLES = frozenset({"accounts", "holdings", "other_assets", "liabilities", "cashflow_entries", "financial_transactions",
     "planned_expenses", "job_applications", "interviews", "career_criteria", "career_records",
     "calendar_events", "tasks", "goals", "workout_logs", "personal_memories", "documents",
     "decision_journal", "advisor_messages", "conversation_summaries"})
 TOOL_TABLES = {
     "get_accounts_summary": {"accounts", "other_assets", "liabilities", "holdings"},
-    "get_cashflow_summary": {"cashflow_entries", "planned_expenses"},
+    "get_cashflow_summary": {"cashflow_entries", "financial_transactions", "planned_expenses", "accounts", "holdings"},
     "get_monthly_asset_history": {"accounts", "holdings", "other_assets", "liabilities"},
     "get_portfolio_summary": {"holdings", "accounts"},
     "get_market_data": {"holdings"}, "get_relevant_news": {"holdings"},
@@ -83,7 +83,7 @@ def aggregate_source_ids(session, refs):
 
 
 RECORD_CATEGORY = {
-    **dict.fromkeys(("accounts", "other_assets", "liabilities", "cashflow_entries", "planned_expenses"), "financial"),
+    **dict.fromkeys(("accounts", "other_assets", "liabilities", "cashflow_entries", "financial_transactions", "planned_expenses"), "financial"),
     "holdings": "investment", **dict.fromkeys(("career_records", "job_applications", "interviews", "career_criteria"), "career"),
     "calendar_events": "calendar", "tasks": "calendar", "goals": "goals", "workout_logs": "health",
     "personal_memories": "profile", "memory_revisions": "profile",

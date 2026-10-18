@@ -63,7 +63,7 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                     return False
             if any(not record_allowed(session, r.get("table"), r.get("id")) or not record_exists(session, r.get("table"), r.get("id")) or not reference_generation_matches(session, r) for r in snapshot.record_references):
                 return False
-            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal"}]
+            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "financial_transactions", "holdings"}]
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table in {"personal_memories", "memory_revisions"}:
@@ -110,6 +110,18 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
             summary = session.get(ConversationSummary, key)
             if summary is None or summary.status == 'source_purged' or not source_allowed(session, summary.source_references, excluded, seen, memo, document_scope):
                 return False
+        elif table == "financial_transactions":
+            from app.modules.database.model import FinancialTransaction
+            transaction = session.get(FinancialTransaction, key)
+            if transaction is None:
+                return False
+            dependencies = [{"table": name, "id": transaction.payload[field]}
+                for field, name in (("account_id", "accounts"), ("counterparty_account_id", "accounts"), ("holding_id", "holdings"))
+                if transaction.payload.get(field) is not None]
+            if transaction.reverses_id:
+                dependencies.append({"table": "financial_transactions", "id": transaction.reverses_id})
+            if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
+                return False
         elif table == "decision_journal":
             from app.modules.database.model import DecisionJournalEntry
             decision = session.get(DecisionJournalEntry, key)
@@ -124,7 +136,7 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
             if table == "holdings":
                 from app.modules.database.model import Holding
                 holding = session.get(Holding, key)
-                if holding is None or not source_allowed(session, [{"table": "accounts", "id": holding.account_id}], excluded, seen, memo, document_scope):
+                if holding is None or (holding.account_id is not None and not source_allowed(session, [{"table": "accounts", "id": holding.account_id}], excluded, seen, memo, document_scope)):
                     return False
         else:
             return False

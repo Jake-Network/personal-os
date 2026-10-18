@@ -41,7 +41,7 @@ export function AdvisorWorkspace() {
   const [listOpen, setListOpen] = useState(false);
 
   // Reset the panel when the conversation (or new-conversation domain) changes.
-  const viewKey = `${conversationId}:${newDomain}`;
+  const viewKey = `${conversationId}:${newDomain}:${conversationId === null ? search.get('document') : ''}`;
   const inspectorState = inspector.key === viewKey ? inspector : { data: null, mode: 'preview' as const, loading: false };
 
   const { data: current } = useGetConversation(conversationId ?? 0, undefined, { query: { enabled: conversationId !== null } });
@@ -73,7 +73,7 @@ export function AdvisorWorkspace() {
       </Sheet>
 
       <AdvisorChat
-        key={conversationId ?? `new-${newDomain}`}
+        key={conversationId ?? viewKey}
         conversationId={conversationId}
         domain={domain}
         onConversationCreated={id => router.replace(`/advisor/${id}`)}
@@ -116,11 +116,12 @@ export function AdvisorWorkspace() {
         }
       />
 
-      <WorkspacePanel conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
+      <WorkspacePanel key={viewKey} conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent side='right' className='xl:hidden'>
           <SheetTitle className='sr-only'>상담 패널</SheetTitle>
           <WorkspacePanel
+            key={viewKey}
             conversationId={conversationId}
             inspector={inspectorProps}
             className='h-full border-l-0'

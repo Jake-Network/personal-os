@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DataForm } from '@/features/personal-data/components/data-form';
+import { recordOptions } from '@/features/personal-data/utils/record-options';
 import { type OpenApiSpec, schemaFields } from '@/features/personal-data/utils/schema-fields';
 
 import { type CareerRecord, careerApi } from './api';
@@ -32,7 +33,7 @@ const KIND_LABELS: Record<string, string> = {
 };
 const LABELS: Record<string, string> = {
   progress: '진행 상태',
-  parent_id: '상위 기록 ID',
+  parent_id: '상위 기록',
   organization: '조직',
   started_on: '시작·발생 시점 (YYYY / YYYY-MM / YYYY-MM-DD)',
   ended_on: '종료 시점 (같은 형식)',
@@ -119,6 +120,7 @@ export function CareerView() {
             fields={schema.data}
             labels={LABELS}
             enumLabels={KIND_LABELS}
+            recordChoices={{ parent_id: recordOptions((list.data ?? []).filter(r => editing === 'new' || r.id !== editing.id)) }}
             current={editing === 'new' ? undefined : { ...editing, skills: editing.skills.join(', ') }}
             submitLabel='기록 저장'
             onSubmit={save}
@@ -176,7 +178,11 @@ export function CareerView() {
                 내용 확인·확정
               </Button>
             )}
-            <Button disabled={pending} onClick={() => void act(() => careerApi.remove(r.id))}>
+            <Button
+              disabled={pending}
+              onClick={() => {
+                if (confirm(`“${r.title}” 기록을 삭제할까요? 복구할 수 없습니다.`)) void act(() => careerApi.remove(r.id));
+              }}>
               삭제
             </Button>
           </div>

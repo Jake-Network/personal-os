@@ -122,7 +122,10 @@ class AdvisorManager:
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
-        return {"route": route.as_dict(), **inspector, **prepared.decision().as_dict()}
+        return {"route": route.as_dict(), **inspector, **prepared.decision().as_dict(),
+                'web_search': {'enabled': options.web_search,
+                    'query': options.web_query.strip() if options.web_search and options.web_query else None,
+                    'collection_pending': options.web_search}}
 
     # --- conversations -------------------------------------------------------------------
 

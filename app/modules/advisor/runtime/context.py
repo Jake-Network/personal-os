@@ -119,6 +119,30 @@ class ContextAssembler:
             self.manager.sharing_exclusions(self.session, options), self.manager.history_limit,
             self.current_message_id)
 
+    async def search_web(self):
+        """Only the explicitly approved public query can cross the search boundary."""
+        from app.config import settings
+        from app.modules.web_search import WebSearchService, WebSearchError
+        from app.modules.advisor.runtime.web import save_web_snapshot, WebResearchError
+        async with self.lock:
+            await self.check()
+            from app.modules.llm.run_policy import require
+            require(self.session, self.authorization)
+            if not self.options.web_search or not self.options.web_query or not self.options.web_query.strip():
+                raise WebResearchError('웹 검색 허용과 공개 검색어를 확인하세요.', 'web_search_not_allowed')
+            query = self.options.web_query.strip()
+            self.session.commit()
+        try:
+            result = await WebSearchService(api_key=settings.web_search_api_key).search(query)
+        except WebSearchError as exc:
+            raise WebResearchError(str(exc), exc.code) from exc
+        async with self.lock:
+            await self.check()
+            require(self.session, self.authorization)
+            snapshot_id = save_web_snapshot(self.session, self.conversation.id, result)
+            self.session.commit()
+            return snapshot_id
+
     def saved_history_summary(self, overflow):
         options = self.manager.document_options(self.session, self.conversation, self.options)
         return history_service.saved_summary(self.session, self.conversation.id, overflow,
@@ -163,6 +187,10 @@ class ContextAssembler:
                     'derived_snapshot_ids': list(dict.fromkeys([*sources,
                         *(overflow['source_snapshot_ids'] if summary is not None else []),
                         *([self.baseline_snapshot_id] if self.baseline_snapshot_id else [])]))}
+                from app.modules.advisor.runtime.web import merge_web_sources
+                from app.config import settings
+                payload = merge_web_sources(payload,
+                    [self.session.get(ContextSnapshot, key) for key in sources], settings.context_char_limit)
                 refs = list(package.record_references)
                 from app.modules.context.record_privacy import stamp_references
                 refs.extend(stamp_references(self.session,
@@ -236,7 +264,7 @@ class ContextAssembler:
                 request.input.insert(-1, {'role': 'developer', 'content':
                     '이번 실행의 파생 분석(확정 사실이나 장기 기억이 아님):\n' + json.dumps(derived, ensure_ascii=False)})
             from app.config import settings
-            if summary is not None and len(package.text) > settings.context_char_limit:
+            if len(package.text) > settings.context_char_limit:
                 raise AdvisorError('이전 대화 요약과 필수 근거가 컨텍스트 예산을 초과했습니다. '
                     '새 상담을 시작하거나 공유 범위를 줄여 주세요.', provider_code='context_budget_exceeded')
             if len(json.dumps({'instructions': request.instructions, 'input': request.input}, ensure_ascii=False)) > settings.request_char_limit:

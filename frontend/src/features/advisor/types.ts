@@ -31,6 +31,7 @@ export interface RouteInfo {
 export interface InspectorData {
   route?: RouteInfo;
   document_citations?: DocumentCitation[];
+  web_sources?: WebSource[];
   context_snapshot_id: string | null;
   context_reused: boolean;
   categories: string[];
@@ -41,6 +42,17 @@ export interface InspectorData {
   /** Earlier messages not replayed because they may hold data from a now-excluded category. */
   history_withheld_messages?: number;
   history_withheld_categories?: string[];
+}
+
+export interface WebSource {
+  historical?: boolean;
+  ref: string;
+  url: string;
+  title: string;
+  published_at: string | null;
+  retrieved_at: string;
+  excerpts: string[];
+  content_hash: string;
 }
 
 export type InspectorMode = 'preview' | 'answer' | 'snapshot';

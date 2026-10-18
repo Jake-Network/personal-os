@@ -23,7 +23,7 @@ import { enumLabel } from '@/features/personal-data/consts/resources';
 import type { DashboardSummary } from '../types';
 import { StatCard } from './stat-card';
 
-const IMPORTANT_FLAGS = ['no_accounts', 'monthly_expense_unknown', 'net_worth_incomplete', 'stale_balance', 'stale_price', 'missing_fx'];
+const IMPORTANT_FLAGS = ['no_accounts', 'monthly_expense_unknown', 'net_worth_incomplete', 'stale_balance', 'stale_price', 'missing_fx', 'cashflow_mixed_sources'];
 
 function Panel({ title, href, children }: { title: string; href: string; children: ReactNode }) {
   return (
@@ -47,7 +47,7 @@ function runwaySub(runway: DashboardSummary['computed']['runway'] | undefined): 
   if (runway?.available && runway.months) return `월 지출 기준 약 ${runway.months}개월${runway.understated ? ' (일부 계좌 환산 불가)' : ''}`;
   if (runway?.available) return '지출이 수입 이하';
   if (runway?.reason === 'monthly_expense_insufficient_coverage') return '최근 3개월 지출 기록이 부족해 계산하지 않음';
-  if (runway?.reason === 'spendable_liquidity_unknown') return '현금성 자산을 판단할 수 없음';
+  if (runway?.reason === 'spendable_liquidity_unknown') return '현금 계좌와 잔액을 등록하세요';
   return '월 지출 데이터 없음';
 }
 
@@ -76,6 +76,7 @@ export function DashboardView() {
     ...interviews.map(i => ({ t: i.starts_at as string, title: `${i.company} ${i.stage}`, tag: '면접' })),
     ...events.map(e => ({ t: e.starts_at as string, title: e.title as string, tag: enumLabel(e.kind) })),
   ]
+    .filter(e => data && new Date(e.t).getTime() >= new Date(data.generated_at).getTime())
     .sort((a, b) => a.t.localeCompare(b.t))
     .slice(0, 7);
 
@@ -127,7 +128,7 @@ export function DashboardView() {
               />
               <StatCard
                 label='생활비로 쓸 수 있는 현금'
-                value={worth?.spendable_liquidity != null ? moneyShort(worth.spendable_liquidity) : '—'}
+                value={worth?.spendable_liquidity != null ? moneyShort(worth.spendable_liquidity) : '미기록'}
                 sub={runwaySub(runway)}
               />
               <StatCard

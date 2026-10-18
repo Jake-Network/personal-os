@@ -179,8 +179,12 @@ export function WorkspacePanel({
       await queryClient.invalidateQueries({ queryKey: workspaceKey(conversationId) });
     },
   });
+  const clearSelection = useMutation({
+    mutationFn: () => workspaceApi.selectScenario(conversationId!, { scenario_id: null, expected_revision: workspace.data?.revision ?? 1 }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKey(conversationId) }),
+  });
   const run = workspace.run;
-  const busy = mutation.isPending || isUnfinished(workspace.data?.active_run?.status);
+  const busy = mutation.isPending || clearSelection.isPending || isUnfinished(workspace.data?.active_run?.status);
   const currentIds = (run?.result?.scenarios ?? []) as string[];
   const currentScenarios = (workspace.data?.scenarios ?? []).filter(scenario => currentIds.includes(scenario.id)).slice(0, 3);
   const historicalScenarios = (workspace.data?.scenarios ?? []).filter(scenario => !currentIds.includes(scenario.id));
@@ -214,6 +218,12 @@ export function WorkspacePanel({
         <TabsContent value='consultation' className='grid gap-3'>
           {workspace.error && <Alert variant='destructive'>{errorMessage(workspace.error)}</Alert>}
           {mutation.error && <Alert variant='destructive'>{errorMessage(mutation.error)}</Alert>}
+          {clearSelection.error && <Alert variant='destructive'>{errorMessage(clearSelection.error)}</Alert>}
+          {workspace.data?.selected_scenario_id && (
+            <Button size='sm' disabled={busy} onClick={() => clearSelection.mutate()}>
+              대안 선택 해제 · 새 주제로 상담
+            </Button>
+          )}
           {run && <Badge>{RUN_LABEL[run.status]}</Badge>}
           {!!Object.keys(workspace.data?.problem ?? {}).length && <Values value={workspace.data?.problem ?? {}} />}
           {!workspace.data?.scenarios?.length && <p className='text-xs text-faint'>상담에서 비교할 조건과 대안이 정리되면 여기에 표시합니다.</p>}
@@ -279,7 +289,11 @@ export function WorkspacePanel({
           <ContextInspector {...inspector} className='border-l-0' />
         </TabsContent>
         <TabsContent value='actions' className='grid gap-3'>
-          {proposals.data?.length ? (
+          {proposals.error ? (
+            <Alert variant='destructive'>{errorMessage(proposals.error)}</Alert>
+          ) : proposals.isPending && conversationId !== null ? (
+            <p className='text-xs text-faint'>제안을 불러오는 중…</p>
+          ) : proposals.data?.length ? (
             proposals.data.map(proposal => <ProposalCard key={proposal.id} proposal={proposal} />)
           ) : (
             <p className='text-xs text-faint'>승인 대기 중인 행동 제안이 없습니다.</p>

@@ -11,6 +11,7 @@ import type { RunViewError } from './runViewError';
 
 export interface RunView {
   id: string;
+  request_id: string;
   conversation_id: number;
   status: RunViewStatus;
   revision: number;

@@ -246,7 +246,7 @@ class RunRepository:
             else:
                 # Missing metadata belongs to an older/uncertain run and fails closed.
                 row.status = "queued" if (row.runtime_metadata or {}).get("model_inflight") is False else "blocked"
-            row.error = "중단된 모델 호출의 완료 여부를 확인할 수 없습니다. 명시적으로 재시도하세요." if row.status == "blocked" else None
+            row.error = "중단된 외부 호출의 완료 여부를 확인할 수 없습니다. 명시적으로 재시도하세요." if row.status == "blocked" else None
             row.lease_generation += 1
             row.lease_owner, row.lease_until = None, None
             row.revision += 1
@@ -290,10 +290,10 @@ class RunRepository:
         self._conversation(conversation_id)
         self.session.execute(update(AdvisorConversation).where(AdvisorConversation.id == conversation_id)
                              .values(updated_at=AdvisorConversation.updated_at))
-        scenario = self.session.get(AdvisorScenario, request.scenario_id)
-        if not scenario or scenario.conversation_id != conversation_id:
+        scenario = self.session.get(AdvisorScenario, request.scenario_id) if request.scenario_id is not None else None
+        if request.scenario_id is not None and (not scenario or scenario.conversation_id != conversation_id):
             raise HTTPException(404, "대안을 찾을 수 없습니다.")
-        if scenario.evidence.get('source_purged'):
+        if scenario is not None and scenario.evidence.get('source_purged'):
             raise HTTPException(409, '대안의 근거가 삭제되었습니다. 새 조건으로 분석하세요.')
         workspace = self.session.get(AdvisorWorkspace, conversation_id)
         if workspace is None:
@@ -303,7 +303,7 @@ class RunRepository:
         changed = self.session.execute(update(AdvisorWorkspace).where(
             AdvisorWorkspace.conversation_id == conversation_id,
             AdvisorWorkspace.revision == request.expected_revision)
-            .values(selected_scenario_id=scenario.id, revision=AdvisorWorkspace.revision + 1))
+            .values(selected_scenario_id=scenario.id if scenario else None, revision=AdvisorWorkspace.revision + 1))
         if changed.rowcount != 1:
             raise HTTPException(409, "상담 상태가 변경되었습니다.")
         self.session.expire(workspace)

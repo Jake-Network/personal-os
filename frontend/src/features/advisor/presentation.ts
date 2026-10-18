@@ -11,6 +11,7 @@ const HIDDEN = new Set([
   'baseline_snapshot_id',
 ]);
 const LABELS: Record<string, string> = {
+  question: '상담 질문',
   objective: '상담 목적',
   period: '검토 기간',
   constraints: '필수 제약',

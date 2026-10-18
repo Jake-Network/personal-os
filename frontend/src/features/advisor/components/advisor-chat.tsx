@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { customInstance } from '@/api-client/custom-client';
 import type { ConversationDetail } from '@/api-client/model';
 
@@ -15,10 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { documentsApi, documentsKey, type DocumentCitation } from '@/features/documents/api';
+import { RecordSelect } from '@/features/personal-data/components/record-select';
 
 import { Textarea } from '@/components/ui/textarea';
 
-import { errorMessage } from '@/api-client/api-error';
+import { ApiError, errorMessage } from '@/api-client/api-error';
 import {
   createConversation,
   getGetConversationQueryOptions,
@@ -27,6 +28,7 @@ import {
   previewContext,
 } from '@/api-client/generated/advisor/advisor';
 import { useGetPrivacy } from '@/api-client/generated/privacy/privacy';
+import { useGetStatus } from '@/api-client/generated/ai-provider/ai-provider';
 import { getListProposalsQueryKey, useListProposals } from '@/api-client/generated/proposals/proposals';
 import type { Category, ConversationCreateDomain } from '@/api-client/model';
 import { CATEGORY_HINT, CATEGORY_LABEL, ERROR_HINT } from '@/lib/labels';
@@ -35,7 +37,7 @@ import { dateTime } from '@/lib/utils/format';
 
 import { SUGGESTIONS } from '../consts';
 import type { ChatMessage, InspectorData, InspectorMode } from '../types';
-import { optionsFor, snapshotToInspector, stripBlocks } from '../utils';
+import { optionsFor, sameRunIntent, snapshotToInspector, stripBlocks } from '../utils';
 import { MemoryProposalCard, ProposalCard } from './proposal-card';
 import { ConversationSummary } from './conversation-summary';
 import { workspaceApi, workspaceKey } from '../api';
@@ -57,7 +59,14 @@ const SHARE_CATEGORIES: Category[] = ['financial', 'investment', 'career', 'cale
 
 export function AdvisorChat({ conversationId, domain, compact, header, onConversationCreated, onInspector }: Props) {
   const queryClient = useQueryClient();
-  const targetMessage = Number(useSearchParams().get('message')) || null;
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const targetMessage = Number(searchParams.get('message')) || null;
+  const [historyView, setHistoryView] = useState({ target: targetMessage, latest: false });
+  if (historyView.target !== targetMessage) setHistoryView({ target: targetMessage, latest: false });
+  const showLatest = historyView.target === targetMessage && historyView.latest;
+  const messageAnchor = useRef<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderExhausted, setOlderExhausted] = useState(false);
   const viewRef = useRef(conversationId);
@@ -66,7 +75,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   }, [conversationId]);
   const [olderMessages, setOlderMessages] = useState<ChatMessage[]>([]);
   const history = useQuery({
-    ...getGetConversationQueryOptions(conversationId ?? 0, targetMessage ? { before_id: targetMessage + 1 } : undefined),
+    ...getGetConversationQueryOptions(conversationId ?? 0, targetMessage && !showLatest ? { before_id: targetMessage + 1 } : undefined),
     enabled: conversationId !== null,
   });
   const messages = useMemo(() => {
@@ -81,7 +90,12 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   const [historyProject, setHistoryProject] = useState('');
   const [historyDecision, setHistoryDecision] = useState('');
   const [documentSearch, setDocumentSearch] = useState(true);
-  const [documentIds, setDocumentIds] = useState<number[] | null>(null);
+  const [webSearch, setWebSearch] = useState(false);
+  const [webQuery, setWebQuery] = useState('');
+  const [documentIds, setDocumentIds] = useState<number[] | null>(() => {
+    const id = Number(searchParams.get('document'));
+    return !conversationId && Number.isSafeInteger(id) && id > 0 ? [id] : null;
+  });
   const [source, setSource] = useState<{ citation?: DocumentCitation; error?: string } | null>(null);
   const documents = useQuery({ queryKey: documentsKey, queryFn: documentsApi.list });
   const [sending, setSending] = useState(false);
@@ -90,13 +104,13 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   const activeRun = workspace.data?.active_run;
   const busy = sending || isUnfinished(activeRun?.status);
   const waiting = activeRun?.status === 'waiting_input' && !!activeRun.clarification;
-  const pendingRequest = useRef<{ conversationId: number; text: string; body: RunCreate } | null>(null);
+  const pendingRequest = useRef<{ conversationId: number; body: RunCreate } | null>(null);
   const pendingResponse = useRef<{ key: string; requestId: string } | null>(null);
   const sendLock = useRef(false);
   const createdConversation = useRef<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [baseline, setBaseline] = useState<InspectorData | null>(null);
-  const [preview, setPreview] = useState<InspectorData | null>(null);
+  const [uncertainRetry, setUncertainRetry] = useState(false);
+  const [previewState, setPreviewState] = useState<{ key: string; base?: InspectorData; data?: InspectorData; error?: string } | null>(null);
   const [forcedOn, setForcedOn] = useState<Set<Category>>(new Set());
   const [forcedOff, setForcedOff] = useState<Set<Category>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -111,22 +125,25 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   }, [workspace.context]);
 
   const privacyBlocked = useGetPrivacy().data?.excluded_categories ?? [];
+  const providerStatus = useGetStatus();
+  const provider = providerStatus.data;
+  const providerNeedsSetup =
+    provider?.provider === 'codex_app_server' || (provider?.provider === 'chatgpt_plan' && (!provider.connected || !provider.plan_usage_enabled));
   const pendingProposals = useListProposals(
     { status: 'pending' },
     { query: { enabled: conversationId !== null, select: list => list.filter(p => p.conversation_id === conversationId) } },
   ).data;
 
   useEffect(() => {
-    const target = targetMessage ? document.getElementById(`message-${targetMessage}`) : null;
-    if (target) target.scrollIntoView({ block: 'center' });
-    else if (followMessages.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const target =
+      targetMessage && !showLatest && messageAnchor.current !== targetMessage ? document.getElementById(`message-${targetMessage}`) : null;
+    if (target) {
+      target.scrollIntoView({ block: 'center' });
+      messageAnchor.current = targetMessage;
+      followMessages.current = false;
+    } else if (followMessages.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     else setNewMessages(true);
-  }, [messages, targetMessage]);
-
-  const requestOptions = useMemo(
-    () => (baseline ? optionsFor(baseline, forcedOn, forcedOff) : { exclude: [...forcedOff] }),
-    [baseline, forcedOn, forcedOff],
-  );
+  }, [messages, targetMessage, showLatest, workspace.liveText, workspace.progress, workspace.run?.status]);
 
   const documentOptions = useMemo(
     () => ({
@@ -135,18 +152,33 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
       history_company: historyCompany || null,
       history_project: historyProject ? Number(historyProject) : null,
       history_decision: historyDecision ? Number(historyDecision) : null,
+      web_search: webSearch,
+      web_query: webSearch ? webQuery.trim() : null,
     }),
-    [documentSearch, documentIds, historyCompany, historyProject, historyDecision],
+    [documentSearch, documentIds, historyCompany, historyProject, historyDecision, webSearch, webQuery],
   );
+
+  const previewKey = JSON.stringify([input.trim(), conversationId, documentOptions, [...forcedOn], [...forcedOff]]);
+  const baseline = previewState?.key === previewKey ? previewState.base : undefined;
+  const preview = previewState?.key === previewKey ? previewState.data : undefined;
+  const previewError = previewState?.key === previewKey ? previewState.error : undefined;
+  const requestOptions = baseline ? optionsFor(baseline, forcedOn, forcedOff) : { exclude: [...forcedOff] };
 
   // Debounced Context preview while typing (nothing is sent to the model).
   useEffect(() => {
+    let current = true;
     const text = input.trim();
-    if (text.length < 2 || busy) return;
+    if (busy) return;
+    if (!text) {
+      onInspectorRef.current?.(workspace.context ?? null, workspace.context ? 'answer' : 'preview');
+      return;
+    }
+    onInspectorRef.current?.(null, 'preview');
+    if (text.length < 2 || (webSearch && !webQuery.trim())) return;
     const timer = setTimeout(async () => {
       try {
         const base = (await previewContext({ message: text, conversation_id: conversationId, ...documentOptions })) as InspectorData;
-        setBaseline(base);
+        if (!current) return;
         const adjusted = forcedOn.size || forcedOff.size;
         const final = adjusted
           ? ((await previewContext({
@@ -156,14 +188,18 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
               ...documentOptions,
             })) as InspectorData)
           : base;
-        setPreview(final);
+        if (!current) return;
+        setPreviewState({ key: previewKey, base, data: final });
         onInspectorRef.current?.(final, 'preview');
-      } catch {
-        /* preview is best-effort */
+      } catch (error) {
+        if (current) setPreviewState({ key: previewKey, error: '공유 범위를 미리 확인하지 못했습니다. ' + errorMessage(error) });
       }
     }, 350);
-    return () => clearTimeout(timer);
-  }, [input, conversationId, forcedOn, forcedOff, busy, documentOptions]);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [input, conversationId, forcedOn, forcedOff, busy, documentOptions, webSearch, webQuery, previewKey, workspace.context]);
 
   function toggle(c: Category) {
     if (privacyBlocked.includes(c) || c === 'profile') return;
@@ -181,9 +217,33 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     setForcedOff(off);
   }
 
+  function showCurrentMessages() {
+    messageAnchor.current = null;
+    setHistoryView({ target: targetMessage, latest: true });
+    followMessages.current = true;
+    setNewMessages(false);
+    if (searchParams.has('message')) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('message');
+      router.replace(`${pathname}${params.size ? `?${params}` : ''}`, { scroll: false });
+    }
+  }
+
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();
-    if (!text || sendLock.current || sending || (busy && !waiting)) return;
+    if (!text || sendLock.current || sending || (busy && !waiting) || providerNeedsSetup) return;
+    if (textArg && !waiting && text !== input.trim()) {
+      setInput(text);
+      return;
+    }
+    if (!waiting && forcedOn.size > 0 && !baseline) {
+      setLoadError('변경한 공유 범위를 확인하는 중입니다. 미리보기가 완료되면 다시 보내 주세요.');
+      return;
+    }
+    if (!waiting && webSearch && !webQuery.trim()) {
+      setLoadError('웹 검색에 사용할 공개 검색어를 입력해 주세요.');
+      return;
+    }
     sendLock.current = true;
     setSending(true);
     setLoadError(null);
@@ -208,30 +268,49 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
         pendingResponse.current = null;
       } else {
         const previous = pendingRequest.current;
-        const body =
-          previous?.conversationId === convId && previous.text === text
-            ? previous.body
-            : {
-                message: text,
-                ...(textArg ? {} : requestOptions),
-                ...documentOptions,
-                request_id: crypto.randomUUID(),
-                depth,
-                parent_revision: workspace.data?.revision,
-                scenario_id: workspace.data?.selected_scenario_id,
-              };
-        pendingRequest.current = { conversationId: convId, text, body };
+        const candidate: RunCreate = {
+          message: text,
+          ...requestOptions,
+          ...documentOptions,
+          request_id: crypto.randomUUID(),
+          depth,
+          parent_revision: workspace.data?.revision,
+        };
+        const sameIntent = previous?.conversationId === convId && sameRunIntent({ ...previous.body }, { ...candidate });
+        if (previous?.conversationId === convId && !sameIntent) {
+          // Reconcile an uncertain save before creating a request with changed privacy settings.
+          const recovered = await workspaceApi.get(convId);
+          queryClient.setQueryData(workspaceKey(convId), recovered);
+          const accepted = [recovered.active_run, recovered.latest_run].some(run => run?.request_id === previous.body.request_id);
+          if (accepted) {
+            pendingRequest.current = null;
+            showCurrentMessages();
+            throw new Error('이전 질문은 이미 접수되었습니다. 현재 답변을 확인한 뒤 변경한 공유 범위로 새 질문을 보내 주세요.');
+          }
+          if (isUnfinished(recovered.active_run?.status)) throw new Error('진행 중인 상담을 확인한 뒤 다시 보내 주세요.');
+          setUncertainRetry(true);
+          throw new Error('이전 질문의 접수 여부가 아직 불명확합니다. 변경한 질문을 별도로 보내면 두 요청이 모두 실행될 수 있습니다.');
+        }
+        const body = sameIntent && previous ? previous.body : candidate;
+        pendingRequest.current = { conversationId: convId, body };
         await workspaceApi.createRun(convId, body);
         pendingRequest.current = null;
       }
       runSaved = true;
+      setUncertainRetry(false);
+      showCurrentMessages();
       setInput('');
+      if (!waiting) {
+        setWebSearch(false);
+        setWebQuery('');
+      }
       setForcedOn(new Set());
       setForcedOff(new Set());
-      setPreview(null);
-      setBaseline(null);
+      setPreviewState(null);
       await queryClient.invalidateQueries({ queryKey: workspaceKey(convId) });
     } catch (e) {
+      // Validation/auth rejection cannot have created this run. Conflict/network/5xx remain uncertain.
+      if (e instanceof ApiError && [401, 403, 422].includes(e.status)) pendingRequest.current = null;
       setLoadError(errorMessage(e));
       if (convId) void queryClient.invalidateQueries({ queryKey: workspaceKey(convId) });
       if (conversationId === null && convId !== null) {
@@ -331,15 +410,28 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             이전 메시지 더 보기
           </Button>
         )}
-        {loadError && <Alert variant='destructive'>{loadError}</Alert>}
+        {providerNeedsSetup && (
+          <Alert variant='warning'>
+            선택한 AI 연결을 설정해야 상담을 시작할 수 있습니다.{' '}
+            <Link href='/settings/ai-provider' className='underline'>
+              AI 연결 설정하기
+            </Link>
+          </Alert>
+        )}
+        {providerStatus.error && (
+          <Alert variant='warning'>
+            AI 연결 상태를 확인하지 못했습니다.{' '}
+            <Link href='/settings/ai-provider' className='underline'>
+              연결 설정 확인
+            </Link>
+          </Alert>
+        )}
         {history.error && <Alert variant='destructive'>{errorMessage(history.error)}</Alert>}
         {messages.length === 0 && !loadError && (
           <div className='mx-auto flex w-full max-w-[760px] flex-col items-start gap-2.5'>
-            <div className='text-muted-foreground'>
-              Personal OS에 저장된 실제 데이터를 바탕으로 상담합니다. 내 정보를 다시 설명할 필요가 없습니다.
-            </div>
+            <div className='text-muted-foreground'>공유를 허용한 기록을 바탕으로 상담합니다. 기록이 없거나 부족하면 필요한 내용을 확인합니다.</div>
             {suggestions.map(s => (
-              <Button key={s} className='h-auto whitespace-normal py-1.5 text-left' onClick={() => send(s)} disabled={busy}>
+              <Button key={s} className='h-auto whitespace-normal py-1.5 text-left' onClick={() => send(s)} disabled={busy || providerNeedsSetup}>
                 {s}
               </Button>
             ))}
@@ -354,20 +446,20 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
                 <input value={historyCompany} onChange={e => setHistoryCompany(e.target.value)} className='block rounded border p-2' />
               </label>
               <label>
-                프로젝트 ID
-                <input
-                  type='number'
-                  min='1'
+                프로젝트
+                <RecordSelect
+                  fieldName='project_id'
+                  aria-label='검색할 프로젝트'
                   value={historyProject}
                   onChange={e => setHistoryProject(e.target.value)}
                   className='block w-28 rounded border p-2'
                 />
               </label>
               <label>
-                결정 ID
-                <input
-                  type='number'
-                  min='1'
+                결정
+                <RecordSelect
+                  fieldName='decision_id'
+                  aria-label='검색할 결정'
                   value={historyDecision}
                   onChange={e => setHistoryDecision(e.target.value)}
                   className='block w-28 rounded border p-2'
@@ -446,6 +538,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             run={workspace.run}
             liveText={workspace.liveText}
             progress={workspace.progress}
+            progressMessage={workspace.progressMessage}
             reconnecting={workspace.reconnecting}
             onRefresh={workspace.refresh}
             onChoose={text => void send(text)}
@@ -472,23 +565,33 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
               새 메시지 보기
             </Button>
           )}
+          {loadError && (
+            <Alert variant='destructive' className='mb-2'>
+              {loadError}
+            </Alert>
+          )}
+          {uncertainRetry && (
+            <Button
+              className='mb-2'
+              disabled={busy}
+              onClick={() => {
+                pendingRequest.current = null;
+                setUncertainRetry(false);
+                void send();
+              }}>
+              변경한 질문을 별도 요청으로 보내기
+            </Button>
+          )}
           {workspace.error && (
             <Alert variant='destructive' className='mb-2'>
               상담 상태를 확인하지 못했습니다. {errorMessage(workspace.error)}
             </Alert>
           )}
-          <label className='mb-2 flex items-center gap-2 text-xs'>
-            분석 깊이
-            <select
-              aria-label='분석 깊이'
-              className='rounded border bg-background p-1'
-              value={depth}
-              disabled={busy}
-              onChange={e => setDepth(e.target.value as 'auto' | 'deep')}>
-              <option value='auto'>자동</option>
-              <option value='deep'>깊게 분석</option>
-            </select>
-          </label>
+          {previewError && (
+            <p role='status' className='mb-2 text-xs text-warning'>
+              {previewError}
+            </p>
+          )}
           {preview && input.trim() && (
             <div className='mb-2 flex flex-wrap items-center gap-1.5' aria-label='이번 질문에 공유할 데이터'>
               <span className='text-xs text-faint'>공유:</span>
@@ -516,9 +619,23 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
           )}
           <details className='mb-2 text-xs'>
             <summary className='cursor-pointer'>
-              문서 검색: {documentSearch ? (documentIds?.length ? `${documentIds.length}개 문서 지정` : '자동 · 이전 질문의 지정 문서 유지') : '끄기'}
+              상담 옵션 · {depth === 'deep' ? '깊게 분석' : '자동 분석'} · 문서{' '}
+              {documentSearch ? (documentIds?.length ? `${documentIds.length}개 지정` : '자동 검색') : '검색 끄기'}
             </summary>
             <div className='mt-2 grid gap-2'>
+              <label className='flex items-center gap-2'>
+                분석 깊이
+                <select
+                  aria-label='분석 깊이'
+                  className='rounded border bg-background p-1'
+                  value={depth}
+                  disabled={busy}
+                  onChange={e => setDepth(e.target.value as 'auto' | 'deep')}>
+                  <option value='auto'>자동</option>
+                  <option value='deep'>깊게 분석</option>
+                </select>
+              </label>
+              <p className='text-faint'>문서 자동 검색은 이전 질문에서 지정한 문서를 이어받습니다. 범위를 바꾸려면 지정 해제를 누르세요.</p>
               <label className='flex items-center gap-2'>
                 <input type='checkbox' checked={documentSearch} disabled={busy} onChange={e => setDocumentSearch(e.target.checked)} />
                 문서 검색 사용
@@ -546,6 +663,29 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
               </Link>
             </div>
           </details>
+          <div className='mb-2 grid gap-2 text-xs'>
+            <label className='flex items-center gap-2'>
+              <input type='checkbox' checked={webSearch} disabled={busy} onChange={e => setWebSearch(e.target.checked)} />웹 검색
+            </label>
+            {webSearch && (
+              <label className='grid gap-1'>
+                공개 검색어
+                <input
+                  className='w-full rounded border bg-background p-2 text-sm'
+                  value={webQuery}
+                  maxLength={300}
+                  disabled={busy}
+                  onChange={e => setWebQuery(e.target.value)}
+                  placeholder='예: 회사명 채용 공고 백엔드 개발자'
+                  aria-describedby='web-search-disclosure'
+                />
+                <span id='web-search-disclosure' className='text-faint'>
+                  입력한 공개 검색어만 외부 검색 서비스에 전송하고, 검색된 페이지의 본문을 수집해 답변 근거로 사용합니다. 개인정보는 검색어에 넣지
+                  마세요.
+                </span>
+              </label>
+            )}
+          </div>
           <div className='flex items-end gap-2'>
             <Textarea
               className='max-h-[200px] min-h-[52px]'
@@ -570,11 +710,21 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             <Button
               variant='primary'
               onClick={() => send()}
-              disabled={!input.trim() || sending || (busy && !waiting) || !!workspace.error || (conversationId !== null && workspace.isPending)}>
+              disabled={
+                !input.trim() ||
+                sending ||
+                providerNeedsSetup ||
+                (busy && !waiting) ||
+                (!waiting && webSearch && !webQuery.trim()) ||
+                !!workspace.error ||
+                (conversationId !== null && workspace.isPending)
+              }>
               {sending ? '저장 중…' : waiting ? '답변 제출' : '보내기'}
             </Button>
           </div>
-          {!compact && <div className='mt-1.5 text-xs text-faint'>Enter 보내기 · Shift+Enter 줄바꿈 · 계좌번호·인증정보는 전송되지 않습니다</div>}
+          {!compact && (
+            <div className='mt-1.5 text-xs text-faint'>Enter 보내기 · Shift+Enter 줄바꿈 · 질문에 인증정보나 불필요한 개인정보를 넣지 마세요.</div>
+          )}
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 
 import { EmptyState } from '@/components/empty-state';
+import { QueryStatus } from '@/components/query-status';
 import { notify } from '@/components/notify';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +47,7 @@ export function MemoryList() {
   return (
     <div className='flex flex-col gap-3.5'>
       <Card>
-        <form className='flex items-end gap-2 p-4' onSubmit={form.handleSubmit(data => create.mutate({ data }))}>
+        <form className='flex flex-wrap items-end gap-2 p-4' onSubmit={form.handleSubmit(data => create.mutate({ data }))}>
           <div className='flex w-[130px] flex-none flex-col gap-1'>
             <Label htmlFor='m-kind'>종류</Label>
             <NativeSelect id='m-kind' {...form.register('kind')}>
@@ -57,7 +58,7 @@ export function MemoryList() {
               ))}
             </NativeSelect>
           </div>
-          <div className='flex flex-1 flex-col gap-1'>
+          <div className='flex min-w-40 flex-1 flex-col gap-1'>
             <Label htmlFor='m-content'>내용</Label>
             <Input id='m-content' placeholder='예: 연봉보다 성장 기회를 우선한다' {...form.register('content')} />
           </div>
@@ -68,10 +69,11 @@ export function MemoryList() {
       </Card>
       {error && <Alert variant='destructive'>{error}</Alert>}
       <Card>
+        <QueryStatus pending={list.isPending} error={list.error} retry={list.refetch} label='저장된 기억' />
         <ul>
           {list.data?.map(m => (
             <li key={m.id} className='border-b px-4 py-2 last:border-0'>
-              <div className='flex items-baseline gap-2.5'>
+              <div className='flex flex-wrap items-baseline gap-2.5'>
                 <Badge variant='accent'>{MEMORY_KIND_LABEL[m.kind]}</Badge>
                 <span className='flex-1'>{m.content}</span>
                 <span className='text-xs text-faint'>{m.source === 'advisor' ? 'AI 제안 → 확인' : '직접 입력'}</span>
@@ -86,7 +88,7 @@ export function MemoryList() {
             </li>
           ))}
         </ul>
-        {list.data?.length === 0 && <EmptyState>저장된 기억이 없습니다.</EmptyState>}
+        {!list.error && list.data?.length === 0 && <EmptyState>저장된 기억이 없습니다.</EmptyState>}
       </Card>
     </div>
   );
