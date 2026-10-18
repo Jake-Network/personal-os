@@ -9,7 +9,6 @@ import type { HoldingInputRequestId } from './holdingInputRequestId';
 import type { HoldingInputAccountId } from './holdingInputAccountId';
 import type { HoldingInputPriceSource } from './holdingInputPriceSource';
 import type { HoldingInputTradeDate } from './holdingInputTradeDate';
-import type { HoldingInputQuantity } from './holdingInputQuantity';
 import type { HoldingInputAvgCost } from './holdingInputAvgCost';
 import type { HoldingInputAssetClass } from './holdingInputAssetClass';
 import type { HoldingInputQuoteMode } from './holdingInputQuoteMode';
@@ -41,7 +40,10 @@ export interface HoldingInput {
   label: string;
   /** @pattern ^[A-Z]{3}$ */
   currency: string;
-  quantity: HoldingInputQuantity;
+  /**
+   * @minimum 0
+   */
+  quantity: number;
   avg_cost?: HoldingInputAvgCost;
   asset_class?: HoldingInputAssetClass;
   quote_mode?: HoldingInputQuoteMode;

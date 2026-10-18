@@ -19,6 +19,10 @@ export type HoldingInput = {
 export type SheetHolding = Omit<HoldingInput, 'request_id'> & { id: string; price: string | null; quote_status?: string; record_id?: number };
 
 // Sheets rows also contain quote metadata. Only user input belongs in a write request.
+export function quantityText(value: string): string {
+  return value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value;
+}
+
 export function holdingDraft(row: SheetHolding, requestId: string): HoldingInput {
   return {
     position_id: row.position_id || row.id,
@@ -27,7 +31,7 @@ export function holdingDraft(row: SheetHolding, requestId: string): HoldingInput
     expected_version: row.expected_version,
     ticker: row.ticker,
     label: row.label,
-    quantity: row.quantity,
+    quantity: quantityText(row.quantity),
     currency: row.currency,
     avg_cost: row.avg_cost ?? null,
     asset_class: row.asset_class,

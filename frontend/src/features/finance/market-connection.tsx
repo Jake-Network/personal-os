@@ -7,7 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { notify } from '@/components/notify';
 
-type MarketStatus = { configured: boolean; last_error: string | null; last_success_at: string | null };
+type MarketStatus = {
+  configured: boolean;
+  account_matches: boolean;
+  current_account_key: string;
+  spreadsheet_id: string | null;
+  last_error: string | null;
+  last_success_at: string | null;
+};
 type ImportPreview = {
   import_id: number;
   rows: { row: Record<string, unknown>; issues: string[]; existing_position_id: string | null }[];
@@ -23,10 +30,14 @@ export function MarketConnection() {
     onError: notify.error,
   });
   const action = useMutation({
-    mutationFn: (operation: 'initialize' | 'refresh' | 'import') =>
+    mutationFn: (operation: 'initialize' | 'replace' | 'refresh' | 'import') =>
       customInstance<{ warning?: string }>({
         url: operation === 'import' ? `/api/market-data/imports/${Number(importId)}` : `/api/market-data/${operation}`,
         method: 'POST',
+        data: operation === 'replace' ? {
+          expected_spreadsheet_id: state.data?.spreadsheet_id,
+          expected_account_key: state.data?.current_account_key,
+        } : undefined,
       }),
     onSuccess: () =>
       Promise.all([
@@ -42,13 +53,22 @@ export function MarketConnection() {
         <Button disabled={action.isPending || state.isPending || !!state.data?.configured} onClick={() => action.mutate('initialize')}>
           시세 전용 파일 새로 만들기
         </Button>
-        <Button disabled={action.isPending || !state.data?.configured} onClick={() => action.mutate('refresh')}>
+        {state.data?.configured && (
+          <Button disabled={action.isPending || state.isFetching} onClick={() => action.mutate('replace')}>
+            현재 Google 계정으로 시세 파일 새로 연결
+          </Button>
+        )}
+        <Button disabled={action.isPending || !state.data?.configured || !state.data.account_matches} onClick={() => action.mutate('refresh')}>
           시세 갱신
         </Button>
       </div>
       <p className='text-xs text-faint'>
         갱신은 5분 제한을 공통 적용합니다. 이전의 광범위한 Google 승인은 Google 계정에서 해제한 뒤 다시 연결하세요.
       </p>
+      {state.data?.configured && !state.data.account_matches && (
+        <Alert variant='warning'>Google 계정이 기존 시세 파일과 다릅니다. 현재 Google 계정으로 새 시세 파일을 연결하세요.</Alert>
+      )}
+      {state.data?.configured && <p className='text-xs text-faint'>새로 연결하면 현재 계정에 새 파일을 만들고 시세 연결을 교체합니다. 기존 Google 파일과 로컬 기록은 보존합니다.</p>}
       {state.data?.last_error && <Alert variant='warning'>{state.data.last_error}</Alert>}
       {state.error && <Alert variant='destructive'>{state.error.message}</Alert>}
       {action.data?.warning && <Alert variant='warning'>{action.data.warning}</Alert>}

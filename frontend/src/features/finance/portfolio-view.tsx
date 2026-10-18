@@ -122,7 +122,10 @@ function GoogleConnectionControls() {
   });
   const disconnect = useMutation({
     mutationFn: financeApi.googleDisconnect,
-    onSettled: () => client.invalidateQueries({ queryKey: ['finance'] }),
+    onSettled: () => Promise.all([
+      client.invalidateQueries({ queryKey: ['finance'] }),
+      client.invalidateQueries({ queryKey: ['market-data'] }),
+    ]),
   });
   const data = connection.data;
   const origin = useSyncExternalStore(subscribeToOrigin, browserOrigin, serverOrigin);

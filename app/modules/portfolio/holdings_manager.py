@@ -17,6 +17,7 @@ from app.modules.database.model import (
     MarketObservation,
 )
 from app.modules.finance.value_history import capture
+from app.modules.finance.formatting import quantity_text
 from app.modules.finance.value_history_manager import value_history_manager
 from app.modules.portfolio import portfolio_manager as manager
 
@@ -73,7 +74,7 @@ def listing(session, client=None, cached=False):
                 ticker=obj.symbol,
                 label=obj.name or obj.symbol,
                 currency=obj.currency,
-                quantity=str(obj.quantity),
+                quantity=quantity_text(obj.quantity),
                 avg_cost=str(obj.avg_cost) if obj.avg_cost is not None else None,
                 asset_class=obj.asset_class,
                 quote_mode=p.quote_mode if p else "manual",
@@ -168,6 +169,11 @@ def save(session, body, client=None):
                     quote_status="pending",
                 )
             raise RuntimeError("Concurrent request ID collision; reload") from None
+    invalidate_price = (
+        obj.symbol != body.ticker
+        or obj.currency != body.currency
+        or (mapping.quote_mode if mapping else "manual") != body.quote_mode
+    )
     obj.symbol, obj.name, obj.currency = body.ticker, body.label, body.currency
     if "account_id" in body.model_fields_set:
         obj.account_id = body.account_id
@@ -177,12 +183,13 @@ def save(session, body, client=None):
         body.asset_class,
     )
     # Switching the symbol or quote mode must not retain an unrelated old price.
-    obj.last_price = body.manual_price if body.quote_mode == "manual" else None
-    obj.price_as_of = (
-        datetime.combine(body.price_as_of, datetime.min.time(), UTC)
-        if body.quote_mode == "manual"
-        else None
-    )
+    if body.quote_mode == "manual":
+        obj.last_price = body.manual_price
+        obj.price_as_of = datetime.combine(
+            body.price_as_of, datetime.min.time(), UTC
+        )
+    elif invalidate_price:
+        obj.last_price, obj.price_as_of = None, None
     session.add(obj)
     session.flush()
     if mapping is None:

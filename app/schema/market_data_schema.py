@@ -13,6 +13,12 @@ class CoverageInput(BaseModel):
     kinds: list[Literal["cash", "holding", "liability", "other"]]
 
 
+class QuotesReplacementInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_spreadsheet_id: str = Field(min_length=1, max_length=200)
+    expected_account_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class TransactionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")
@@ -38,9 +44,7 @@ class TransactionInput(BaseModel):
         default=None, gt=0, lt=Decimal("1e20"), decimal_places=12
     )
     currency: str = Field(default="KRW", pattern=r"^[A-Z]{3}$")
-    quantity: Decimal | None = Field(
-        default=None, gt=0, lt=Decimal("1e20"), decimal_places=12
-    )
+    quantity: int | None = Field(default=None, gt=0, lt=10**20)
     reverses_id: int | None = Field(default=None, gt=0)
     source: str = Field(min_length=1, max_length=300)
     note: str | None = Field(default=None, max_length=2000)

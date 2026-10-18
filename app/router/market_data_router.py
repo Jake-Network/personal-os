@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.modules.database import get_session
 from app.modules.portfolio import market_data_manager as manager
 from app.router.portfolio_router import _call
+from app.schema.market_data_schema import QuotesReplacementInput
 
 router = APIRouter(prefix="/api/market-data", tags=["market-data"])
 
@@ -18,6 +19,11 @@ def status(session: Session = Depends(get_session)):
 @router.post("/initialize")
 def initialize(session: Session = Depends(get_session)):
     return _call(manager.initialize, session)
+
+
+@router.post("/replace")
+def replace(body: QuotesReplacementInput, session: Session = Depends(get_session)):
+    return _call(manager.replace, session, body)
 
 
 @router.post("/refresh")

@@ -23,14 +23,14 @@ class HoldingInput(BaseModel):
     ticker: str = Field(min_length=1, max_length=32, pattern=r"^[A-Z0-9][A-Z0-9.:-]*$")
     label: str = Field(min_length=1, max_length=120)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
-    quantity: Decimal
+    quantity: int = Field(ge=0, lt=10**20)
     avg_cost: Decimal | None = None
     asset_class: Literal["equity", "etf", "bond", "crypto", "other"] = "equity"
     quote_mode: Literal["auto", "manual"] = "auto"
     manual_price: Decimal | None = None
     price_as_of: date | None = None
 
-    @field_validator("quantity", "avg_cost", "manual_price")
+    @field_validator("avg_cost", "manual_price")
     @classmethod
     def valid_amount(cls, value):
         if value is not None and (

@@ -12,6 +12,7 @@ from app.modules.database.model import (
     OtherAsset,
 )
 from app.modules.finance.clock import local_today
+from app.modules.finance.formatting import quantity_text
 from app.modules.portfolio.valuation import enrich_rows, value_positions
 
 
@@ -39,7 +40,7 @@ def rows(session, kinds=None):
                 label=obj.name or obj.symbol,
                 ticker=obj.symbol,
                 currency=obj.currency,
-                quantity=str(obj.quantity),
+                quantity=quantity_text(obj.quantity),
                 avg_cost=str(obj.avg_cost) if obj.avg_cost is not None else None,
                 price=str(obj.last_price) if obj.last_price is not None else None,
                 price_as_of=obj.price_as_of.date().isoformat()

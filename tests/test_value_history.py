@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import DatabaseError
 
 from app.modules.database.model import Account, Holding, ManualValueChange
@@ -41,14 +41,65 @@ def test_balance_edits_are_appended_not_overwritten(client):
 def test_holding_quantity_and_average_cost_history(client):
     h = client.post("/api/data/holdings", json={"symbol": "005930", "currency": "KRW", "quantity": "10",
                                                 "avg_cost": "70000"}).json()
-    client.put(f"/api/data/holdings/{h['id']}", json={"symbol": "005930", "currency": "KRW", "quantity": "12.5",
+    client.put(f"/api/data/holdings/{h['id']}", json={"symbol": "005930", "currency": "KRW", "quantity": "12",
                                                       "avg_cost": "71000"})
-    client.put(f"/api/data/holdings/{h['id']}", json={"symbol": "005930", "currency": "KRW", "quantity": "12.5",
+    client.put(f"/api/data/holdings/{h['id']}", json={"symbol": "005930", "currency": "KRW", "quantity": "12",
                                                       "avg_cost": "71000", "last_price": "80000"})  # price only
     rows = history(client, "holdings", h["id"])
     assert [(f, k) for f, k, *_ in rows] == [("quantity", "create"), ("avg_cost", "create"),
                                              ("quantity", "update"), ("avg_cost", "update")]
-    assert Decimal(rows[2][3]) == Decimal("12.5")
+    assert Decimal(rows[2][3]) == Decimal("12")
+
+
+def test_holding_average_cost_history_preserves_twelve_decimal_places(client):
+    original = {"symbol": "AAPL", "currency": "USD", "quantity": "1",
+                "avg_cost": "0.987654321987"}
+    response = client.post("/api/data/holdings", json=original)
+    assert response.status_code == 201, response.text
+    holding_id = response.json()["id"]
+    updated = {**original, "quantity": "2", "avg_cost": "0.000000000002"}
+    response = client.put(f"/api/data/holdings/{holding_id}", json=updated)
+    assert response.status_code == 200, response.text
+    rows = history(client, "holdings", holding_id)
+    for field, before, after in (("quantity", original["quantity"], updated["quantity"]),
+                                 ("avg_cost", original["avg_cost"], updated["avg_cost"])):
+        changes = [r for r in rows if r[0] == field]
+        assert [(r[1], None if r[2] is None else Decimal(r[2]), Decimal(r[3]))
+                for r in changes] == [("create", None, Decimal(before)),
+                                      ("update", Decimal(before), Decimal(after))]
+
+
+def test_history_precision_migration_preserves_rows_and_immutability(tmp_path):
+    config = Config("alembic.ini")
+    url = f"sqlite:///{tmp_path / 'precision.db'}"
+    config.attributes["database_url"] = url
+    command.upgrade(config, "0011_advisor_checkpoints")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("""INSERT INTO manual_value_changes
+            (id, table_name, record_id, field, old_value, new_value, currency,
+             as_of, change_kind, recorded_at)
+            VALUES (1, 'holdings', 1, 'quantity', 0.12345678, 0.87654321,
+                    'USD', '2026-10-18', 'update', '2026-10-18')"""))
+        original = connection.execute(text("SELECT * FROM manual_value_changes")).all()
+    command.upgrade(config, "head")
+    command.check(config)
+    columns = {c["name"]: c["type"] for c in inspect(engine).get_columns("manual_value_changes")}
+    for name in ("old_value", "new_value"):
+        assert (columns[name].precision, columns[name].scale) == (32, 12)
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT * FROM manual_value_changes")).all() == original
+    for statement in ("UPDATE manual_value_changes SET new_value=0", "DELETE FROM manual_value_changes"):
+        with pytest.raises(DatabaseError, match="append-only"):
+            with engine.begin() as connection:
+                connection.execute(text(statement))
+    command.downgrade(config, "0011_advisor_checkpoints")
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT * FROM manual_value_changes")).all() == original
+    with pytest.raises(DatabaseError, match="append-only"):
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM manual_value_changes"))
+    engine.dispose()
 
 
 def test_record_from_before_the_history_table_gets_a_baseline(client, session):

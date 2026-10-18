@@ -4,7 +4,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+from app.modules.finance.formatting import quantity_text
 
 
 class _Item(BaseModel):
@@ -64,7 +66,7 @@ class HoldingCreate(BaseModel):
     market: str | None = None
     asset_class: Literal["equity", "etf", "bond", "crypto", "other"] = "equity"
     currency: str = Field("KRW", min_length=3, max_length=3)
-    quantity: Decimal
+    quantity: int = Field(ge=0, lt=10**20)
     avg_cost: Decimal | None = None
     last_price: Decimal | None = None
     price_as_of: datetime | None = None
@@ -73,7 +75,12 @@ class HoldingCreate(BaseModel):
 
 
 class HoldingItem(_Item, HoldingCreate):
-    pass
+    # Read existing fractional records without rounding or rewriting their evidence.
+    quantity: Decimal
+
+    @field_serializer("quantity")
+    def serialize_quantity(self, value: Decimal):
+        return quantity_text(value)
 
 
 class ValueChangeItem(BaseModel):

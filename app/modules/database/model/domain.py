@@ -14,7 +14,7 @@ from app.modules.database.model.base import Base, UTCDateTime, utcnow
 
 Money = Numeric(20, 4)
 Qty = Numeric(24, 8)
-HistoryValue = Numeric(28, 8)  # holds both Money and Qty without rounding
+HistoryValue = Numeric(32, 12)  # preserves holding input precision and 20 integer digits
 
 
 class TimestampMixin:

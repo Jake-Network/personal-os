@@ -20,7 +20,7 @@ import type {
   UseQueryResult,
 } from '@tanstack/react-query';
 
-import type { CsvImportInput, HTTPValidationError, ObservationsParams } from '../../model';
+import type { CsvImportInput, HTTPValidationError, ObservationsParams, QuotesReplacementInput } from '../../model';
 
 import { customInstance } from '../../custom-client';
 import type { ErrorType, BodyType } from '../../custom-client';
@@ -133,6 +133,58 @@ export const useInitialize = <TError = ErrorType<unknown>, TContext = unknown>(
   queryClient?: QueryClient,
 ): UseMutationResult<Awaited<ReturnType<typeof initialize>>, TError, void, TContext> => {
   const mutationOptions = getInitializeMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Replace
+ */
+export const replace = (
+  quotesReplacementInput: BodyType<QuotesReplacementInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<unknown>(
+    { url: `/api/market-data/replace`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: quotesReplacementInput, signal },
+    options,
+  );
+};
+
+export const getReplaceMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof replace>>, TError, { data: BodyType<QuotesReplacementInput> }, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof replace>>, TError, { data: BodyType<QuotesReplacementInput> }, TContext> => {
+  const mutationKey = ['replace'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof replace>>, { data: BodyType<QuotesReplacementInput> }> = props => {
+    const { data } = props ?? {};
+
+    return replace(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplaceMutationResult = NonNullable<Awaited<ReturnType<typeof replace>>>;
+export type ReplaceMutationBody = BodyType<QuotesReplacementInput>;
+export type ReplaceMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Replace
+ */
+export const useReplace = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof replace>>, TError, { data: BodyType<QuotesReplacementInput> }, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof replace>>, TError, { data: BodyType<QuotesReplacementInput> }, TContext> => {
+  const mutationOptions = getReplaceMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };

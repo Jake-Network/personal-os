@@ -5,4 +5,4 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type TransactionInputQuantity = number | string | null;
+export type TransactionInputQuantity = number | null;

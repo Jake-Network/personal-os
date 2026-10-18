@@ -49,7 +49,7 @@ def test_local_save_no_google_and_request_replay(session):
     assert first["saved"] and first["portfolio"]["investments"] == "300.00"
     holdings.save(session, body())
     assert session.scalar(select(func.count()).select_from(Holding)) == 1
-    changed = body().model_copy(update={"quantity": Decimal("3")})
+    changed = body().model_copy(update={"quantity": 3})
     with pytest.raises(ValueError, match="Request ID"):
         holdings.save(session, changed)
     stale = changed.model_copy(

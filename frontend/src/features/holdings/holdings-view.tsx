@@ -11,7 +11,7 @@ import { Input, fieldClassName } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { financeApi } from '@/features/finance/api';
 import { money, timestamp } from '@/features/finance/presentation';
-import { holdingDraft, holdingsApi, type HoldingInput, type SheetHolding } from './api';
+import { holdingDraft, holdingsApi, quantityText, type HoldingInput, type SheetHolding } from './api';
 
 const blank = (): HoldingInput => ({
   position_id: crypto.randomUUID(),
@@ -145,8 +145,9 @@ export function SheetsHoldingsView() {
                   보유 수량 *
                   <Input
                     required
-                    inputMode='decimal'
-                    pattern='[0-9]+(\.[0-9]+)?'
+                    inputMode='numeric'
+                    pattern='[0-9]+'
+                    title='보유 수량은 0 이상의 정수로 입력하세요.'
                     value={draft.quantity}
                     onChange={e => update({ quantity: e.target.value })}
                   />
@@ -249,7 +250,7 @@ export function SheetsHoldingsView() {
                       {row.ticker} · {row.currency} · 로컬 ID {row.record_id ?? row.position_id}
                     </small>
                   </TableCell>
-                  <TableCell>{row.quantity ?? '확인 필요'}</TableCell>
+                  <TableCell>{row.quantity == null ? '확인 필요' : quantityText(row.quantity)}</TableCell>
                   <TableCell>{money(row.avg_cost, row.currency)}</TableCell>
                   <TableCell>
                     {money(line?.price, row.currency)}
