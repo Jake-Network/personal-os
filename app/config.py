@@ -48,6 +48,9 @@ class Settings:
     embedding_dimensions: int = field(default_factory=lambda: int(_env("EMBEDDING_DIMENSIONS", "1024")))
     embedding_densecore_model_id: str = field(default_factory=lambda: _env("EMBEDDING_DENSECORE_MODEL_ID", ""))
 
+    # IANA zone for the user's calendar words (오늘, 이번 주, 다음 달); stored datetimes stay UTC.
+    timezone: str = field(default_factory=lambda: _env("PERSONAL_OS_TIMEZONE", "Asia/Seoul"))
+
     # Context / history budgets.
     history_message_limit: int = 20
     context_char_limit: int = 24_000

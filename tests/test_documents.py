@@ -86,11 +86,10 @@ def test_failed_embedding_retry_and_recovery(documents, monkeypatch):
     version = manager.latest_version(documents, doc.id)
     assert version.status == "failed"
     assert doc.active_version_id is None
+    # A legacy `processing` job without a lease is reclaimed by the next claim.
     version.status = "processing"
     documents.commit()
-    manager.recover_pending(documents)
-    documents.expire_all()
-    assert version.status == "pending"
+    assert manager._claim(db, "successor")[0] == version.id
 
 
 def test_parser_and_vector_validation(documents):
@@ -363,7 +362,6 @@ def test_claim_recovery_fences_old_worker_and_keeps_live_lease(documents):
     claim = manager._claim(db, "worker-one")
     assert claim
     assert manager._claim(db, "worker-two") is None
-    manager.recover_pending(documents)
     documents.expire_all()
     version = manager.latest_version(documents, doc.id)
     assert version.status == "processing" and version.lease_owner == "worker-one"
@@ -459,7 +457,8 @@ def test_postgresql_worker_leases_concurrent_recovery_and_stale_completion(monke
         with admin.begin() as connection:
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         engine = create_engine(url, connect_args={"options": f'-csearch_path={schema},public'})
-        Base.metadata.create_all(engine)
+        # checkfirst would see same-named tables in public (also on search_path) and skip creating them here.
+        Base.metadata.create_all(engine, checkfirst=False)
         database = Database()
         database.engine = engine
         database._sessionmaker = sessionmaker(bind=engine, expire_on_commit=False)
@@ -486,13 +485,12 @@ def test_postgresql_worker_leases_concurrent_recovery_and_stale_completion(monke
             workers = [asyncio.create_task(manager.process_one(database)) for _ in range(2)]
             try:
                 await asyncio.wait_for(started.wait(), timeout=3)
-                # Recovery in a second connection must not reset the live owner's job.
+                # A claim from a second connection must not take over the live owner's job.
                 def recover():
                     with database.session() as session:
-                        version = session.get(DocumentVersion, version_id)
-                        owner = version.lease_owner
-                        manager.recover_pending(session)
-                        session.expire_all()
+                        owner = session.get(DocumentVersion, version_id).lease_owner
+                    assert manager._claim(database, "intruder") is None
+                    with database.session() as session:
                         version = session.get(DocumentVersion, version_id)
                         assert version.status == "processing" and version.lease_owner == owner
                         return owner
@@ -569,3 +567,99 @@ def test_search_suppresses_actual_long_paragraph_overlap(documents):
     assert chunks[1].text.startswith(chunks[0].text[-150:].strip())
     result = retrieval.search(documents, "서비스 운영 성과", ["career"])
     assert len(result.data["citations"]) == 1
+
+
+def test_transient_embedding_failure_backs_off_then_succeeds(documents, monkeypatch):
+    import httpx
+
+    doc = upload(documents)
+    calls = []
+
+    async def flaky(texts):
+        calls.append(len(texts))
+        if len(calls) == 1:
+            raise httpx.ConnectError("embedding server still starting")
+        return [[1., 0., 0.] for _ in texts]
+    monkeypatch.setattr(embedding, "embed_texts", flaky)
+    process()
+    documents.expire_all()
+    version = manager.latest_version(documents, doc.id)
+    assert (version.status, version.error, version.attempts) == ("pending", "ConnectError", 1)
+    assert version.retry_after is not None
+    assert asyncio.run(manager.process_one(db)) is False  # not due yet
+    version.retry_after = None
+    documents.commit()
+    process()
+    documents.expire_all()
+    assert manager.latest_version(documents, doc.id).status == "ready"
+
+
+def test_transient_failures_stop_after_max_attempts(documents, monkeypatch):
+    import httpx
+
+    doc = upload(documents)
+
+    async def down(texts):
+        raise httpx.ReadTimeout("no answer")
+    monkeypatch.setattr(embedding, "embed_texts", down)
+    for _ in range(manager.MAX_ATTEMPTS):
+        process()
+        documents.expire_all()
+        version = manager.latest_version(documents, doc.id)
+        version.retry_after = None
+        documents.commit()
+    assert (version.status, version.attempts) == ("failed", manager.MAX_ATTEMPTS)
+
+
+def test_job_that_keeps_crashing_the_worker_is_given_up(documents):
+    from datetime import timedelta
+    from app.modules.database.model.base import utcnow
+
+    doc = upload(documents)
+    version = manager.latest_version(documents, doc.id)
+    # Each crash leaves the job `processing` with an expired lease after one more claim.
+    version.status, version.attempts = "processing", manager.MAX_ATTEMPTS
+    version.lease_expires_at = utcnow() - timedelta(seconds=1)
+    documents.commit()
+    other = upload(documents, title="다른 문서")
+    process()  # gives up on the crash-looping job instead of claiming it again
+    process()
+    documents.expire_all()
+    assert manager.latest_version(documents, doc.id).error == "indexing_attempts_exhausted"
+    assert manager.latest_version(documents, other.id).status == "ready"
+
+
+def test_worker_survives_unexpected_errors(monkeypatch, caplog):
+    async def scenario():
+        stop = asyncio.Event()
+        calls = []
+        async def process_once(_database):
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("adapter bug")
+            stop.set()
+            return True
+        monkeypatch.setattr(manager, "process_one", process_once)
+        monkeypatch.setattr(manager, "POLL_SECONDS", .01)
+        await asyncio.wait_for(manager.process_pending(object(), stop), timeout=1)
+        assert len(calls) == 2
+    asyncio.run(scenario())
+    assert "document_worker_iteration_failed" in caplog.text
+
+
+def test_retry_resets_attempts_and_handles_missing_versions(documents):
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_session] = lambda: documents
+    client = TestClient(app)
+    doc = upload(documents)
+    version = manager.latest_version(documents, doc.id)
+    version.status, version.attempts, version.error = "failed", manager.MAX_ATTEMPTS, "indexing_attempts_exhausted"
+    documents.commit()
+    assert client.post(f"/api/documents/{doc.id}/retry").status_code == 200
+    documents.expire_all()
+    assert (version.status, version.attempts) == ("pending", 0)
+    empty = Document(title="빈 문서", categories=["career"], kind="reference")
+    documents.add(empty)
+    documents.commit()
+    assert client.post(f"/api/documents/{empty.id}/retry").status_code == 404

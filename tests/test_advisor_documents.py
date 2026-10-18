@@ -330,3 +330,20 @@ def test_legacy_unknown_provenance_propagates_and_blocks_repeated_private_facts(
     ask(session, conversation, '회사 오퍼 예산', options)
     assert secret not in json.dumps(fake_provider.requests[-1].input, ensure_ascii=False)
     assert not context(fake_provider.requests[-1]).get('history_provenance_unknown')
+
+
+def test_documents_are_found_without_a_routed_topic_and_taint_history(session, resume, fake_provider):
+    """A question that routes to no category still reaches shared documents; their topic taints the turn."""
+    conversation = advisor_manager.create_conversation(session, '자료')
+    fake_provider.reply = '비밀프로젝트 경험이 있습니다.'
+    ask(session, conversation, '업로드한 자료에서 비밀프로젝트 찾아줘')
+    package = context(fake_provider.requests[-1])
+    assert 'career' not in package['categories']
+    assert [c['document_id'] for c in package['data']['search_documents']['citations']] == [resume.id]
+    assert package['document_categories'] == ['career']
+
+    privacy_manager.set_excluded(session, [Category.CAREER])
+    fake_provider.reply = 'ok'
+    ask(session, conversation, '그럼 다른 건?')
+    sent = json.dumps(fake_provider.requests[-1].input, ensure_ascii=False)
+    assert '비밀프로젝트' not in sent

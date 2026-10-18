@@ -60,10 +60,17 @@ def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, mo
                 assert version == previous_revision and 'documents' not in tables
             else:
                 assert tables == set(Base.metadata.tables) | {'alembic_version'}
-                assert version == '0006_merge_documents_value_history'
+                assert version == '0007_document_job_attempts'
             with database.engine.connect() as connection:
                 if previous_revision:
                     assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
     finally:
         if database.engine is not None:
             database.engine.dispose()
+
+
+def test_revision_ids_fit_the_alembic_version_column():
+    # alembic_version.version_num is VARCHAR(32); SQLite does not enforce it, PostgreSQL does.
+    from alembic.script import ScriptDirectory
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    assert [r.revision for r in script.walk_revisions() if len(r.revision) > 32] == []

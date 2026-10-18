@@ -8,9 +8,11 @@ the model never receives connection strings or SQL.
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.enums.context_category import Category
 from app.modules.context.calendar_scope import calendar_scope
 from app.modules.crud.advisor_handler import personal_memory_handler
@@ -359,7 +361,8 @@ def get_interview_schedule(ctx: ToolContext, days: int = 30) -> ToolResult:
 
 
 def get_calendar_events(ctx: ToolContext, days: int = 14) -> ToolResult:
-    scope = calendar_scope(ctx.query, ctx.now, days)
+    # Day/week/month boundaries are the user's local midnights, not UTC ones.
+    scope = calendar_scope(ctx.query, ctx.now.astimezone(ZoneInfo(settings.timezone)), days)
     events = calendar_event_handler.get_between(ctx.session, scope.start, scope.end)
     flags = [] if events else [_flag("no_events_in_window", Category.CALENDAR)]
     if scope.status == "unresolved":

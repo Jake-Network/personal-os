@@ -80,9 +80,11 @@ def versions(document_id: int, session: Session = Depends(get_session)):
 def retry(document_id: int, session: Session = Depends(get_session)):
     document = _get(session, document_id)
     version = manager.latest_version(session, document_id)
+    if version is None:
+        raise HTTPException(404, "document_version_not_found")
     if version.status != "failed":
         raise HTTPException(409, "only_failed_versions_can_be_retried")
-    version.status, version.error = "pending", None
+    version.status, version.error, version.attempts, version.retry_after = "pending", None, 0, None
     session.commit()
     manager.notify_workers()
     return manager.item(session, document)

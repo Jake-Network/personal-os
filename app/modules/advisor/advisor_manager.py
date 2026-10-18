@@ -26,7 +26,7 @@ from app.modules.documents.retrieval import visible_documents
 from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
 from app.schema.advisor_schema import AskOptions
-from app.schema.context_schema import ContextPackage, RouteDecision
+from app.schema.context_schema import ContextPackage, RouteDecision, payload_citations, payload_evidence
 from app.schema.llm_schema import LLMRequest
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class PreparedHistory:
 
     def citations(self, message):
         snapshot = self.snapshots.get(message.context_snapshot_id)
-        return snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", []) if snapshot else []
+        return payload_citations(snapshot.payload) if snapshot else []
 
 
 class AdvisorManager:
@@ -109,10 +109,6 @@ class AdvisorManager:
             excluded |= frozenset(ALL_CATEGORIES) - (options.categories | {Category.PROFILE})
         return excluded
 
-    def build_context(self, session, query, conversation, options, conversation_id=None):
-        route, package, options, _ = self.prepare_context(session, query, conversation, options, conversation_id)
-        return route, package, options
-
     def prepare_context(self, session, query, conversation, options, conversation_id=None):
         options = self.document_options(session, conversation, options)
         route = self.route(session, query, conversation, options)
@@ -156,9 +152,7 @@ class AdvisorManager:
         snapshot_ids = {m.context_snapshot_id for m in history if m.context_snapshot_id}
         snapshots = {s.id: s for s in session.scalars(select(ContextSnapshot).where(
             ContextSnapshot.id.in_(snapshot_ids)))} if snapshot_ids else {}
-        evidence_rows = [c for snapshot in snapshots.values()
-                         for c in (snapshot.payload.get("document_dependencies", []) +
-                                   snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", []))]
+        evidence_rows = [c for snapshot in snapshots.values() for c in payload_evidence(snapshot.payload)]
         document_ids = {c["document_id"] for c in evidence_rows}
         visible = {d.id: d for d in visible_documents(session, document_ids=document_ids,
                    excluded_categories=excluded)} if document_ids else {}
@@ -177,9 +171,10 @@ class AdvisorManager:
                 continue
             if snapshot.payload.get("history_provenance_unknown") and (excluded or not options.document_search or options.document_ids):
                 continue
-            if (set(snapshot.context_categories) | set(snapshot.payload.get("history_categories", []))).intersection(str(c) for c in excluded):
+            if (set(snapshot.context_categories) | set(snapshot.payload.get("history_categories", []))
+                    | set(snapshot.payload.get("document_categories", []))).intersection(str(c) for c in excluded):
                 continue
-            evidence = snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", []) + snapshot.payload.get("document_dependencies", [])
+            evidence = payload_evidence(snapshot.payload)
             if evidence and not options.document_search:
                 continue
             if any(c["document_id"] not in visible or c["version_id"] not in versions or
@@ -188,10 +183,6 @@ class AdvisorManager:
                 continue
             safe.append(message)
         return PreparedHistory(safe, snapshots, decision.withheld_ids, decision.withheld_categories)
-
-    def safe_history(self, session, conversation_id, before_id, route, options):
-        """Compatibility helper: automatic retrieval topics do not restrict sharing."""
-        return self.prepare_history(session, conversation_id, before_id, options).messages
 
     def preview(self, session: Session, query: str, conversation: AdvisorConversation | None,
                 options: AskOptions) -> dict:
@@ -206,7 +197,8 @@ class AdvisorManager:
     def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
                       excluded: frozenset[Category]) -> LLMRequest:
         """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
-        leaked = excluded & {Category(c) for c in package.categories}
+        leaked = excluded & {Category(c) for c in [*package.categories,
+                                                   *package.payload.get("document_categories", [])]}
         if leaked:  # a builder bug must fail closed, never send
             raise AdvisorError("context package contains an excluded category", provider_code="privacy_violation")
         notes = []
@@ -215,8 +207,7 @@ class AdvisorManager:
                 f"이전 대화 메시지 {len(history.withheld_ids)}개는 사용자가 현재 공유를 막은 범주"
                 f"({', '.join(history.withheld_categories)})의 정보를 포함할 수 있어 전달하지 않았습니다. "
                 "그 내용을 기억하거나 추측하지 말고, 필요하면 사용자에게 다시 물어보세요.")})
-        available_refs = {c["ref"] for c in package.payload.get("data", {}).get("search_documents", {})
-                          .get("citations", [])}
+        available_refs = {c["ref"] for c in payload_citations(package.payload)}
         # Keep dialogue continuity while omitting citations outside the excerpt budget.
         replayed = ({"role": m.role, "content": DOCUMENT_REFERENCE_PATTERN.sub(
             lambda match: match.group(0) if match.group(1) in available_refs else "[과거 문서 근거 생략]",

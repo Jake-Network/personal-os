@@ -10,6 +10,7 @@ from datetime import timedelta
 from uuid import uuid4
 from pathlib import PurePath
 
+import httpx
 from pypdf import PdfReader
 from sqlalchemy import delete, select, update, or_, and_
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,6 +26,8 @@ MAX_CHUNKS = 500
 LEASE_SECONDS = 120
 HEARTBEAT_SECONDS = 30
 POLL_SECONDS = 15
+MAX_ATTEMPTS = 4
+RETRY_BASE_SECONDS = 30
 _worker_signals = set()
 _signal_lock = threading.Lock()
 
@@ -127,29 +130,38 @@ def _expired():
     return or_(DocumentVersion.lease_expires_at.is_(None), DocumentVersion.lease_expires_at <= utcnow())
 
 
-def recover_pending(session):
-    # Legacy jobs have no lease. Live workers renew theirs and are never reset.
-    session.execute(update(DocumentVersion).where(DocumentVersion.status == "processing", _expired())
-                    .values(status="pending", error=None, lease_owner=None, lease_expires_at=None))
-    session.commit()
+def _eligible():
+    now = utcnow()
+    return or_(and_(DocumentVersion.status == "pending",
+                    or_(DocumentVersion.retry_after.is_(None), DocumentVersion.retry_after <= now)),
+               and_(DocumentVersion.status == "processing", _expired()))
 
 
 def _claim(database, owner):
     with database.session() as session:
-        eligible = or_(DocumentVersion.status == "pending",
-                       and_(DocumentVersion.status == "processing", _expired()))
+        eligible = _eligible()
         version_id = session.scalar(select(DocumentVersion.id).where(eligible)
                                     .order_by(DocumentVersion.id).limit(1))
         if version_id is None:
             return None
+        attempts = session.scalar(select(DocumentVersion.attempts).where(DocumentVersion.id == version_id)) or 0
+        if attempts >= MAX_ATTEMPTS:
+            # A job that keeps killing or hanging the worker (its lease expired each time) must not
+            # be claimed forever and starve the others.
+            session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id, eligible)
+                            .values(status="failed", error="indexing_attempts_exhausted", lease_owner=None,
+                                    lease_expires_at=None, retry_after=None))
+            session.commit()
+            return False
         claimed = session.execute(update(DocumentVersion).where(DocumentVersion.id == version_id, eligible)
                                   .values(status="processing", error=None, lease_owner=owner,
-                                          lease_expires_at=utcnow() + timedelta(seconds=LEASE_SECONDS)))
+                                          lease_expires_at=utcnow() + timedelta(seconds=LEASE_SECONDS),
+                                          attempts=attempts + 1, retry_after=None))
         if not claimed.rowcount:
             session.rollback()
             return False
         version = session.get(DocumentVersion, version_id)
-        claim = version_id, version.filename, version.content
+        claim = version_id, version.filename, version.content, attempts + 1
         session.commit()
         return claim
 
@@ -174,11 +186,14 @@ async def _heartbeat(database, version_id, owner):
             return
 
 
-def _finish(database, version_id, owner, chunks=None, vectors=None, error=None, cancelled=False):
+def _finish(database, version_id, owner, chunks=None, vectors=None, error=None, cancelled=False,
+            retry_after=None):
     with database.session() as session:
         # This UPDATE locks/fences the row until chunks and promotion commit together.
-        values = dict(status="pending" if cancelled else "failed" if error else "ready",
-                      error=error, lease_owner=None, lease_expires_at=None)
+        values = dict(status="pending" if cancelled or retry_after else "failed" if error else "ready",
+                      error=error, lease_owner=None, lease_expires_at=None, retry_after=retry_after)
+        if cancelled:  # shutdown is not the job's fault: give the attempt back
+            values["attempts"] = DocumentVersion.attempts - 1
         if chunks is not None:
             values.update(embedding_model=settings.embedding_model,
                           embedding_dimensions=settings.embedding_dimensions)
@@ -211,12 +226,11 @@ async def process_one(database):
         return False
     if claim is False:
         return True
-    version_id, filename, content = claim
+    version_id, filename, content, attempt = claim
     heartbeat = asyncio.create_task(_heartbeat(database, version_id, owner))
     try:
         chunks = await asyncio.to_thread(parse_chunks, filename, content)
-        vectors = await embedding.embed_texts([chunk["text"] for chunk in chunks])
-        embedding.validate_vectors({"model": settings.embedding_model, "embeddings": vectors}, len(chunks))
+        vectors = await embedding.embed_texts([chunk["text"] for chunk in chunks])  # validated per batch
         if heartbeat.done():
             heartbeat.result()
         await asyncio.to_thread(_finish, database, version_id, owner, chunks, vectors)
@@ -228,12 +242,31 @@ async def process_one(database):
                       "encrypted_or_too_many_pdf_pages", "document_text_too_large",
                       "too_many_document_chunks", "no_extractable_text_ocr_not_supported"}
         error = str(exc) if str(exc) in safe_codes else type(exc).__name__
-        await asyncio.to_thread(_finish, database, version_id, owner, error=error)
+        retry_after = None
+        if _transient(exc) and attempt < MAX_ATTEMPTS:
+            # The embedding server may still be starting or loading its model: back off, then retry.
+            retry_after = utcnow() + timedelta(seconds=RETRY_BASE_SECONDS * 2 ** (attempt - 1))
+        await asyncio.to_thread(_finish, database, version_id, owner, error=error, retry_after=retry_after)
     finally:
         heartbeat.cancel()
         with suppress(asyncio.CancelledError):
             await heartbeat
     return True
+
+
+def _transient(exc):
+    """Errors that a later attempt can succeed past: transport failures, timeouts, 429 and 5xx."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
+def _next_retry_delay(database):
+    with database.session() as session:
+        due = session.scalar(select(DocumentVersion.retry_after).where(
+            DocumentVersion.status == "pending", DocumentVersion.retry_after.is_not(None))
+            .order_by(DocumentVersion.retry_after).limit(1))
+    return None if due is None else max(0.0, (due - utcnow()).total_seconds())
 
 
 async def process_pending(database, stop_event):
@@ -244,15 +277,21 @@ async def process_pending(database, stop_event):
     try:
         while not stop_event.is_set():
             signal.clear()
+            timeout = POLL_SECONDS
             try:
                 if await process_one(database):
                     continue
+                delay = await asyncio.to_thread(_next_retry_delay, database)
+                if delay is not None:
+                    timeout = min(timeout, delay)
             except SQLAlchemyError:
                 logging.getLogger(__name__).warning("document_worker_database_unavailable")
+            except Exception:  # never let one bad job end the worker; the job's lease lets it be reclaimed
+                logging.getLogger(__name__).exception("document_worker_iteration_failed")
             wake = asyncio.create_task(signal.wait())
             stop = asyncio.create_task(stop_event.wait())
             try:
-                await asyncio.wait((wake, stop), timeout=POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+                await asyncio.wait((wake, stop), timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
             finally:
                 wake.cancel()
                 stop.cancel()

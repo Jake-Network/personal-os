@@ -3,7 +3,7 @@ import hashlib
 import json
 import math
 import re
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from app.config import settings
 from app.modules.context.privacy_manager import privacy_manager
@@ -16,8 +16,17 @@ def _tokens(text):
     return set(re.findall(r"[\w가-힣]+", text.lower()))
 
 
-def _cosine(left, right):
-    return sum(a*b for a, b in zip(left, right)) / (math.hypot(*left) * math.hypot(*right))
+def _cosine(left, right, left_norm=None):
+    return sum(a*b for a, b in zip(left, right)) / ((left_norm or math.hypot(*left)) * math.hypot(*right))
+
+
+def _per_version(session, version_ids, order_by, limit, *conditions):
+    """Up to `limit` chunks per version in one query: each document keeps its own candidate budget."""
+    rank = func.row_number().over(partition_by=DocumentChunk.version_id, order_by=order_by).label("rank")
+    ranked = (select(DocumentChunk.id, rank)
+              .where(DocumentChunk.version_id.in_(version_ids), *conditions).subquery())
+    return session.scalars(select(DocumentChunk).where(
+        DocumentChunk.id.in_(select(ranked.c.id).where(ranked.c.rank <= limit)))).all()
 
 
 def _overlapping_chunks(left, right):
@@ -46,6 +55,15 @@ def visible_documents(session, categories=None, document_ids=None, excluded_cate
     return [doc for doc in documents if not excluded.intersection(doc.categories)
             and (allowed is None or set(doc.categories).intersection(allowed))
             and (document_ids is None or doc.id in document_ids)]
+
+
+def cited_categories(session, citations):
+    """Sorted categories of the documents the citations come from."""
+    ids = {c["document_id"] for c in citations}
+    if not ids:
+        return []
+    return sorted({str(c) for doc in session.scalars(select(Document).where(Document.id.in_(ids)))
+                   for c in doc.categories})
 
 
 def _source_versions(session, ids):
@@ -98,28 +116,26 @@ def search(session, query, categories, document_ids=None, limit=6, excluded_cate
     documents_by_version = {d.active_version_id: d for d in documents}
     tokens = _tokens(query)
     ranked = []
-    # Candidate budget is per document: pinned comparisons retain both sources.
-    for version_id, version in versions.items():
-        statement = select(DocumentChunk).where(DocumentChunk.version_id == version_id)
-        if session.get_bind().dialect.name == "postgresql":
-            statement = statement.order_by(DocumentChunk.embedding.cosine_distance(vector)).limit(40)
-            candidates = session.scalars(statement).all()
-            # Include lexical candidates independently of nearest neighbors.
-            from sqlalchemy import or_
-            conditions = [DocumentChunk.text.ilike("%" + token.replace("%", "\\%").replace("_", "\\_") + "%", escape="\\")
-                          for token in sorted(tokens)[:12]]
-            lexical = session.scalars(select(DocumentChunk).where(DocumentChunk.version_id == version_id,
-                                      or_(*conditions)).order_by(DocumentChunk.id).limit(40)).all() if conditions else []
-            candidates = list({c.id: c for c in candidates + lexical}.values())
-        else:
-            candidates = session.scalars(statement.order_by(DocumentChunk.ordinal).limit(500)).all()
-        for chunk in candidates:
-            cosine = _cosine(vector, chunk.embedding)
-            lexical = len(tokens & _tokens(chunk.text)) / max(1, len(tokens))
-            if not pinned and cosine < 0.35 and lexical == 0:
-                continue
-            score = cosine * 0.7 + lexical * 0.3
-            ranked.append((score, chunk, version, documents_by_version[version_id]))
+    # Candidate budget is per document: pinned comparisons retain both sources. One query per
+    # candidate kind for the whole library, never one per document.
+    version_ids = list(versions)
+    if session.get_bind().dialect.name == "postgresql":
+        candidates = _per_version(session, version_ids, DocumentChunk.embedding.cosine_distance(vector), 40)
+        # Include lexical candidates independently of nearest neighbors.
+        conditions = [DocumentChunk.text.ilike("%" + token.replace("%", "\\%").replace("_", "\\_") + "%", escape="\\")
+                      for token in sorted(tokens)[:12]]
+        lexical = _per_version(session, version_ids, DocumentChunk.id, 40, or_(*conditions)) if conditions else []
+        candidates = list({c.id: c for c in candidates + lexical}.values())
+    else:
+        candidates = _per_version(session, version_ids, DocumentChunk.ordinal, 500)
+    query_norm = math.hypot(*vector)
+    for chunk in candidates:
+        cosine = _cosine(vector, chunk.embedding, query_norm)
+        lexical = len(tokens & _tokens(chunk.text)) / max(1, len(tokens))
+        if not pinned and cosine < 0.35 and lexical == 0:
+            continue
+        score = cosine * 0.7 + lexical * 0.3
+        ranked.append((score, chunk, versions[chunk.version_id], documents_by_version[chunk.version_id]))
     ranked.sort(key=lambda item: (-item[0], item[1].id))
     chosen = []
     if pinned:

@@ -15,8 +15,8 @@ from app.modules.context.context_tool_manager import CATEGORY_TOOLS, base_curren
 from app.modules.crud.advisor_handler import context_snapshot_handler
 from app.modules.database.model import ContextSnapshot
 from app.modules.llm.errors import AdvisorError
-from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext
-from app.modules.documents.retrieval import library_fingerprint, search as search_documents
+from app.schema.context_schema import ContextPackage, RouteDecision, ToolContext, data_citations
+from app.modules.documents.retrieval import cited_categories, library_fingerprint, search as search_documents
 
 
 # Budget reduction order, lowest priority first. Sections not listed rank just above news.
@@ -93,7 +93,8 @@ class ContextBuilderManager:
         now = now or datetime.now(UTC)
         data, refs, flags, freshness = self.collect(session, route.selected, now, query=query)
         if document_search and query:
-            result = search_documents(session, query, route.selected, document_ids or None,
+            # Every shared document is searchable whatever the question's topic; privacy exclusions still apply.
+            result = search_documents(session, query, None, document_ids or None,
                                       excluded_categories=excluded)
             # Empty libraries keep the original stable structured-data snapshot.
             if result.data.get("citations") or any(f["code"] != "no_matching_documents" for f in result.flags) or document_ids:
@@ -104,7 +105,7 @@ class ContextBuilderManager:
         for category in sorted(route.excluded):
             flags.append({"code": "category_excluded_by_user", "category": category.value})
         dependencies = {(d["document_id"], d["version_id"]): d for d in inherited_dependencies or []}
-        direct = data.get("search_documents", {}).get("citations", [])
+        direct = data_citations(data)
         for citation in [*direct, *(inherited_citations or [])]:
             key = (citation["document_id"], citation["version_id"])
             dependencies[key] = {"document_id": key[0], "version_id": key[1]}
@@ -115,7 +116,9 @@ class ContextBuilderManager:
                 combined.setdefault(citation["ref"], dict(citation))
             section["citations"] = list(combined.values())[:10]
         self._fit_document_excerpts(data)
-        available_refs = {c["ref"] for c in data.get("search_documents", {}).get("citations", [])}
+        cited = data_citations(data)
+        available_refs = {c["ref"] for c in cited}
+        document_categories = cited_categories(session, cited)
         omitted_refs = (history_document_refs or set()) - available_refs
         if omitted_refs:
             flags.append({"code": "history_document_evidence_omitted", "category": "documents",
@@ -125,6 +128,8 @@ class ContextBuilderManager:
                                    "request_query": query}, ensure_ascii=False, separators=(",", ":"))) - 1
         body = self._fit({
             "document_dependencies": list(dependencies.values()),
+            # Topics of the cited documents: history privacy taints the turn with them too.
+            "document_categories": document_categories,
             "history_categories": sorted(set(inherited_categories or []) - {c.value for c in route.selected}),
             **({"history_provenance_unknown": True} if inherited_unknown else {}),
             "document_scope": {"enabled": document_search, "document_ids": list(document_ids),
@@ -168,7 +173,7 @@ class ContextBuilderManager:
         past = snapshot.payload.get("data", {})
         if "search_documents" in past:
             scope = snapshot.payload.get("document_scope", {})
-            fingerprint = library_fingerprint(session, selected, scope.get("document_ids"),
+            fingerprint = library_fingerprint(session, None, scope.get("document_ids"),
                                               scope.get("excluded_categories", []))
             previous = past["search_documents"]
             current["search_documents"] = previous if previous.get("source_fingerprint") == fingerprint else {
@@ -179,7 +184,7 @@ class ContextBuilderManager:
         return changed, unchanged
 
     def _fit_document_excerpts(self, data: dict) -> None:
-        citations = data.get("search_documents", {}).get("citations", [])
+        citations = data_citations(data)
         if not citations:
             return
         budget = min(10_000, max(0, self.char_limit // 2))

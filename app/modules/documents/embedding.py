@@ -1,11 +1,17 @@
 """Bounded local Ollama or DenseCore embedding calls; no provider fallback."""
 import math
+import threading
+import time
 
 import httpx
 
 from app.config import settings
 
 BATCH_SIZE = 16
+# How long a verified DenseCore model identity is trusted for queries (one per chat turn or preview).
+MODEL_CHECK_TTL_SECONDS = 30
+_model_checked: dict[tuple[str, str], float] = {}
+_model_lock = threading.Lock()
 QWEN_RETRIEVAL_INSTRUCTION = "Given a search query, retrieve relevant passages that answer the query"
 
 
@@ -70,6 +76,18 @@ def _validate_response(payload: dict, count: int, provider: str) -> list[list[fl
     return validate_vectors({"model": payload["model"], "embeddings": vectors}, count)
 
 
+def _check_loaded_model(client: httpx.Client, base: str) -> None:
+    key = (base, settings.embedding_densecore_model_id)
+    with _model_lock:
+        if time.monotonic() - _model_checked.get(key, float("-inf")) < MODEL_CHECK_TTL_SECONDS:
+            return
+    response = client.get(base + "/v1/models")
+    response.raise_for_status()
+    _validate_loaded_model(response.json())
+    with _model_lock:
+        _model_checked[key] = time.monotonic()
+
+
 def embed_query(text: str) -> list[float]:
     provider = _provider()
     if provider == "densecore" and "qwen3-embedding" in settings.embedding_model.lower():
@@ -77,9 +95,7 @@ def embed_query(text: str) -> list[float]:
     base = settings.embedding_url.rstrip("/")
     with httpx.Client(timeout=60 if provider == "densecore" else 20) as client:
         if provider == "densecore":
-            response = client.get(base + "/v1/models")
-            response.raise_for_status()
-            _validate_loaded_model(response.json())
+            _check_loaded_model(client, base)
         path, body = _request([text], provider)
         response = client.post(base + path, json=body)
         response.raise_for_status()
@@ -93,15 +109,21 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     base = settings.embedding_url.rstrip("/")
     result = []
     async with httpx.AsyncClient(timeout=180 if provider == "densecore" else 90) as client:
+        async def check_model():
+            response = await client.get(base + "/v1/models")
+            response.raise_for_status()
+            _validate_loaded_model(response.json())
+
+        # Check before and after the job: a model swapped mid-job fails the whole job, so one
+        # document's vectors never mix two models.
+        if provider == "densecore":
+            await check_model()
         for start in range(0, len(texts), BATCH_SIZE):
-            # Recheck for every batch: never silently mix a changed loaded model.
-            if provider == "densecore":
-                response = await client.get(base + "/v1/models")
-                response.raise_for_status()
-                _validate_loaded_model(response.json())
             batch = texts[start:start + BATCH_SIZE]
             path, body = _request(batch, provider)
             response = await client.post(base + path, json=body)
             response.raise_for_status()
             result.extend(_validate_response(response.json(), len(batch), provider))
+        if provider == "densecore":
+            await check_model()
     return result

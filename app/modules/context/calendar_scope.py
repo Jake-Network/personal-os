@@ -26,8 +26,11 @@ _RELATIVE = re.compile(
 _ISO = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
 _OTHER_DATE = re.compile(
     r"\d{1,4}\s*(?:년|월|일|주|달)|다다음|내년|작년|그저께|"
-    r"\b(?:in\s+\d+\s+days?|next year|last year|January|February|March|April|May|June|July|August|September|October|November|December)\b",
-    re.IGNORECASE,
+    r"(?i:\b(?:in\s+\d+\s+days?|next year|last year|"
+    r"January|February|April|June|July|August|September|October|November|December)\b)|"
+    # "may" and "march" are also ordinary words; only a date-like use counts as a month.
+    r"\b(?:May|March)\s+\d|\d\s*(?:st|nd|rd|th)?\s+(?:May|March)\b|"
+    r"(?i:\b(?:in|on|of|since|until|by|next|last|this|early|late)\s+(?:may|march)\b)"
 )
 _UNSUPPORTED = re.compile(r"다다음|주말|분기|\d{1,4}[/]\d{1,2}|\d{4}-\d{1,2}-\d{1,2}")
 

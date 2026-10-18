@@ -18,6 +18,7 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     "sqlalchemy>=2.1.5",
     "uvicorn>=0.34",
+    "tzdata>=2026.5",
 ]
 
 [dependency-groups]

@@ -54,6 +54,7 @@ hosts (DNS-rebinding defence, including the `X-Forwarded-Host` set by the Next.j
 cross-site state-changing requests. Remote deployment needs real authentication and TLS first; see
 [Reliability review](docs/RELIABILITY_REVIEW.md#remote-deployment-requirements).
 Settings come from environment variables (see `.env.example`); `.env` is not loaded automatically.
+Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
 Startup builds an empty database from the committed migrations and uses an existing database as it
 is: it never alters, migrates or stamps one that already has tables (it logs a warning when the
 schema is behind the Alembic head). Schema upgrades are an explicit step:

@@ -65,7 +65,8 @@ class HistoryPrivacyManager:
                excluded: frozenset[Category]) -> HistoryDecision:
         ids = {m.context_snapshot_id for m in messages if m.context_snapshot_id}
         categories = {
-            s.id: frozenset(Category(c) for c in s.context_categories if c in Category._value2member_map_)
+            s.id: frozenset(Category(c) for c in [*s.context_categories, *s.payload.get("document_categories", [])]
+                            if c in Category._value2member_map_)
             for s in context_snapshot_handler.get_many(session, ids)
         }
         return self.decide(messages, categories, excluded)

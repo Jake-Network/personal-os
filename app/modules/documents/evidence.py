@@ -2,11 +2,11 @@
 from sqlalchemy import delete, select, update
 
 from app.modules.database.model import AdvisorMessage, ContextDocumentReference, ContextSnapshot
+from app.schema.context_schema import payload_evidence
 
 
 def reference_rows(snapshot_id: str, payload: dict) -> list[dict]:
-    evidence = [*payload.get('document_dependencies', []),
-                *payload.get('data', {}).get('search_documents', {}).get('citations', [])]
+    evidence = payload_evidence(payload)
     keys = {(int(item['document_id']), int(item.get('version_id') or 0))
             for item in evidence if item.get('document_id') is not None}
     return [{'snapshot_id': snapshot_id, 'document_id': doc, 'version_id': version}

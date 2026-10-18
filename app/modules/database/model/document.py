@@ -39,6 +39,9 @@ class DocumentVersion(Base):
     embedding_dimensions: Mapped[int | None] = mapped_column()
     lease_owner: Mapped[str | None] = mapped_column(String(36))
     lease_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # Claims so far; bounds crash loops and transient-error retries.
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    retry_after: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 

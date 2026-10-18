@@ -15,6 +15,7 @@ def densecore(monkeypatch):
     configured = replace(settings, embedding_provider="densecore", embedding_model="Qwen3-Embedding-0.6B",
                          embedding_densecore_model_id="Qwen3-Embedding-0.6B-Q8_0", embedding_dimensions=3)
     monkeypatch.setattr(embedding, "settings", configured)
+    monkeypatch.setattr(embedding, "_model_checked", {})
     return configured
 
 
@@ -45,6 +46,11 @@ def test_densecore_query_uses_loaded_identity_and_query_only_instruction(denseco
         transport=httpx.MockTransport(handler), **kwargs))
     assert embedding.embed_query("내 자산 배분은?") == [1., 0., 0.]
     assert [call.method for call in calls] == ["GET", "POST"]
+    embedding.embed_query("내 자산 배분은?")
+    assert [call.method for call in calls] == ["GET", "POST", "POST"]  # identity reused within the TTL
+    monkeypatch.setattr(embedding, "MODEL_CHECK_TTL_SECONDS", 0)
+    embedding.embed_query("내 자산 배분은?")
+    assert [call.method for call in calls][-2:] == ["GET", "POST"]
 
 
 def test_densecore_async_batches_preserve_raw_documents_and_response_order(densecore, monkeypatch):
@@ -66,7 +72,7 @@ def test_densecore_async_batches_preserve_raw_documents_and_response_order(dense
     assert asyncio.run(embedding.embed_texts([str(i) for i in range(35)])) == [
         [float(i + 1), 1., 0.] for i in range(35)]
     assert [len(batch["input"]) for batch in batches] == [16, 16, 3]
-    assert len(identities) == 3
+    assert len(identities) == 2  # before and after the job, not per batch
     assert all(batch["pooling_type"] == "last" and batch["normalize"] for batch in batches)
 
 
@@ -136,3 +142,19 @@ def test_ollama_query_keeps_original_protocol(monkeypatch):
     monkeypatch.setattr(embedding.httpx, "Client", lambda **kwargs: client(
         transport=httpx.MockTransport(handler), **kwargs))
     assert embedding.embed_query("raw query") == [1., 0., 0.]
+
+
+def test_densecore_model_swapped_mid_job_fails_the_job(densecore, monkeypatch):
+    identities = []
+    def handler(request):
+        if request.method == "GET":
+            identities.append(request)
+            return httpx.Response(200, json=model_payload("Qwen3-Embedding-0.6B-Q8_0" if len(identities) == 1
+                                                          else "other-weights"))
+        body = json.loads(request.content)
+        return httpx.Response(200, json=embedding_payload([[1., 0., 0.] for _ in body["input"]]))
+    client = httpx.AsyncClient
+    monkeypatch.setattr(embedding.httpx, "AsyncClient", lambda **kwargs: client(
+        transport=httpx.MockTransport(handler), **kwargs))
+    with pytest.raises(ValueError, match="densecore_loaded_model_mismatch"):
+        asyncio.run(embedding.embed_texts([str(i) for i in range(20)]))

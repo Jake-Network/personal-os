@@ -4,7 +4,7 @@ Both branches start at 0004_portfolio_identity and touch disjoint tables, so thi
 only records the merge; it changes no schema.
 """
 
-revision = "0006_merge_documents_value_history"
+revision = "0006_merge_docs_value_history"
 down_revision = ("25ae62365383", "0005_manual_value_history")
 branch_labels = None
 depends_on = None
