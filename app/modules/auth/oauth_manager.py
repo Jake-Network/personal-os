@@ -7,8 +7,6 @@ Tokens live only in `oauth_credentials`, encrypted; they never reach the browser
 """
 
 import asyncio
-import base64
-import hashlib
 import secrets
 import time
 import uuid
@@ -22,10 +20,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
 from app.modules.auth.crypto import TokenCipher, load_or_create_key
+from app.modules.auth.pkce import pkce_pair
+from app.modules.auth.tokens import merged_token_record, provider_error_code
+from app.modules.auth.types import PendingLogin
 from app.modules.crud import app_setting_handler, audit_log_handler, oauth_connection_handler, oauth_credential_handler
 from app.modules.database.model import OAuthConnection
 from app.modules.llm.errors import AuthRequired, ConsentDeclined, NotConnected
-from app.modules.auth.types import PendingLogin
 
 IDENTITY_SCOPES = ("openid", "profile", "email")
 PLAN_SCOPES = ("offline_access", "resource.invoke", "chatgpt.tokens.use.direct")
@@ -38,16 +38,6 @@ REAUTH_CODES = {"invalid_grant", "refresh_token_invalidated", "refresh_token_exp
                 "token_expired"}
 
 IdTokenVerifier = Callable[[str, str, str], dict]  # (id_token, audience, nonce) -> claims
-
-
-def _b64url(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
-
-
-def pkce_pair() -> tuple[str, str]:
-    verifier = _b64url(secrets.token_bytes(48))
-    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
-    return verifier, challenge
 
 
 class JwksIdTokenVerifier:
@@ -175,7 +165,7 @@ class OAuthManager:
                 "resource": self.settings.oauth_resource,
             })
         if resp.status_code >= 400:
-            raise ConsentDeclined("token exchange failed", provider_code=_error_code(resp))
+            raise ConsentDeclined("token exchange failed", provider_code=provider_error_code(resp))
         tokens = resp.json()
         try:
             claims = self.verify_id_token(tokens["id_token"], client_id, pending.nonce)
@@ -212,13 +202,7 @@ class OAuthManager:
     def _store_tokens(self, session: Session, conn: OAuthConnection, tokens: dict) -> None:
         cred = oauth_credential_handler.get(session, conn.id)
         previous = self.cipher.decrypt(cred.ciphertext) if cred else {}
-        record = {
-            "access_token": tokens["access_token"],
-            # Rotation: always keep the latest refresh token; keep the old one if none returned.
-            "refresh_token": tokens.get("refresh_token") or previous.get("refresh_token"),
-            "id_token": tokens.get("id_token") or previous.get("id_token"),
-            "token_type": tokens.get("token_type", "Bearer"),
-        }
+        record = merged_token_record(tokens, previous)
         expires_in = int(tokens.get("expires_in") or 3600)
         conn.access_expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
         oauth_credential_handler.upsert(session, conn.id, self.cipher.encrypt(record))
@@ -261,7 +245,7 @@ class OAuthManager:
                 # Temporary failure: keep credentials.
                 raise AuthRequired("refresh network failure", provider_code="network") from exc
             if resp.status_code >= 400:
-                code = _error_code(resp)
+                code = provider_error_code(resp)
                 if code in REAUTH_CODES or resp.status_code in (400, 401):
                     self._mark_reauth(session, conn, code)
                 raise AuthRequired(provider_code=code)
@@ -313,17 +297,6 @@ class OAuthManager:
         cutoff = time.monotonic() - PENDING_TTL
         for state in [s for s, p in self._pending.items() if p.created < cutoff]:
             del self._pending[state]
-
-
-def _error_code(resp: httpx.Response) -> str | None:
-    try:
-        body = resp.json()
-    except ValueError:
-        return None
-    err = body.get("error")
-    if isinstance(err, dict):
-        return err.get("code") or err.get("type")
-    return err or body.get("code")
 
 
 oauth_manager = OAuthManager(settings)

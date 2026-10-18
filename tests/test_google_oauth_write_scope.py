@@ -6,7 +6,8 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from app.modules.auth.google_oauth_manager import GoogleOAuthError, READ_SCOPE, WRITE_SCOPE
+from app.modules.auth.errors import GoogleOAuthError
+from app.modules.auth.google_checks import READ_SCOPE, WRITE_SCOPE
 from app.modules.database.model import GoogleOAuthConnection, GoogleOAuthPending
 from test_google_oauth import make_manager
 

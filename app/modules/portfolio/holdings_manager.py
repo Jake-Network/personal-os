@@ -3,7 +3,8 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from app.modules.auth.google_oauth_manager import GoogleOAuthError, google_oauth_manager
+from app.modules.auth.errors import GoogleOAuthError
+from app.modules.auth.google_oauth_manager import google_oauth_manager
 from app.modules.database.model.advisor import AuditLog
 from app.modules.database.model.base import utcnow
 from app.modules.database.model.portfolio import PortfolioSettings
