@@ -14,6 +14,7 @@ class LLMRequest:
     excluded_categories: tuple[str, ...] = ()
     source_message_ids: tuple[int, ...] = ()
     authorization: dict | None = None
+    json_mode: bool = False
 
 
 @dataclass

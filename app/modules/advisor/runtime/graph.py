@@ -290,6 +290,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         max_calls, _, _ = limits(state)
         assembler.baseline_snapshot_id = state.get('baseline_snapshot_id')
         attempts = 2 if schema else 1
+        validation_errors = []
         for attempt in range(attempts):
             if state['model_calls'] >= max_calls:
                 raise AdvisorError('상담 모델 호출 한도에 도달했습니다.', provider_code='analysis_budget_exceeded')
@@ -299,6 +300,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 prompt += '\nJSON 객체만 반환하세요. 스키마: ' + json.dumps(schema.model_json_schema(), ensure_ascii=False)
             if attempt:
                 prompt += '\n직전 출력이 스키마 검증에 실패했습니다. 스키마에 맞게 한 번 수정하세요.'
+                prompt += '\n검증 오류(필드 경로와 오류 유형만): ' + json.dumps(validation_errors, ensure_ascii=False)
+                prompt += '\n필수 필드와 자료형을 확인하고, 스키마에 없는 필드와 JSON 밖의 설명은 빼세요.'
             extra = {'history_source_ids': history_source_ids} if history_source_ids else {}
             request, package = await assembler.assemble(state['query'], instruction=prompt,
                 derived=derived, sources=state.get('sources', []), structured_output=schema is not None, **extra)
@@ -325,9 +328,12 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             except ValueError as exc:
                 # Content may contain private data; record only schema field names and error kinds.
                 errors = exc.errors(include_input=False, include_context=False, include_url=False) if hasattr(exc, 'errors') else []
+                validation_errors = [
+                    {'type': item['type'], 'path': [str(part) for part in item['loc']
+                        if not isinstance(part, str) or part in schema.model_fields]}
+                    for item in errors[:8]]
                 await progress('structured_output_invalid', schema=schema.__name__, attempt=attempt + 1,
-                    errors=[{'type': item['type'], 'path': [str(part) for part in item['loc'] if not isinstance(part, str) or part in schema.model_fields]}
-                            for item in errors[:8]])
+                    errors=validation_errors)
                 if attempt == attempts - 1:
                     raise AdvisorError('모델의 구조화된 분석 결과를 검증하지 못했습니다.', provider_code='invalid_structured_output')
 

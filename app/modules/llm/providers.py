@@ -82,6 +82,10 @@ class ResponsesApiClient:
     async def stream(self, token: str, request: LLMRequest) -> AsyncIterator[StreamEvent]:
         body = {"model": request.model, "instructions": request.instructions, "input": request.input,
                 "store": False, "stream": True}
+        if request.json_mode:
+            # JSON syntax is constrained by the provider; domain schemas and
+            # approval payloads still require the runtime's validation.
+            body["text"] = {"format": {"type": "json_object"}}
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json",
                    "Accept": "text/event-stream"}
         try:

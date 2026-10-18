@@ -43,7 +43,25 @@ def test_streams_deltas_until_completed_with_store_false():
     assert events[-1].usage["output_tokens"] == 2
     body = json.loads(seen["body"])
     assert body["store"] is False and body["stream"] is True
+    assert "text" not in body
     assert seen["auth"] == "Bearer tok"
+
+
+def test_structured_request_uses_provider_json_mode():
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, content=sse('{"type":"response.completed"}'))
+
+    request = LLMRequest(model="m", instructions="Return JSON", input=[], json_mode=True)
+
+    async def go():
+        return [event async for event in client_for(handler).stream("tok", request)]
+
+    asyncio.run(go())
+    assert seen["text"] == {"format": {"type": "json_object"}}
+    assert seen["store"] is False
 
 
 def test_usage_limit_in_stream_maps_to_quota_exceeded():

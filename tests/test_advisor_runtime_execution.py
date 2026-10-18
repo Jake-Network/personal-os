@@ -550,6 +550,7 @@ def test_auto_dialogue_completes_in_one_validated_call(runtime_env):
     assert completed["result"]["context_snapshot_id"]
     assert "```proposal" not in provider.requests[0].instructions
     assert "JSON 스키마" in provider.requests[0].instructions
+    assert provider.requests[0].json_mode is True
     with database.session() as session:
         messages = session.scalars(select(AdvisorMessage).order_by(AdvisorMessage.id)).all()
         assert [(m.role, m.status) for m in messages] == [("user", "complete"), ("assistant", "complete")]

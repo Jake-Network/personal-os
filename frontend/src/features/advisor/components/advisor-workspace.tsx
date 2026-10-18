@@ -73,7 +73,7 @@ export function AdvisorWorkspace() {
       </Sheet>
 
       <AdvisorChat
-        key={conversationId ?? viewKey}
+        key={`chat:${conversationId ?? viewKey}`}
         conversationId={conversationId}
         domain={domain}
         onConversationCreated={id => router.replace(`/advisor/${id}`)}
@@ -116,7 +116,7 @@ export function AdvisorWorkspace() {
         }
       />
 
-      <WorkspacePanel key={viewKey} conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
+      <WorkspacePanel key={`panel:${viewKey}`} conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent side='right' className='xl:hidden'>
           <SheetTitle className='sr-only'>상담 패널</SheetTitle>

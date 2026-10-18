@@ -35,6 +35,7 @@ def build_request(model: str, history: HistoryDecision, package: ContextPackage,
         m.content)} for m in history.kept)
     request = LLMRequest(
         model=model,
+        json_mode=structured_output,
         source_snapshot_id=package.snapshot_id,
         source_message_ids=tuple(message.id for message in history.kept),
         excluded_categories=tuple(str(c) for c in excluded),

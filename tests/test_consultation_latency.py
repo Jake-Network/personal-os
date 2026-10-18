@@ -118,13 +118,24 @@ def test_fenced_json_validates_without_repair_call(monkeypatch):
 
 def test_schema_failure_repair_diagnostics_never_include_output_or_unknown_keys(monkeypatch):
     secret = 'private-user-data'
-    result, _, events = execute(monkeypatch, '안녕', [json.dumps({'answer': '답변', secret: 'secret-value'}), '{"answer":"수정 답변"}'])
+    result, requests, events = execute(monkeypatch, '안녕', [json.dumps({'answer': '답변', secret: 'secret-value'}), '{"answer":"수정 답변"}'])
     assert result['model_calls'] == 2
     failures = [event for event in events if event['stage'] == 'structured_output_invalid']
     assert len(failures) == 1
     assert failures[0]['schema'] == 'FinalAnswer'
     assert failures[0]['errors'] == [{'type': 'extra_forbidden', 'path': []}]
     assert secret not in json.dumps(events) and 'secret-value' not in json.dumps(events)
+    assert secret not in requests[1]['instruction'] and 'secret-value' not in requests[1]['instruction']
+
+
+def test_schema_repair_gets_safe_validation_feedback(monkeypatch):
+    secret = 'private-field-value'
+    result, requests, _ = execute(monkeypatch, '안녕', [
+        json.dumps({'answer': {secret: secret}}), '{"answer":"수정 답변"}'])
+    assert result['answer'] == '수정 답변'
+    repair = requests[1]['instruction']
+    assert 'string_type' in repair and '"answer"' in repair
+    assert secret not in repair
 
 
 def test_surrounding_prose_and_multiple_objects_remain_invalid():
