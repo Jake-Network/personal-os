@@ -105,6 +105,7 @@ class ToolContext:
     now: datetime
     allowed: frozenset[Category]
     query: str = ""
+    external_sharing: bool = True
 
     @property
     def today(self) -> date:

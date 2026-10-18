@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type GoalItemCategory = typeof GoalItemCategory[keyof typeof GoalItemCategory];
-
+export type GoalItemCategory = (typeof GoalItemCategory)[keyof typeof GoalItemCategory];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const GoalItemCategory = {

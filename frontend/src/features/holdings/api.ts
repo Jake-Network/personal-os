@@ -2,6 +2,7 @@ import { customInstance } from '@/api-client/custom-client';
 import type { FinanceSettings, Portfolio } from '@/features/finance/api';
 
 export type HoldingInput = {
+  account_id?: number | null;
   position_id: string;
   request_id: string;
   expected_version?: string | null;
@@ -15,12 +16,13 @@ export type HoldingInput = {
   manual_price: string | null;
   price_as_of: string | null;
 };
-export type SheetHolding = Omit<HoldingInput, 'request_id'> & { id: string; price: string | null };
+export type SheetHolding = Omit<HoldingInput, 'request_id'> & { id: string; price: string | null; quote_status?: string; record_id?: number };
 
 // Sheets rows also contain quote metadata. Only user input belongs in a write request.
 export function holdingDraft(row: SheetHolding, requestId: string): HoldingInput {
   return {
     position_id: row.position_id || row.id,
+    ...(row.account_id !== undefined ? { account_id: row.account_id } : {}),
     request_id: requestId,
     expected_version: row.expected_version,
     ticker: row.ticker,

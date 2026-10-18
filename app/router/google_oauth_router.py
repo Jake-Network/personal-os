@@ -1,5 +1,6 @@
 """Google authorization for Sheets; credentials never leave the backend."""
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
+from app.modules.security import session_manager as app_auth
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -41,6 +42,10 @@ def start_login(request: Request, response: Response, write_access: bool = False
         authorize_url, binding = google_oauth_manager.start_login(session, write_access=write_access, return_to=return_to)
     except GoogleOAuthError as exc:
         raise HTTPException(400, exc.code) from exc
+    state = parse_qs(urlsplit(authorize_url).query)["state"][0]
+    proof = app_auth.bind_oauth(session, request.cookies[app_auth.COOKIE], state, "google")
+    response.set_cookie("personal_os_oauth_google", proof, httponly=True, samesite="lax", max_age=600, path="/",
+                        secure=urlsplit(settings.google_oauth_redirect_uri).scheme == "https")
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.set_cookie(COOKIE, binding, httponly=True, samesite="lax", max_age=PENDING_TTL,
@@ -52,7 +57,8 @@ def start_login(request: Request, response: Response, write_access: bool = False
 async def callback(request: Request, session: Session = Depends(get_session)):
     result, target = "error", "/finance"
     try:
-        conn = await google_oauth_manager.handle_callback(session, dict(request.query_params), request.cookies.get(COOKIE))
+        conn = await google_oauth_manager.handle_callback(session, dict(request.query_params), request.cookies.get(COOKIE),
+            authorization_guard=lambda: app_auth.guard_oauth_commit(session, request.cookies.get(app_auth.COOKIE)))
         result = "connected"
         target = {"finance": "/finance", "holdings": "/data/holdings"}.get(
             getattr(conn, "_google_return_to", "finance"), "/finance")

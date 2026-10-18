@@ -69,10 +69,14 @@ class GoogleOAuthManager:
 
     def status(self, session: Session) -> dict:
         conn = session.get(GoogleOAuthConnection, 1)
+        scope_reset = bool(conn and (WRITE_SCOPE not in conn.scopes or any(
+            scope in conn.scopes for scope in ("https://www.googleapis.com/auth/spreadsheets",
+                                             "https://www.googleapis.com/auth/spreadsheets.readonly"))))
         return {"configured": self.configured, "connected": bool(conn and conn.status == "connected"),
                 "status": conn.status if conn else "not_connected", "email": conn.email if conn else None,
                 "scopes": conn.scopes if conn else [],
-                "can_write": bool(conn and conn.status == "connected" and WRITE_SCOPE in conn.scopes),
+                "can_write": bool(conn and conn.status == "connected" and not scope_reset),
+                "requires_scope_reset": scope_reset,
                 "access_expires_at": conn.access_expires_at.isoformat() if conn and conn.access_expires_at else None,
                 "last_error_code": conn.last_error_code if conn else None,
                 "credential_source": "oauth" if conn and conn.status == "connected" else (
@@ -105,7 +109,8 @@ class GoogleOAuthManager:
                   "prompt": "consent", "include_granted_scopes": "false"}
         return f"{AUTHORIZE_URL}?{urlencode(params)}", binding
 
-    async def handle_callback(self, session: Session, params: dict, browser_binding: str | None) -> GoogleOAuthConnection:
+    async def handle_callback(self, session: Session, params: dict, browser_binding: str | None,
+                              authorization_guard=None) -> GoogleOAuthConnection:
         if not browser_binding or not params.get("state"):
             raise GoogleOAuthError("invalid_state")
         # DELETE RETURNING atomically consumes the state across workers and restarts.
@@ -156,6 +161,8 @@ class GoogleOAuthManager:
             raise GoogleOAuthError("login_cancelled")
         # The marker delete and credential write are one transaction. Disconnect's
         # marker deletion serializes against this transaction before clearing tokens.
+        if authorization_guard is not None:
+            authorization_guard()
         conn = session.get(GoogleOAuthConnection, 1)
         if conn is None:
             conn = GoogleOAuthConnection(id=1)

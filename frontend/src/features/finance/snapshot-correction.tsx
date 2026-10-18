@@ -31,7 +31,15 @@ const FIELDS = [
   ['source', '가격 출처'],
 ] as const;
 
-export function SnapshotCorrection({ snapshot, onSaved }: { snapshot: Snapshot; onSaved: (snapshot: Snapshot) => void }) {
+export function SnapshotCorrection({
+  snapshot,
+  onSaved,
+  createMonth,
+}: {
+  snapshot: Snapshot;
+  onSaved: (snapshot: Snapshot) => void;
+  createMonth?: string;
+}) {
   const client = useQueryClient();
   const [rows, setRows] = useState(() =>
     (snapshot.rows ?? []).map(row =>
@@ -42,7 +50,8 @@ export function SnapshotCorrection({ snapshot, onSaved }: { snapshot: Snapshot; 
   const [reason, setReason] = useState('');
   const correction = useMutation({
     mutationFn: () =>
-      financeApi.correct(snapshot.id, {
+      (createMonth ? financeApi.closeMonth : (data: unknown) => financeApi.correct(snapshot.id, data))({
+        ...(createMonth ? { month: `${createMonth}-01` } : {}),
         reason,
         rows: rows.map(row =>
           Object.fromEntries(

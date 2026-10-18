@@ -7,8 +7,7 @@ from app.modules.context.types import ToolContext, ToolResult
 
 
 def sheets_enabled(ctx: ToolContext) -> bool:
-    from app.modules.portfolio.portfolio_manager import settings_dict
-    return bool(settings_dict(ctx.session)["spreadsheet_id"])
+    return False  # Local domain tools remain authoritative, independent of Google.
 
 
 def _portfolio(ctx: ToolContext) -> dict:

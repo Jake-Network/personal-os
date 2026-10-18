@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type TaskCreatePriority = typeof TaskCreatePriority[keyof typeof TaskCreatePriority];
-
+export type TaskCreatePriority = (typeof TaskCreatePriority)[keyof typeof TaskCreatePriority];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const TaskCreatePriority = {

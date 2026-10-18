@@ -20,7 +20,7 @@ from app.modules.crud import (
     proposed_action_handler,
     task_handler,
 )
-from app.modules.database.model import PersonalMemory, ProposedAction
+from app.modules.database.model import PersonalMemory, ProposedAction, MemoryRevision
 
 
 class ProposalManager:
@@ -41,6 +41,10 @@ class ProposalManager:
             })
             for m in memories
         ]
+        from app.modules.context.record_privacy import stamp_references
+        for memory in mems:
+            session.add(MemoryRevision(memory_id=memory.id, revision=0, kind=memory.kind, content=memory.content,
+                status="proposed", source_references=stamp_references(session, [{"table": "advisor_messages", "id": message_id}])))
         for a in actions:
             audit_log_handler.record(session, "advisor", f"propose.{a.action}", f"proposed_actions:{a.id}",
                                      {"payload": a.payload})

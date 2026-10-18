@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type CalendarEventItemKind = typeof CalendarEventItemKind[keyof typeof CalendarEventItemKind];
-
+export type CalendarEventItemKind = (typeof CalendarEventItemKind)[keyof typeof CalendarEventItemKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const CalendarEventItemKind = {

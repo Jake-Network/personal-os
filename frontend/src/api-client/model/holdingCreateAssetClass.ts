@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HoldingCreateAssetClass = typeof HoldingCreateAssetClass[keyof typeof HoldingCreateAssetClass];
-
+export type HoldingCreateAssetClass = (typeof HoldingCreateAssetClass)[keyof typeof HoldingCreateAssetClass];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const HoldingCreateAssetClass = {

@@ -7,6 +7,11 @@
 import type { AskRequestCategories } from './askRequestCategories';
 import type { Category } from './category';
 import type { AskRequestDocumentIds } from './askRequestDocumentIds';
+import type { AskRequestHistorySince } from './askRequestHistorySince';
+import type { AskRequestHistoryUntil } from './askRequestHistoryUntil';
+import type { AskRequestHistoryCompany } from './askRequestHistoryCompany';
+import type { AskRequestHistoryProject } from './askRequestHistoryProject';
+import type { AskRequestHistoryDecision } from './askRequestHistoryDecision';
 
 export interface AskRequest {
   /**
@@ -18,4 +23,9 @@ export interface AskRequest {
   exclude?: Category[];
   document_search?: boolean;
   document_ids?: AskRequestDocumentIds;
+  history_since?: AskRequestHistorySince;
+  history_until?: AskRequestHistoryUntil;
+  history_company?: AskRequestHistoryCompany;
+  history_project?: AskRequestHistoryProject;
+  history_decision?: AskRequestHistoryDecision;
 }

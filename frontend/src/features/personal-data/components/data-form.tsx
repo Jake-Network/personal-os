@@ -20,13 +20,15 @@ import type { FieldSpec } from '../utils/schema-fields';
 
 interface Props {
   fields: FieldSpec[];
+  labels?: Record<string, string>;
+  enumLabels?: Record<string, string>;
   current?: Record<string, unknown>;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
   onCancel: () => void;
 }
 
-export function DataForm({ fields, current, submitLabel, onSubmit, onCancel }: Props) {
+export function DataForm({ fields, labels, enumLabels, current, submitLabel, onSubmit, onCancel }: Props) {
   const { register, control, handleSubmit, formState } = useForm<FormValues>({ defaultValues: initialValues(fields, current) });
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +55,7 @@ export function DataForm({ fields, current, submitLabel, onSubmit, onCancel }: P
                 render={({ field }) => (
                   <label className='mt-[18px] inline-flex cursor-pointer select-none items-center gap-2'>
                     <Checkbox checked={Boolean(field.value)} onCheckedChange={v => field.onChange(v === true)} />
-                    {fieldLabel(f.name)}
+                    {labels?.[f.name] ?? fieldLabel(f.name)}
                   </label>
                 )}
               />
@@ -62,7 +64,7 @@ export function DataForm({ fields, current, submitLabel, onSubmit, onCancel }: P
           return (
             <div key={f.name} className={cn('flex flex-col gap-1', f.kind === 'longtext' && 'md:col-span-2')}>
               <Label htmlFor={id}>
-                {fieldLabel(f.name)} {f.required && <span className='text-destructive'>*</span>}
+                {labels?.[f.name] ?? fieldLabel(f.name)} {f.required && <span className='text-destructive'>*</span>}
               </Label>
               {f.kind === 'enum' ? (
                 <NativeSelect id={id} required={f.required} {...register(f.name)}>
@@ -71,7 +73,7 @@ export function DataForm({ fields, current, submitLabel, onSubmit, onCancel }: P
                   </option>
                   {f.options!.map(o => (
                     <option key={o} value={o}>
-                      {enumLabel(o)}
+                      {enumLabels?.[o] ?? enumLabel(o)}
                     </option>
                   ))}
                 </NativeSelect>

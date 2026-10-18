@@ -14,9 +14,37 @@ const nextConfig: NextConfig = {
     // Advisor answers stream longer than the 30s default proxy timeout.
     proxyTimeout: 10 * 60 * 1000,
   },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''),
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob:",
+              "connect-src 'self'" + (process.env.NODE_ENV === 'development' ? ' ws://127.0.0.1:* ws://localhost:*' : ''),
+              "frame-src 'none'",
+              "frame-ancestors 'none'",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join('; '),
+          },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${serverDomain}/api/:path*` },
+      { source: '/auth/callback', destination: `${serverDomain}/auth/callback` },
       { source: '/openapi.json', destination: `${serverDomain}/openapi.json` },
     ];
   },

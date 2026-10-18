@@ -105,7 +105,7 @@ def sync(session, client=None):
         obj.last_error = "Sheets synchronization failed; previous successful import retained. Check worksheet layout and server access."
         session.commit()
         raise ValueError(obj.last_error) from None
-    return portfolio(session)
+    return imported_portfolio_preview(session)
 
 
 def _latest(session):
@@ -122,6 +122,11 @@ def _latest(session):
 
 
 def portfolio(session):
+    from app.modules.portfolio.local_portfolio import portfolio as local_portfolio
+    return local_portfolio(session)
+
+
+def imported_portfolio_preview(session):
     imported = _latest(session)
     obj = get_settings(session)
     if not imported:

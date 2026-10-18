@@ -9,7 +9,7 @@ import { notify } from '@/components/notify';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
-import { getListConversationsQueryKey, useDeleteConversation, useListConversations } from '@/api-client/generated/advisor/advisor';
+import { getListConversationsQueryKey, useDeleteConversation, useGetConversation } from '@/api-client/generated/advisor/advisor';
 
 import { DOMAINS, parseDomain } from '../consts';
 import type { InspectorData, InspectorMode } from '../types';
@@ -43,8 +43,7 @@ export function AdvisorWorkspace() {
   const viewKey = `${conversationId}:${newDomain}`;
   const inspectorState = inspector.key === viewKey ? inspector : { data: null, mode: 'preview' as const, loading: false };
 
-  const { data: conversations } = useListConversations();
-  const current = conversations?.find(c => c.id === conversationId);
+  const { data: current } = useGetConversation(conversationId ?? 0, undefined, { query: { enabled: conversationId !== null } });
   const domain = parseDomain(current?.domain ?? null) ?? newDomain;
 
   const remove = useDeleteConversation({

@@ -64,14 +64,16 @@ def test_ac13_cross_domain_question_uses_both_domains(seeded, fake_provider):
     assert "get_accounts_summary" in data and "get_job_applications" in data
 
 
-def test_ac15_history_is_replayed_and_snapshot_reused(seeded, fake_provider):
+def test_ac15_history_is_replayed_with_immutable_source_dependencies(seeded, fake_provider):
     conv = advisor_manager.create_conversation(seeded, "x")
     first = run(seeded, conv, "현재 내 순자산은?")
     second = run(seeded, conv, "그럼 그 다음은?")  # no keywords → previous categories
     roles = [i["role"] for i in fake_provider.requests[1].input]
     assert roles == ["user", "assistant", "developer", "user"]
-    assert second[0]["context_reused"] is True
-    assert second[-1]["context_snapshot_id"] == first[-1]["context_snapshot_id"]
+    # Each turn now captures the exact replayed source-message dependency set. Reusing
+    # the first snapshot would erase this provenance (or create a dependency cycle).
+    assert second[0]["context_reused"] is False
+    assert second[-1]["context_snapshot_id"] != first[-1]["context_snapshot_id"]
 
 
 def test_ac17_quota_exhaustion_fails_safely_without_paid_fallback(seeded, fake_provider):

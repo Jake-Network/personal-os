@@ -20,6 +20,7 @@ from app.modules.context.types import (
     DataQualityFlag,
     RouteDecision,
     ToolContext,
+    ToolResult,
     data_citations,
 )
 from app.modules.documents.retrieval import cited_categories, library_fingerprint, search as search_documents
@@ -29,10 +30,11 @@ class ContextBuilderManager:
     def __init__(self, char_limit: int):
         self.char_limit = char_limit
 
-    def collect(self, session: Session, selected: frozenset[Category], now: datetime, *, query: str = ""
+    def collect(self, session: Session, selected: frozenset[Category], now: datetime, *, query: str = "", document_scope: dict | None = None,
+                external_sharing: bool = True
                 ) -> tuple[dict, list[ContextRecordRef], list[DataQualityFlag], dict]:
         """Run every tool for the selected categories. Returns (data, refs, flags, freshness)."""
-        ctx = ToolContext(session=session, now=now, allowed=selected, query=query)
+        ctx = ToolContext(session=session, now=now, allowed=selected, query=query, external_sharing=external_sharing)
         data: dict[str, dict] = {}
         refs: list[ContextRecordRef] = []
         flags: list[DataQualityFlag] = []
@@ -42,7 +44,21 @@ class ContextBuilderManager:
                 continue
             latest = None
             for name, tool in CATEGORY_TOOLS[category]:
+                from app.modules.context.record_privacy import tool_blocked
+                if external_sharing and tool_blocked(session, name):
+                    flags.append({"code": "records_excluded_by_user", "category": category.value,
+                                  "detail": f"{name}: 관련 기록이 로컬 전용이므로 전체 계산/요약을 제외했습니다."})
+                    continue
                 result = tool(ctx)
+                if document_scope and name in {"get_profile", "get_career_records"}:
+                    from app.modules.advisor.memory_history_manager import source_allowed
+                    if any(not source_allowed(session, [ref], frozenset(ALL_CATEGORIES) - selected,
+                                              document_scope=document_scope) for ref in result.refs):
+                        flags.append({"code": "source_sharing_scope_excluded", "category": category.value,
+                                      "detail": name})
+                        continue
+                from app.modules.context.record_privacy import aggregate_source_ids
+                result.refs.extend(aggregate_source_ids(session, result.refs))
                 data[name] = result.data
                 refs += [{**r, "category": category.value, "tool": name} for r in result.refs]
                 flags += result.flags
@@ -61,9 +77,21 @@ class ContextBuilderManager:
               inherited_dependencies: list[dict] | None = None,
               inherited_categories: list[str] | None = None,
               history_document_refs: set[str] | None = None,
-              inherited_unknown: bool = False) -> ContextPackage:
+              inherited_unknown: bool = False, history_message_refs: list[int] | None = None,
+              history_search_flags: list[dict] | None = None,
+              historical_experiences: ToolResult | None = None) -> ContextPackage:
         now = now or datetime.now(UTC)
-        data, refs, flags, freshness = self.collect(session, route.selected, now, query=query)
+        data, refs, flags, freshness = self.collect(session, route.selected, now, query=query,
+            document_scope={"enabled": document_search, "document_ids": list(document_ids)})
+        refs += [{"table": "advisor_messages", "id": mid, "category": "profile", "tool": "history"}
+                 for mid in history_message_refs or []]
+        flags.extend(history_search_flags or [])
+        if historical_experiences and historical_experiences.refs:
+            data["search_past_experiences"] = historical_experiences.data
+            refs.extend({**ref, "category": "profile", "tool": "search_past_experiences"} for ref in historical_experiences.refs)
+            flags.extend(historical_experiences.flags)
+        from app.modules.context.record_privacy import stamp_references
+        refs = stamp_references(session, refs)
         if document_search and query:
             # Every shared document is searchable whatever the question's topic; privacy exclusions still apply.
             result = search_documents(session, query, None, document_ids or None,
@@ -89,6 +117,7 @@ class ContextBuilderManager:
         overhead = len(json.dumps({"context_snapshot_id": str(uuid.uuid4()), "generated_at": now.isoformat(),
                                    "request_query": query}, ensure_ascii=False, separators=(",", ":"))) - 1
         body = fit_to_budget({
+            "history_message_ids": history_message_refs or [],
             "document_dependencies": dependencies,
             # Topics of the cited documents: history privacy taints the turn with them too.
             "document_categories": document_categories,
@@ -107,7 +136,7 @@ class ContextBuilderManager:
         # Unchanged data since the previous turn → reuse that snapshot instead of a duplicate.
         if conversation_id is not None:
             previous = context_snapshot_handler.get_latest_for_conversation(session, conversation_id)
-            if previous is not None and previous.content_hash == body_hash:
+            if previous is not None and not previous.payload.get("source_purged") and previous.content_hash == body_hash and previous.record_references == refs:
                 return to_package(previous, reused=True)
 
         snapshot_id = str(uuid.uuid4())

@@ -66,9 +66,9 @@ class Holding(TimestampMixin, Base):
     market: Mapped[str | None] = mapped_column(String(16))
     asset_class: Mapped[str] = mapped_column(String(32), default="equity")  # equity | etf | bond | crypto | other
     currency: Mapped[str] = mapped_column(String(3), default="KRW")
-    quantity: Mapped[Decimal] = mapped_column(Qty)
-    avg_cost: Mapped[Decimal | None] = mapped_column(Money)
-    last_price: Mapped[Decimal | None] = mapped_column(Money)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(32, 12))
+    avg_cost: Mapped[Decimal | None] = mapped_column(Numeric(32, 12))
+    last_price: Mapped[Decimal | None] = mapped_column(Numeric(32, 12))
     price_as_of: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 

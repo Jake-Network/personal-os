@@ -24,6 +24,7 @@ from app.modules.llm.providers import (
     ResponsesApiClient,
 )
 from app.modules.llm.types import LLMRequest, StreamEvent
+from app.modules.llm import transfer_policy
 
 PROVIDER_KEY = "llm.provider"
 MODEL_KEY = "llm.model"
@@ -67,6 +68,10 @@ class LLMGatewayManager:
             "outcome": None, "error_code": None,
         }
         try:
+            session.expire_all()
+            transfer_policy.require_confirmation(session, provider.name)
+            from app.modules.advisor.memory_history_manager import require_live_request_sources
+            require_live_request_sources(session, request)
             async for chunk in provider.stream(session, request):
                 if chunk.type == "completed":
                     record["input_tokens"] = chunk.usage.get("input_tokens")

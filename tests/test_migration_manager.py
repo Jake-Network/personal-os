@@ -105,6 +105,10 @@ def test_app_startup_never_migrates_an_existing_database(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "engine", None)
     with TestClient(main.app, base_url="http://127.0.0.1:8000") as c:
         assert c.get("/api/health").status_code == 200
+        for path in ("/api/security/status", "/api/dashboard", "/auth/callback"):
+            response = c.get(path)
+            assert response.status_code == 503
+            assert response.json()["code"] == "schema_upgrade_required"
     engine = create_engine(url)
     assert "alembic_version" not in inspect(engine).get_table_names()
     after = mm.schema_of(engine)

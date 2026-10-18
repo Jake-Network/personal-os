@@ -1,5 +1,6 @@
 """Assembly of the outbound LLM request from history and the Context Package."""
 
+from app.config import settings
 from app.enums.context_category import Category
 from app.modules.advisor.history import DOCUMENT_REFERENCE_PATTERN
 from app.modules.advisor.prompts import SYSTEM_PROMPT
@@ -24,16 +25,19 @@ def build_request(model: str, history: HistoryDecision, package: ContextPackage,
     notes = []
     if history.withheld_ids:
         notes.append({"role": "developer", "content": (
-            f"이전 대화 메시지 {len(history.withheld_ids)}개는 사용자가 현재 공유를 막은 범주"
-            f"({', '.join(history.withheld_categories)})의 정보를 포함할 수 있어 전달하지 않았습니다. "
+            f"이전 대화 메시지 {len(history.withheld_ids)}개는 공유 제한 또는 삭제된 근거의 정보를 포함할 수 있어 전달하지 않았습니다. "
+            f"관련 범주: {', '.join(history.withheld_categories) or '개별 기록·문서'}. "
             "그 내용을 기억하거나 추측하지 말고, 필요하면 사용자에게 다시 물어보세요.")})
     available_refs = {c["ref"] for c in payload_citations(package.payload)}
     # Keep dialogue continuity while omitting citations outside the excerpt budget.
     replayed = ({"role": m.role, "content": DOCUMENT_REFERENCE_PATTERN.sub(
         lambda match: match.group(0) if match.group(1) in available_refs else "[과거 문서 근거 생략]",
         m.content)} for m in history.kept)
-    return LLMRequest(
+    request = LLMRequest(
         model=model,
+        source_snapshot_id=package.snapshot_id,
+        source_message_ids=tuple(message.id for message in history.kept),
+        excluded_categories=tuple(str(c) for c in excluded),
         instructions=SYSTEM_PROMPT + HISTORICAL_EVIDENCE_RULES,
         input=[
             *notes,
@@ -43,3 +47,10 @@ def build_request(model: str, history: HistoryDecision, package: ContextPackage,
             {"role": "user", "content": query},
         ],
     )
+
+    # Count the whole serialized outbound request, including instructions and history.
+    import json
+    size = len(json.dumps({"instructions": request.instructions, "input": request.input}, ensure_ascii=False))
+    if size > settings.request_char_limit:
+        raise AdvisorError("질문과 대화 이력을 포함한 전체 요청이 전송 예산을 초과합니다. 새 대화나 짧은 질문으로 다시 시도하세요.", provider_code="request_budget_exceeded")
+    return request

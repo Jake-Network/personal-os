@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.security import session_manager as app_auth
 from app.modules.auth.oauth_manager import oauth_manager
 from app.modules.database import get_session
 from app.modules.llm.errors import AdvisorError
@@ -17,7 +18,8 @@ router = APIRouter(tags=["oauth"])
 @router.get("/auth/callback", include_in_schema=False)
 async def oauth_callback(request: Request, session: Session = Depends(get_session)):
     try:
-        conn = await oauth_manager.handle_callback(session, dict(request.query_params))
+        conn = await oauth_manager.handle_callback(session, dict(request.query_params),
+            authorization_guard=lambda: app_auth.guard_oauth_commit(session, request.cookies.get(app_auth.COOKIE)))
         result = {"chatgpt": "connected", "plan_usage": "enabled" if conn.plan_usage_enabled else "disabled"}
     except AdvisorError as exc:
         result = {"chatgpt": "error", "code": exc.provider_code or exc.code}

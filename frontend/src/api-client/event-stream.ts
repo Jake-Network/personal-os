@@ -1,3 +1,5 @@
+import { getCsrfToken, notifySessionExpired, registerPrivateStream } from '@/features/security/session';
+
 import { errorFromBody } from './api-error';
 
 /** Splits buffered text/event-stream text into complete `data:` payloads and the unfinished tail. */
@@ -23,20 +25,36 @@ export function parseEventBlocks(buffer: string): { events: string[]; rest: stri
  * axios cannot stream response bodies in the browser, so this one call uses fetch.
  */
 export async function postEventStream<E>(path: string, body: unknown, onEvent: (event: E) => void, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok || !res.body) throw errorFromBody(res.status, await res.json().catch(() => null));
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    const { events, rest } = parseEventBlocks(buffer + value);
-    buffer = rest;
-    events.forEach(data => onEvent(JSON.parse(data) as E));
+  const controller = new AbortController();
+  const unregister = registerPrivateStream(controller);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) controller.abort();
+  try {
+    const token = getCsrfToken();
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { 'X-CSRF-Token': token } : {}) },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (res.status === 401) notifySessionExpired();
+    if (!res.ok || !res.body) throw errorFromBody(res.status, await res.json().catch(() => null));
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const { events, rest } = parseEventBlocks(buffer + value);
+      buffer = rest;
+      if (controller.signal.aborted) break;
+      for (const data of events) {
+        if (controller.signal.aborted) break;
+        onEvent(JSON.parse(data) as E);
+      }
+    }
+  } finally {
+    unregister();
+    signal?.removeEventListener('abort', abort);
   }
 }

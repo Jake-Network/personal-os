@@ -32,17 +32,17 @@ def settings(session: Session = Depends(get_session)):
 
 @router.put("/settings")
 def configure(body: SheetsSettingsInput, session: Session = Depends(get_session)):
-    return _call(manager.configure, session, body.spreadsheet_id)
+    raise HTTPException(410, "Personal Sheets ownership is retired. Use /api/market-data/initialize for a new quotes-only file; preserved imports remain available for local migration.")
 
 
 @router.post("/verify")
 def verify(session: Session = Depends(get_session)):
-    return _call(manager.verify, session)
+    raise HTTPException(410, "Legacy Sheets verification retired; use quotes-only market data connection")
 
 
 @router.post("/sync")
 def sync(session: Session = Depends(get_session)):
-    return _call(manager.sync, session)
+    raise HTTPException(410, "Legacy personal Sheets synchronization retired; import preserved local data")
 
 
 @router.get("/portfolio")
@@ -94,3 +94,35 @@ def refresh_holdings(request: Request, session: Session = Depends(get_session)):
 def save_holding(body: HoldingInput, request: Request, session: Session = Depends(get_session)):
     _check_origin(request)
     return _call(holdings_manager.save, session, body)
+
+
+from app.modules.finance import ledger_manager
+from app.schema.market_data_schema import TransactionInput, MonthCloseInput
+
+@router.get("/transactions")
+def transactions(year: int | None = None, session: Session = Depends(get_session)):
+    return _call(ledger_manager.listing, session, year)
+
+@router.post("/transactions", status_code=201)
+def transaction(body: TransactionInput, session: Session = Depends(get_session)):
+    return _call(ledger_manager.record, session, body)
+
+@router.get("/trends/{year}")
+def trend(year: int, session: Session = Depends(get_session)):
+    return _call(ledger_manager.trend, session, year)
+
+@router.post("/month-close", status_code=201)
+def close_month(body: MonthCloseInput, session: Session = Depends(get_session)):
+    return _call(ledger_manager.close_month, session, body)
+
+@router.post("/observed-valuations", status_code=201)
+def observe_today(session: Session = Depends(get_session)):
+    return _call(ledger_manager.observe_today, session)
+
+
+from app.schema.market_data_schema import CoverageInput
+
+@router.put("/coverage")
+def confirm_coverage(body: CoverageInput, session: Session = Depends(get_session)):
+    from app.modules.portfolio.local_portfolio import confirm_coverage as confirm
+    return confirm(session, body.kinds)

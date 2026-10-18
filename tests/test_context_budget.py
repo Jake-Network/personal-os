@@ -68,7 +68,7 @@ def test_omitted_sections_are_reported(bulky):
     omitted = {f["detail"] for f in package.data_quality_flags if f["code"] == "context_section_omitted"}
     assert omitted and omitted.isdisjoint({"get_accounts_summary", "get_cashflow_summary", "cash_runway"})
     assert omitted <= {"get_job_applications", "get_calendar_events", "get_tasks", "get_goals", "get_health_summary",
-                       "get_interview_schedule", "get_relevant_news", "get_market_data", "get_profile",
+                       "get_interview_schedule", "get_career_records", "get_relevant_news", "get_market_data", "get_profile",
                        "get_monthly_asset_history"}
     assert size(package) <= 4_000
 

@@ -43,7 +43,7 @@ def test_write_consent_is_optional_and_bound_to_encrypted_pending_state(session)
 
 
 def test_write_request_rejects_readonly_grant_even_if_callback_claims_write(session):
-    manager = make_manager(granting(f"openid email {READ_SCOPE}"))
+    manager = make_manager(granting("openid email https://www.googleapis.com/auth/spreadsheets.readonly"))
     query, binding = begin(manager, session, write_access=True)
     with pytest.raises(GoogleOAuthError, match="missing_scope"):
         exchange(manager, session, query, binding, scope=f"openid email {WRITE_SCOPE}")
@@ -75,6 +75,9 @@ def test_writer_never_falls_back_to_adc_or_readonly_oauth(session):
         manager.get_credentials(session, require_write=True)
     query, binding = begin(manager, session)
     exchange(manager, session, query, binding)
+    # A legacy broad readonly token cannot authorize the new quotes-only writer.
+    session.get(GoogleOAuthConnection, 1).scopes = ["openid", "email", "https://www.googleapis.com/auth/spreadsheets.readonly"]
+    session.commit()
     assert manager.status(session)["can_write"] is False
     with pytest.raises(GoogleOAuthError, match="write_access_required"):
         manager.get_credentials(session, require_write=True)

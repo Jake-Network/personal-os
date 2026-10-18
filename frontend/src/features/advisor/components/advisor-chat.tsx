@@ -4,7 +4,11 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { customInstance } from '@/api-client/custom-client';
+import type { ConversationDetail } from '@/api-client/model';
 
+import { notify } from '@/components/notify';
 import { Markdown } from '@/components/markdown';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +38,7 @@ import { SUGGESTIONS } from '../consts';
 import type { AdvisorEvent, ChatMessage, InspectorData, InspectorMode } from '../types';
 import { optionsFor, snapshotToInspector, stripBlocks } from '../utils';
 import { MemoryProposalCard, ProposalCard } from './proposal-card';
+import { ConversationSummary } from './conversation-summary';
 
 interface Props {
   conversationId: number | null;
@@ -51,8 +56,16 @@ const nextKey = () => `tmp-${++tempKey}`;
 
 export function AdvisorChat({ conversationId, domain, compact, header, onConversationCreated, onInspector }: Props) {
   const queryClient = useQueryClient();
+  const targetMessage = Number(useSearchParams().get("message")) || null;
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasOlder, setHasOlder] = useState(false);
+  const viewRef = useRef(conversationId);
+  useEffect(() => { viewRef.current = conversationId; }, [conversationId]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [historyCompany, setHistoryCompany] = useState('');
+  const [historyProject, setHistoryProject] = useState('');
+  const [historyDecision, setHistoryDecision] = useState('');
   const [documentSearch, setDocumentSearch] = useState(true);
   const [documentIds, setDocumentIds] = useState<number[] | null>(null);
   const [source, setSource] = useState<{ citation?: DocumentCitation; error?: string } | null>(null);
@@ -97,28 +110,39 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     }
     let cancelled = false;
     queryClient
-      .fetchQuery({ ...getGetConversationQueryOptions(conversationId), staleTime: 0 })
+      .fetchQuery({ ...getGetConversationQueryOptions(conversationId, targetMessage ? { before_id: targetMessage + 1 } : undefined), staleTime: 0 })
       .then(detail => {
-        if (!cancelled) setMessages(detail.messages.map(m => ({ ...m, key: `m-${m.id}` }) as ChatMessage));
+        if (!cancelled) { setMessages(detail.messages.map(m => ({ ...m, key: `m-${m.id}` }) as ChatMessage)); setHasOlder(detail.messages.length >= 100); }
       })
       .catch(e => !cancelled && setLoadError(errorMessage(e)));
     return () => {
       cancelled = true;
     };
-  }, [conversationId, queryClient]);
+  }, [conversationId, queryClient, targetMessage]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+    const target = targetMessage ? document.getElementById(`message-${targetMessage}`) : null;
+    if (target) target.scrollIntoView({ block: 'center' });
+    else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [messages, targetMessage]);
 
   const requestOptions = useMemo(
     () => (baseline ? optionsFor(baseline, forcedOn, forcedOff) : { exclude: [...forcedOff] }),
     [baseline, forcedOn, forcedOff],
   );
 
-  const documentOptions = useMemo(() => ({ document_search: documentSearch, document_ids: documentIds }), [documentSearch, documentIds]);
+  const documentOptions = useMemo(
+    () => ({
+      document_search: documentSearch,
+      document_ids: documentIds,
+      history_company: historyCompany || null,
+      history_project: historyProject ? Number(historyProject) : null,
+      history_decision: historyDecision ? Number(historyDecision) : null,
+    }),
+    [documentSearch, documentIds, historyCompany, historyProject, historyDecision],
+  );
 
   // Debounced Context preview while typing (nothing is sent to the model).
   useEffect(() => {
@@ -276,6 +300,19 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
 
   const suggestions = SUGGESTIONS[domain ?? 'general'] ?? SUGGESTIONS.general;
 
+  async function loadOlder() {
+    const before = messages.find(m => m.id)?.id;
+    if (!conversationId || !before) return;
+    const requestedView = conversationId;
+    setLoadingOlder(true);
+    try {
+      const detail = await customInstance<ConversationDetail>({ url: `/api/advisor/conversations/${conversationId}`, params: { before_id: before } });
+      if (viewRef.current !== requestedView) return;
+      setMessages(existing => [...detail.messages.map(m => ({ ...m, key: `m-${m.id}` }) as ChatMessage), ...existing]);
+      setHasOlder(detail.messages.length >= 100);
+    } catch (e) { notify.error(e); } finally { setLoadingOlder(false); }
+  }
+
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', compact ? 'bg-card' : 'bg-background')}>
       {header}
@@ -295,13 +332,16 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
                 {source.citation.section ? ` · ${source.citation.section}` : ''}
                 {source.citation.as_of ? ` · 기준일 ${source.citation.as_of}` : ''}
               </p>
-              <p className='text-xs text-faint'>{source.citation.historical ? '이전 상담에서 이어받은 과거 버전의 근거입니다.' : '이 답변에 사용한 당시의 발췌문입니다.'}</p>
+              <p className='text-xs text-faint'>
+                {source.citation.historical ? '이전 상담에서 이어받은 과거 버전의 근거입니다.' : '이 답변에 사용한 당시의 발췌문입니다.'}
+              </p>
               <div className='max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm'>{source.citation.text}</div>
             </>
           )}
         </DialogContent>
       </Dialog>
       <div className={cn('flex flex-1 flex-col overflow-y-auto', compact ? 'gap-3 p-3.5' : 'gap-4 px-[18px] py-5')} ref={scrollRef}>
+        {hasOlder && <Button disabled={loadingOlder || sending} onClick={() => void loadOlder()}>이전 메시지 더 보기</Button>}
         {loadError && <Alert variant='destructive'>{loadError}</Alert>}
         {messages.length === 0 && !loadError && (
           <div className='mx-auto flex w-full max-w-[760px] flex-col items-start gap-2.5'>
@@ -315,8 +355,40 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             ))}
           </div>
         )}
+        {!compact && (
+          <details className='border p-3 text-sm'>
+            <summary>과거 경험 검색 범위</summary>
+            <div className='flex flex-wrap gap-2 py-2'>
+              <label>
+                회사명
+                <input value={historyCompany} onChange={e => setHistoryCompany(e.target.value)} className='block rounded border p-2' />
+              </label>
+              <label>
+                프로젝트 ID
+                <input
+                  type='number'
+                  min='1'
+                  value={historyProject}
+                  onChange={e => setHistoryProject(e.target.value)}
+                  className='block w-28 rounded border p-2'
+                />
+              </label>
+              <label>
+                결정 ID
+                <input
+                  type='number'
+                  min='1'
+                  value={historyDecision}
+                  onChange={e => setHistoryDecision(e.target.value)}
+                  className='block w-28 rounded border p-2'
+                />
+              </label>
+            </div>
+          </details>
+        )}
+        {conversationId && <ConversationSummary conversationId={conversationId} />}
         {messages.map(m => (
-          <div key={m.key} className='mx-auto w-full max-w-[760px]'>
+          <div key={m.key} id={m.id ? `message-${m.id}` : undefined} className='mx-auto w-full max-w-[760px]'>
             {(m.content || m.streaming) && (
               <div
                 className={cn(

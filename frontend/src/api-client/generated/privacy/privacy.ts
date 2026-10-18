@@ -4,10 +4,7 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
-import {
-  useMutation,
-  useQuery
-} from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
   DataTag,
   DefinedInitialDataOptions,
@@ -20,174 +17,295 @@ import type {
   UseMutationOptions,
   UseMutationResult,
   UseQueryOptions,
-  UseQueryResult
+  UseQueryResult,
 } from '@tanstack/react-query';
 
-import type {
-  HTTPValidationError,
-  PrivacySettings
-} from '../../model';
+import type { HTTPValidationError, PrivacySettings, RecordSharingUpdate } from '../../model';
 
 import { customInstance } from '../../custom-client';
-import type { ErrorType , BodyType } from '../../custom-client';
-
+import type { ErrorType, BodyType } from '../../custom-client';
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
-
-
 /**
  * @summary Get Privacy
  */
-export const getPrivacy = (
-
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<PrivacySettings>(
-      {url: `/api/settings/privacy`, method: 'GET', signal
-    },
-      options);
-    }
-
-
-
+export const getPrivacy = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<PrivacySettings>({ url: `/api/settings/privacy`, method: 'GET', signal }, options);
+};
 
 export const getGetPrivacyQueryKey = () => {
-    return [
-    `/api/settings/privacy`
-    ] as const;
-    }
+  return [`/api/settings/privacy`] as const;
+};
 
+export const getGetPrivacyQueryOptions = <TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
 
-export const getGetPrivacyQueryOptions = <TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
-) => {
+  const queryKey = queryOptions?.queryKey ?? getGetPrivacyQueryKey();
 
-const {query: queryOptions, request: requestOptions} = options ?? {};
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPrivacy>>> = ({ signal }) => getPrivacy(requestOptions, signal);
 
-  const queryKey =  queryOptions?.queryKey ?? getGetPrivacyQueryKey();
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
 
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPrivacy>>> = ({ signal }) => getPrivacy(requestOptions, signal);
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type GetPrivacyQueryResult = NonNullable<Awaited<ReturnType<typeof getPrivacy>>>
-export type GetPrivacyQueryError = ErrorType<unknown>
-
+export type GetPrivacyQueryResult = NonNullable<Awaited<ReturnType<typeof getPrivacy>>>;
+export type GetPrivacyQueryError = ErrorType<unknown>;
 
 export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getPrivacy>>,
-          TError,
-          Awaited<ReturnType<typeof getPrivacy>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>> &
+      Pick<DefinedInitialDataOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, Awaited<ReturnType<typeof getPrivacy>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getPrivacy>>,
-          TError,
-          Awaited<ReturnType<typeof getPrivacy>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>> &
+      Pick<UndefinedInitialDataOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, Awaited<ReturnType<typeof getPrivacy>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
  * @summary Get Privacy
  */
 
 export function useGetPrivacy<TData = Awaited<ReturnType<typeof getPrivacy>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPrivacy>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetPrivacyQueryOptions(options);
 
-  const queryOptions = getGetPrivacyQueryOptions(options)
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  query.queryKey = queryOptions.queryKey ;
+  query.queryKey = queryOptions.queryKey;
 
   return query;
 }
 
+/**
+ * @summary Put Privacy
+ */
+export const putPrivacy = (privacySettings: BodyType<PrivacySettings>, options?: SecondParameter<typeof customInstance>) => {
+  return customInstance<PrivacySettings>(
+    { url: `/api/settings/privacy`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, data: privacySettings },
+    options,
+  );
+};
 
+export const getPutPrivacyMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError, { data: BodyType<PrivacySettings> }, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError, { data: BodyType<PrivacySettings> }, TContext> => {
+  const mutationKey = ['putPrivacy'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
 
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof putPrivacy>>, { data: BodyType<PrivacySettings> }> = props => {
+    const { data } = props ?? {};
+
+    return putPrivacy(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PutPrivacyMutationResult = NonNullable<Awaited<ReturnType<typeof putPrivacy>>>;
+export type PutPrivacyMutationBody = BodyType<PrivacySettings>;
+export type PutPrivacyMutationError = ErrorType<HTTPValidationError>;
 
 /**
  * @summary Put Privacy
  */
-export const putPrivacy = (
-    privacySettings: BodyType<PrivacySettings>,
- options?: SecondParameter<typeof customInstance>,) => {
+export const usePutPrivacy = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError, { data: BodyType<PrivacySettings> }, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof putPrivacy>>, TError, { data: BodyType<PrivacySettings> }, TContext> => {
+  const mutationOptions = getPutPrivacyMutationOptions(options);
 
-
-      return customInstance<PrivacySettings>(
-      {url: `/api/settings/privacy`, method: 'PUT',
-      headers: {'Content-Type': 'application/json', },
-      data: privacySettings
-    },
-      options);
-    }
-
-
-
-export const getPutPrivacyMutationOptions = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError,{data: BodyType<PrivacySettings>}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError,{data: BodyType<PrivacySettings>}, TContext> => {
-
-const mutationKey = ['putPrivacy'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putPrivacy>>, {data: BodyType<PrivacySettings>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  putPrivacy(data,requestOptions)
-        }
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PutPrivacyMutationResult = NonNullable<Awaited<ReturnType<typeof putPrivacy>>>
-    export type PutPrivacyMutationBody = BodyType<PrivacySettings>
-    export type PutPrivacyMutationError = ErrorType<HTTPValidationError>
-
-    /**
- * @summary Put Privacy
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Record Sharing Settings
  */
-export const usePutPrivacy = <TError = ErrorType<HTTPValidationError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putPrivacy>>, TError,{data: BodyType<PrivacySettings>}, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof putPrivacy>>,
-        TError,
-        {data: BodyType<PrivacySettings>},
-        TContext
-      > => {
+export const recordSharingSettings = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<unknown>({ url: `/api/settings/privacy/records`, method: 'GET', signal }, options);
+};
 
-      const mutationOptions = getPutPrivacyMutationOptions(options);
+export const getRecordSharingSettingsQueryKey = () => {
+  return [`/api/settings/privacy/records`] as const;
+};
 
-      return useMutation(mutationOptions, queryClient);
-    }
+export const getRecordSharingSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof recordSharingSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getRecordSharingSettingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof recordSharingSettings>>> = ({ signal }) => recordSharingSettings(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type RecordSharingSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof recordSharingSettings>>>;
+export type RecordSharingSettingsQueryError = ErrorType<unknown>;
+
+export function useRecordSharingSettings<TData = Awaited<ReturnType<typeof recordSharingSettings>>, TError = ErrorType<unknown>>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, Awaited<ReturnType<typeof recordSharingSettings>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecordSharingSettings<TData = Awaited<ReturnType<typeof recordSharingSettings>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, Awaited<ReturnType<typeof recordSharingSettings>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecordSharingSettings<TData = Awaited<ReturnType<typeof recordSharingSettings>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Record Sharing Settings
+ */
+
+export function useRecordSharingSettings<TData = Awaited<ReturnType<typeof recordSharingSettings>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recordSharingSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getRecordSharingSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * @summary Set Record Sharing
+ */
+export const setRecordSharing = (
+  table: string,
+  recordId: number,
+  recordSharingUpdate: BodyType<RecordSharingUpdate>,
+  options?: SecondParameter<typeof customInstance>,
+) => {
+  return customInstance<unknown>(
+    {
+      url: `/api/settings/privacy/records/${table}/${recordId}`,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: recordSharingUpdate,
+    },
+    options,
+  );
+};
+
+export const getSetRecordSharingMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setRecordSharing>>,
+    TError,
+    { table: string; recordId: number; data: BodyType<RecordSharingUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setRecordSharing>>,
+  TError,
+  { table: string; recordId: number; data: BodyType<RecordSharingUpdate> },
+  TContext
+> => {
+  const mutationKey = ['setRecordSharing'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setRecordSharing>>,
+    { table: string; recordId: number; data: BodyType<RecordSharingUpdate> }
+  > = props => {
+    const { table, recordId, data } = props ?? {};
+
+    return setRecordSharing(table, recordId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetRecordSharingMutationResult = NonNullable<Awaited<ReturnType<typeof setRecordSharing>>>;
+export type SetRecordSharingMutationBody = BodyType<RecordSharingUpdate>;
+export type SetRecordSharingMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Set Record Sharing
+ */
+export const useSetRecordSharing = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setRecordSharing>>,
+      TError,
+      { table: string; recordId: number; data: BodyType<RecordSharingUpdate> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setRecordSharing>>,
+  TError,
+  { table: string; recordId: number; data: BodyType<RecordSharingUpdate> },
+  TContext
+> => {
+  const mutationOptions = getSetRecordSharingMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};

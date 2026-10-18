@@ -29,6 +29,7 @@ from app.modules.llm.errors import AdvisorError
 from app.modules.llm.llm_gateway_manager import LLMGatewayManager, llm_gateway_manager
 
 logger = logging.getLogger(__name__)
+_UNLOADED = object()
 
 
 class AdvisorManager:
@@ -47,10 +48,10 @@ class AdvisorManager:
         return privacy_manager.get_excluded(session) | options.exclude
 
     def route(self, session: Session, query: str, conversation: AdvisorConversation | None,
-              options: AskOptions) -> RouteDecision:
+              options: AskOptions, last_snapshot=_UNLOADED) -> RouteDecision:
         previous = None
         if conversation is not None:
-            last = context_snapshot_handler.get_latest_for_conversation(session, conversation.id)
+            last = context_snapshot_handler.get_latest_for_conversation(session, conversation.id) if last_snapshot is _UNLOADED else last_snapshot
             if last is not None:
                 previous = frozenset(Category(c) for c in [*last.context_categories, *last.excluded_categories])
         excluded = self.excluded(session, options)
@@ -72,10 +73,10 @@ class AdvisorManager:
         return route
 
     def document_options(self, session: Session, conversation: AdvisorConversation | None,
-                         options: AskOptions) -> AskOptions:
+                         options: AskOptions, last_snapshot=_UNLOADED) -> AskOptions:
         if options.document_ids is not None:
             return options
-        last = context_snapshot_handler.get_latest_for_conversation(session, conversation.id) if conversation else None
+        last = (context_snapshot_handler.get_latest_for_conversation(session, conversation.id) if conversation else None) if last_snapshot is _UNLOADED else last_snapshot
         ids = last.payload.get("document_scope", {}).get("document_ids", []) if last else []
         return replace(options, document_ids=tuple(ids))
 
@@ -87,8 +88,9 @@ class AdvisorManager:
         return excluded
 
     def prepare_context(self, session, query, conversation, options, conversation_id=None):
-        options = self.document_options(session, conversation, options)
-        route = self.route(session, query, conversation, options)
+        last_snapshot = context_snapshot_handler.get_latest_for_conversation(session, conversation.id) if conversation else None
+        options = self.document_options(session, conversation, options, last_snapshot)
+        route = self.route(session, query, conversation, options, last_snapshot)
         excluded = self.sharing_exclusions(session, options)
         if options.document_search and options.document_ids:
             docs = visible_documents(session, document_ids=options.document_ids, excluded_categories=excluded)
@@ -96,7 +98,12 @@ class AdvisorManager:
             route = replace(route, requested=route.requested | topics,
                             selected=(route.selected | topics) - excluded)
         prepared = self.prepare_history(session, conversation.id, None, options, excluded) if conversation else PreparedHistory([], {})
+        from app.modules.advisor.memory_history_manager import relevant_history, relevant_experiences
+        related, related_snapshots, retrieval_flags = relevant_history(session, query, conversation.id if conversation else -1, excluded, options)
+        prepared.messages = related + prepared.messages
+        prepared.snapshots.update(related_snapshots)
         inherited = inherited_evidence(prepared)
+        experiences = relevant_experiences(session, query, excluded, options)
         package = self.builder.build(session, route, conversation_id=conversation_id, query=query,
                                      document_search=options.document_search,
                                      document_ids=options.document_ids or (), excluded=excluded,
@@ -104,7 +111,9 @@ class AdvisorManager:
                                      inherited_dependencies=inherited.dependencies,
                                      inherited_categories=inherited.categories,
                                      inherited_unknown=inherited.unknown,
-                                     history_document_refs=inherited.document_refs)
+                                     history_document_refs=inherited.document_refs,
+                                     history_message_refs=[m.id for m in prepared.messages],
+                                     history_search_flags=retrieval_flags, historical_experiences=experiences)
         return route, package, options, prepared
 
     def prepare_history(self, session, conversation_id, before_id, options, excluded=None):
@@ -123,12 +132,17 @@ class AdvisorManager:
         version_ids = {c["version_id"] for c in evidence_rows}
         versions = set(session.scalars(select(DocumentVersion.id).where(DocumentVersion.id.in_(version_ids)))) if version_ids else set()
         safe = replay_safe_messages(history, snapshots, excluded, options, set(visible), versions)
-        return PreparedHistory(safe, snapshots, decision.withheld_ids, decision.withheld_categories)
+        from app.modules.advisor.memory_history_manager import source_allowed
+        eligible = [m for m in safe if source_allowed(session, [{"table": "advisor_messages", "id": m.id}], excluded)]
+        withheld = list(dict.fromkeys([*decision.withheld_ids, *(m.id for m in history if m not in eligible)]))
+        return PreparedHistory(eligible, snapshots, withheld, decision.withheld_categories)
 
     def preview(self, session: Session, query: str, conversation: AdvisorConversation | None,
                 options: AskOptions) -> dict:
         """What would be shared for this question — nothing is persisted or sent."""
         route, package, _, prepared = self.prepare_context(session, query, conversation, options)
+        # The same total request budget applies to previews, without resolving a provider.
+        build_request("preview", prepared.decision(), package, query, self.sharing_exclusions(session, options))
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None
@@ -171,6 +185,12 @@ class AdvisorManager:
             yield {"type": "error", **exc.as_dict()}
             return
         excluded = self.sharing_exclusions(session, options)
+        try:
+            build_request("preview", prepared.decision(), package, query, excluded)
+        except AdvisorError as exc:
+            session.rollback()
+            yield {"type": "error", **exc.as_dict()}
+            return
         user_msg = message_handler.create(session, {
             "conversation_id": conversation.id, "role": "user", "content": query,
             "context_snapshot_id": package.snapshot_id,

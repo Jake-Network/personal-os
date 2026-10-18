@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+import { MemoryRevisions } from './memory-revisions';
+
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -22,6 +25,7 @@ import { type MemoryForm, memorySchema } from '../schema';
 
 export function MemoryList() {
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState<number | null>(null);
   const list = useListMemories({ status: 'confirmed' });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListMemoriesQueryKey() });
   const form = useForm<MemoryForm>({ resolver: zodResolver(memorySchema), defaultValues: { kind: 'preference', content: '' } });
@@ -66,13 +70,19 @@ export function MemoryList() {
       <Card>
         <ul>
           {list.data?.map(m => (
-            <li key={m.id} className='flex items-baseline gap-2.5 border-b px-4 py-2 last:border-0'>
-              <Badge variant='accent'>{MEMORY_KIND_LABEL[m.kind]}</Badge>
-              <span className='flex-1'>{m.content}</span>
-              <span className='text-xs text-faint'>{m.source === 'advisor' ? 'AI 제안 → 확인' : '직접 입력'}</span>
-              <Button size='sm' variant='ghost-destructive' onClick={() => confirm('이 기억을 삭제할까요?') && remove.mutate({ memoryId: m.id })}>
-                삭제
-              </Button>
+            <li key={m.id} className='border-b px-4 py-2 last:border-0'>
+              <div className='flex items-baseline gap-2.5'>
+                <Badge variant='accent'>{MEMORY_KIND_LABEL[m.kind]}</Badge>
+                <span className='flex-1'>{m.content}</span>
+                <span className='text-xs text-faint'>{m.source === 'advisor' ? 'AI 제안 → 확인' : '직접 입력'}</span>
+                <Button size='sm' onClick={() => setExpanded(expanded === m.id ? null : m.id)}>
+                  수정 · 이력
+                </Button>
+                <Button size='sm' variant='ghost-destructive' onClick={() => confirm('이 기억을 삭제할까요?') && remove.mutate({ memoryId: m.id })}>
+                  삭제
+                </Button>
+              </div>
+              {expanded === m.id && <MemoryRevisions memory={m} />}
             </li>
           ))}
         </ul>

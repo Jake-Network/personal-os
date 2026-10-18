@@ -13,12 +13,8 @@ router = APIRouter(prefix="/api/data", tags=["personal-data"])
 
 
 def _check_sheet_ownership(session: Session, name: str) -> None:
-    if name not in {"accounts", "holdings", "fx-rates", "liabilities", "other-assets"}:
-        return
-    from app.modules.portfolio.portfolio_manager import settings_dict
-
-    if settings_dict(session)["spreadsheet_id"]:
-        raise HTTPException(409, "Google Sheets is authoritative. Edit these fields in the spreadsheet and synchronize.")
+    # Google supplies public quotes only; personal data remains locally editable.
+    return
 
 
 def _register(name: str, res: Resource) -> None:

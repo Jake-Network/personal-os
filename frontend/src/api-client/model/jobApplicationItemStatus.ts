@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type JobApplicationItemStatus = typeof JobApplicationItemStatus[keyof typeof JobApplicationItemStatus];
-
+export type JobApplicationItemStatus = (typeof JobApplicationItemStatus)[keyof typeof JobApplicationItemStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const JobApplicationItemStatus = {

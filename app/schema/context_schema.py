@@ -27,3 +27,7 @@ class SnapshotCompareResponse(BaseModel):
     compared_at: datetime
     changed_sections: list[str]
     unchanged_sections: list[str]
+
+
+class RecordSharingUpdate(BaseModel):
+    external_allowed: bool

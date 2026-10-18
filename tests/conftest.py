@@ -56,10 +56,15 @@ def session():
 
 
 @pytest.fixture
-def fake_provider(monkeypatch):
+def fake_provider(monkeypatch, session):
     provider = FakeProvider()
     monkeypatch.setitem(llm_gateway_manager.providers, "chatgpt_plan", provider)
     monkeypatch.setitem(llm_gateway_manager.providers, "openai_api_key", ExplodingProvider())
+    # Synthetic account attestation: production gateway policy is still exercised;
+    # no real OAuth credentials or personal data enter these fixtures.
+    from app.modules.llm import transfer_policy
+    monkeypatch.setattr(transfer_policy, "account_binding", lambda session, provider: "synthetic-account")
+    transfer_policy.confirm(session, "chatgpt_plan", True, True)
     return provider
 
 
@@ -67,6 +72,7 @@ def fake_provider(monkeypatch):
 def client(session, monkeypatch):
     from app.main import app
     from app.modules.documents import document_manager
+    from app.modules.jobs import job_manager
 
     async def idle_worker(_database, stop):
         await stop.wait()
@@ -74,8 +80,14 @@ def client(session, monkeypatch):
     # The lifespan worker would share the single in-memory SQLite connection with the test session
     # from another thread; tests drive indexing explicitly with process_one instead.
     monkeypatch.setattr(document_manager, "process_pending", idle_worker)
+    monkeypatch.setattr(job_manager, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
     with TestClient(app, base_url="http://127.0.0.1:8000") as c:
+        from app.config import settings
+        c.headers["Origin"] = settings.frontend_url
+        response = c.post("/api/security/setup", json={"password": "synthetic-test-password-123"})
+        assert response.status_code == 200, response.text
+        c.headers["X-CSRF-Token"] = response.json()["csrf_token"]
         yield c
 
 
@@ -91,10 +103,12 @@ def seeded(session):
         Holding,
         JobApplication,
         Liability,
+        LocalFinanceCoverage,
     )
 
     today = date.today()
     session.add_all([
+        LocalFinanceCoverage(id=1, kinds=["cash", "holding", "liability", "other"]),
         Account(name="급여통장", kind="checking", currency="KRW", balance=Decimal("12000000"),
                 balance_as_of=today, is_liquid=True),
         Account(name="달러예금", kind="deposit", currency="USD", balance=Decimal("1000"),

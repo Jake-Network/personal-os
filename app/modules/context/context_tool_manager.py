@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums.context_category import Category
 from app.modules.context.calendar_scope import calendar_scope
+from app.modules.career.context import get_career_records
 from app.modules.crud import (
     account_handler,
     app_setting_handler,
@@ -112,6 +113,22 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
         flags.append(quality_flag("net_worth_incomplete", Category.FINANCIAL,
                            ", ".join(f"{e['label']}({e['reason']})" for e in worth.excluded)))
 
+    worth_data = worth.as_dict()
+    from app.modules.portfolio.local_portfolio import portfolio as local_portfolio
+    allowed_kinds = ("cash", "liability", "other", "holding") if Category.INVESTMENT in ctx.allowed else ("cash", "liability", "other")
+    valuation = local_portfolio(s, kinds=allowed_kinds)
+    if fx.base == "KRW":
+        worth_data.update(total_assets=valuation["total_assets"] if Category.INVESTMENT in ctx.allowed else None,
+                          total_liabilities=valuation["total_liabilities"],
+                          net_worth=valuation["net_worth"] if Category.INVESTMENT in ctx.allowed else None,
+                          complete=valuation["complete"] and Category.INVESTMENT in ctx.allowed)
+    else:
+        worth_data.update(total_assets=None,total_liabilities=None,net_worth=None,complete=False)
+        flags.append(quality_flag("valuation_base_unavailable", Category.FINANCIAL, "Canonical local valuation is recorded in KRW"))
+    if not worth_data["complete"]:
+        flags.append(quality_flag("net_worth_incomplete", Category.FINANCIAL, "; ".join(valuation["issues"])))
+    # Preserve the separate eligible-cash calculation used by runway; these
+    # aggregate totals never make securities spendable.
     return ToolResult(
         data={
             "accounts": [
@@ -133,7 +150,7 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
                  "as_of": l.balance_as_of.isoformat()}
                 for l in liabilities
             ],
-            "computed": {"net_worth": worth.as_dict(), "computed_by": "FinancialCalculator"},
+            "computed": {"net_worth": worth_data, "computed_by": "backend_local_valuation"},
             "fx_rates_used": [
                 {"pair": f"{r.base}/{r.quote}", "rate": str(r.rate), "as_of": r.as_of.isoformat()} for r in fx_rows
             ],
@@ -222,22 +239,33 @@ def get_portfolio_summary(ctx: ToolContext) -> ToolResult:
             "value_base": str(q2(value_base)) if value_base is not None else None,
         })
 
+    from app.modules.portfolio.local_portfolio import portfolio as local_portfolio
+    valuation=local_portfolio(ctx.session,kinds=("holding",))
+    complete_total=valuation["investments"] if fx.base=="KRW" else None
+    holding_issues=[issue for line in valuation["lines"] for issue in line["issues"]]
+    if complete_total is None:
+        flags.append(quality_flag("portfolio_incomplete", Category.INVESTMENT, "; ".join(holding_issues) or "Portfolio valuation coverage is unconfirmed"))
     def weights(bucket: dict[str, Decimal]) -> dict[str, str]:
         return {k: str((v / total * 100).quantize(Decimal("0.1"))) for k, v in bucket.items()} if total else {}
 
     for row in rows:
         row["weight_pct"] = str((Decimal(row["value_base"]) / total * 100).quantize(Decimal("0.1"))) \
             if total and row["value_base"] else None
+    if complete_total is None:
+        for row in rows:
+            row["weight_pct"] = None
     top = sorted((r for r in rows if r["weight_pct"]), key=lambda r: -Decimal(r["weight_pct"]))[:3]
     return ToolResult(
         data={
             "base_currency": fx.base,
             "holdings": rows,
             "computed": {
-                "total_value_base": str(q2(total)),
-                "weight_by_currency_pct": weights(by_currency),
-                "weight_by_asset_class_pct": weights(by_class),
-                "top3_concentration_pct": str(sum((Decimal(r["weight_pct"]) for r in top), Decimal(0))),
+                "total_value_base": complete_total,
+                "recorded_subtotal_base": str(q2(total)),
+                "complete": complete_total is not None,
+                "weight_by_currency_pct": weights(by_currency) if complete_total is not None else {},
+                "weight_by_asset_class_pct": weights(by_class) if complete_total is not None else {},
+                "top3_concentration_pct": str(sum((Decimal(r["weight_pct"]) for r in top), Decimal(0))) if complete_total is not None else None,
                 "computed_by": "backend",
             },
         },
@@ -410,12 +438,30 @@ def get_health_summary(ctx: ToolContext, days: int = 28) -> ToolResult:
 
 
 def get_profile(ctx: ToolContext) -> ToolResult:
-    memories = personal_memory_handler.get_by_status(ctx.session, "confirmed")
+    from app.modules.advisor.memory_history_manager import relevant_memories
+    import re
+    from datetime import datetime
+    historical_date = re.search(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", ctx.query)
+    memory_at = ctx.now
+    if historical_date:
+        try:
+            from zoneinfo import ZoneInfo
+            from app.config import settings
+            memory_at = datetime.fromisoformat(historical_date.group(1)).replace(tzinfo=ZoneInfo(settings.timezone))
+        except ValueError:
+            pass
+    memories = relevant_memories(ctx.session, ctx.query, ctx.allowed, memory_at)
     return ToolResult(
-        data={"confirmed_memories": [{"ref": f"personal_memories:{m.id}", "kind": m.kind, "content": m.content}
-                                     for m in memories]},
-        refs=[{"table": "personal_memories", "id": m.id, "updated_at": iso_or_none(m.confirmed_at)} for m in memories],
-        source_updated_at=latest_of(*(m.confirmed_at for m in memories)),
+        data={"confirmed_memories": [{"ref": f"personal_memories:{m.id}",
+                "revision_id": revision.id if revision else None,
+                "kind": (revision or m).kind, "content": (revision or m).content,
+                "valid_from": iso_or_none(revision.valid_from) if revision else None,
+                "valid_until": iso_or_none(revision.valid_until) if revision else None}
+                                     for m, revision in memories]},
+        refs=[{"table": "memory_revisions" if revision else "personal_memories",
+               "id": revision.id if revision else m.id,
+               "updated_at": iso_or_none((revision or m).confirmed_at)} for m, revision in memories],
+        source_updated_at=latest_of(*((revision or m).confirmed_at for m, revision in memories)),
     )
 
 
@@ -427,7 +473,8 @@ CATEGORY_TOOLS: dict[Category, tuple[tuple[str, Tool], ...]] = {
                          ("get_monthly_asset_history", get_monthly_asset_history)),
     Category.INVESTMENT: (("get_portfolio_summary", get_portfolio_summary), ("get_market_data", get_market_data),
                           ("get_relevant_news", get_relevant_news)),
-    Category.CAREER: (("get_job_applications", get_job_applications), ("get_interview_schedule", get_interview_schedule)),
+    Category.CAREER: (("get_job_applications", get_job_applications), ("get_interview_schedule", get_interview_schedule),
+                      ("get_career_records", get_career_records)),
     Category.CALENDAR: (("get_calendar_events", get_calendar_events), ("get_tasks", get_tasks)),
     Category.HEALTH: (("get_health_summary", get_health_summary),),
     Category.GOALS: (("get_goals", get_goals),),

@@ -11,3 +11,4 @@ class PendingLogin:
     nonce: str
     client_id: str
     created: float
+    generation: str | None = None

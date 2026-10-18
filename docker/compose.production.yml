@@ -1,0 +1,83 @@
+# Explicit production stack; never overlay on the development compose file.
+# docker compose --env-file docker/.env -f docker/compose.production.yml up -d --build
+name: personal-os-local
+services:
+  db:
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/db/Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-personal_os}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in docker/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-personal_os}
+    volumes: ["db_data:/var/lib/postgresql/data"]
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  app:
+    build:
+      context: ..
+      dockerfile: docker/dockerfiles/app/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-personal_os}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-personal_os}
+      PERSONAL_OS_DATA_DIR: /project/data
+      PERSONAL_OS_ALLOWED_HOSTS: app
+      PERSONAL_OS_PRODUCTION: "true"
+      FRONTEND_URL: http://127.0.0.1:5173
+      OAUTH_CALLBACK_PORT: "5173"
+      GOOGLE_OAUTH_REDIRECT_URI: http://127.0.0.1:5173/api/finance/google/callback
+      EMBEDDING_URL: http://embeddings:11434
+      HTTP_PROXY: http://egress:3128
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,db,embeddings
+    volumes: ["app_data:/project/data"]
+    networks: [private]
+    depends_on:
+      db: {condition: service_healthy}
+      egress: {condition: service_started}
+  web:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/dockerfiles/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_DOMAIN: http://app:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    networks: [private]
+    depends_on: [app]
+  gateway:
+    build: ./ingress
+    restart: unless-stopped
+    ports: ["127.0.0.1:5173:8080"]
+    networks: [private, ingress]
+    depends_on: [web]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  embeddings:
+    image: ollama/ollama:0.18.2
+    restart: unless-stopped
+    volumes: ["embedding_data:/root/.ollama"]
+    networks: [private]
+  egress:
+    build: ./egress
+    restart: unless-stopped
+    networks: [private, outbound]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+networks:
+  private: {internal: true}
+  outbound: {}
+  ingress: {}
+volumes:
+  db_data:
+  app_data:
+  embedding_data:

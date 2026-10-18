@@ -1,8 +1,11 @@
 """Settings → AI Provider (PRD §2.1). Never returns tokens."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from urllib.parse import urlsplit, parse_qs
+from app.modules.security import session_manager as app_auth
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.modules.auth.oauth_manager import oauth_manager
 from app.modules.database import get_session
 from app.modules.llm.llm_gateway_manager import MODEL_KEY, llm_gateway_manager
@@ -21,9 +24,14 @@ def get_status(session: Session = Depends(get_session)):
 
 
 @router.post("/chatgpt/login", response_model=LoginStartResponse)
-def start_login(force_consent: bool = False, session: Session = Depends(get_session)):
+def start_login(request: Request, response: Response, force_consent: bool = False, session: Session = Depends(get_session)):
     """`Continue with ChatGPT` / 재인증. The browser opens authorize_url; tokens stay server-side."""
-    return LoginStartResponse(authorize_url=oauth_manager.start_login(session, force_consent=force_consent))
+    url = oauth_manager.start_login(session, force_consent=force_consent)
+    state = parse_qs(urlsplit(url).query)["state"][0]
+    proof = app_auth.bind_oauth(session, request.cookies[app_auth.COOKIE], state, "chatgpt")
+    response.set_cookie("personal_os_oauth_chatgpt", proof, httponly=True, samesite="lax", max_age=600, path="/",
+                        secure=urlsplit(settings.frontend_url).scheme == "https")
+    return LoginStartResponse(authorize_url=url)
 
 
 @router.delete("/chatgpt", status_code=204)

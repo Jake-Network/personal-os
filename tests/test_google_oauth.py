@@ -16,7 +16,7 @@ from app.modules.auth.crypto import TokenCipher
 from app.modules.auth.google_oauth_manager import GoogleOAuthManager
 from app.modules.database.model import GoogleOAuthConnection, GoogleOAuthPending
 
-READONLY = "https://www.googleapis.com/auth/spreadsheets.readonly"
+READONLY = "https://www.googleapis.com/auth/drive.file"
 SCOPES = f"openid email {READONLY}"
 
 
@@ -53,7 +53,7 @@ def connect(manager, session):
     return query, binding, connection
 
 
-def test_google_authorization_requests_only_identity_and_sheets_readonly(session):
+def test_google_authorization_requests_only_identity_and_drive_file(session):
     manager = make_manager()
     query, binding = start(manager, session)
     assert query["response_type"] == "code"
@@ -297,9 +297,8 @@ def test_google_api_callback_without_browser_binding_fails_closed(google_api):
     client.cookies.clear()
     response = client.get("/api/finance/google/callback", params={"state": query["state"][0], "code": "stolen-code"},
                           follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"].endswith("/finance?google_oauth=error")
-    assert client.get("/api/finance/google/status").json()["connected"] is False
+    assert response.status_code == 401
+    assert client.get("/api/finance/google/status").status_code == 401
 
 
 @pytest.mark.parametrize("headers", [{"origin": "https://attacker.invalid"}, {"sec-fetch-site": "cross-site"}])

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useSyncExternalStore } from 'react';
+import { Suspense, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,12 +9,12 @@ import { PageContainer, PageHeader } from '@/components/page-container';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { financeApi, type GoogleConnection, type Portfolio } from './api';
 import { googleEnvironmentTemplate, googleOriginMismatch } from './google-setup';
 import { allocationPercent, money, timestamp } from './presentation';
+import { MarketConnection } from './market-connection';
 
 // An origin cannot change within this document; a navigation creates a new document.
 const subscribeToOrigin = () => () => undefined;
@@ -142,8 +142,8 @@ function GoogleConnectionControls() {
               : data?.status === 'disconnected'
                 ? 'Google 연결이 해제되었습니다. 다시 연결하면 동기화할 수 있습니다.'
                 : data?.credential_source === 'application_default'
-                  ? 'Google 계정을 연결해 비공개 시트를 읽어오세요. 서버 인증정보 설정도 사용할 수 있습니다.'
-                  : 'Google 계정을 연결해 비공개 시트를 읽어오세요.'}
+                  ? 'Google 계정을 연결해 시세 전용 파일을 연결하세요.'
+                  : 'Google 계정을 연결해 시세 전용 파일을 연결하세요.'}
       </p>
       {data && <GoogleSetupGuidance data={data} originMismatch={originMismatch} />}
       <div className='flex flex-wrap gap-2'>
@@ -163,13 +163,18 @@ function GoogleConnectionControls() {
         )}
       </div>
       <p className='text-xs text-muted-foreground'>
-        시트 읽기 및 연결 계정 확인 권한을 요청합니다. 연결한 계정이 볼 수 있는 시트의 ID를 아래에 입력하세요. Google 연결은 Personal OS 로그인이나
-        ChatGPT 연결과 별개입니다.
+        앱이 생성한 시세 전용 파일의 drive.file 권한과 연결 계정 확인 권한을 요청합니다. Google 연결은 Personal OS 로그인이나 ChatGPT 연결과
+        별개입니다.
       </p>
       {params.get('google_oauth') === 'error' && (
         <Alert variant='destructive'>Google 연결을 완료하지 못했습니다. 다시 연결하거나 서버 설정을 확인하세요.</Alert>
       )}
       {error && <Alert variant='destructive'>{error.message}</Alert>}
+      {data?.requires_scope_reset && (
+        <Alert variant='warning'>
+          기존의 광범위한 Google 승인을 Google 계정 연결 관리에서 해제한 뒤 다시 연결하세요. 현재 권한으로 시세 파일에 쓰지 않습니다.
+        </Alert>
+      )}
       {data?.last_error_code && <Alert variant='warning'>Google 연결에 문제가 있습니다. 계정을 다시 연결하고 시트 접근 권한을 확인하세요.</Alert>}
     </div>
   );
@@ -240,38 +245,29 @@ export function Holdings({ data }: { data: Portfolio }) {
           ))}
         </TableBody>
       </Table>
-      {!data.lines.length && <p className='p-4 text-muted-foreground'>동기화된 항목이 없습니다.</p>}
+      {!data.lines.length && <p className='p-4 text-muted-foreground'>기록된 항목이 없습니다.</p>}
     </Card>
   );
 }
 
 export function PortfolioView() {
-  const client = useQueryClient();
-  const settings = useQuery({ queryKey: ['finance', 'settings'], queryFn: financeApi.settings });
   const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
-  const [spreadsheet, setSpreadsheet] = useState<string | null>(null);
-  const action = useMutation({
-    mutationFn: (operation: 'save' | 'verify' | 'sync') =>
-      operation === 'save' ? financeApi.save((spreadsheet ?? settings.data?.spreadsheet_id ?? '').trim()) : financeApi[operation](),
-    onSettled: () => client.invalidateQueries({ queryKey: ['finance'] }),
-  });
-  const error = action.error ?? settings.error ?? portfolio.error;
-  const configured = !!settings.data?.spreadsheet_id;
+  const error = portfolio.error;
   return (
     <PageContainer className='space-y-4'>
       <PageHeader
         title='포트폴리오'
-        description='Google Sheets의 입력값을 기준으로 평가합니다. 보유 종목 화면에서도 시트에 종목과 수량을 저장할 수 있습니다.'
+        description='이 컴퓨터의 로컬 기록을 기준으로 평가합니다. Google은 티커와 통화쌍의 시세 조회에만 사용합니다.'
         actions={
           <Button asChild>
-            <Link href='/finance/history'>월별 순자산 기록</Link>
+            <Link href='/finance/records'>거래 · 현금흐름 기록</Link>
           </Button>
         }
       />
       {error && <Alert variant='destructive'>{error.message}</Alert>}
       <Card>
         <CardHeader>
-          <CardTitle>비공개 Google Sheets 연결</CardTitle>
+          <CardTitle>Google 시세 전용 연결</CardTitle>
         </CardHeader>
         <CardContent className='space-y-3'>
           <Link href='/data/holdings' className='text-sm underline'>
@@ -279,51 +275,13 @@ export function PortfolioView() {
           </Link>
           <Suspense fallback={<p role='status'>Google 연결 상태를 확인하는 중…</p>}>
             <GoogleConnectionControls />
+            <MarketConnection />
           </Suspense>
-          <form
-            className='flex flex-wrap items-end gap-2'
-            onSubmit={event => {
-              event.preventDefault();
-              action.mutate('save');
-            }}>
-            <label className='min-w-48 flex-1'>
-              스프레드시트 ID
-              <Input
-                value={spreadsheet ?? settings.data?.spreadsheet_id ?? ''}
-                onChange={event => setSpreadsheet(event.target.value)}
-                placeholder='스프레드시트 URL의 /d/ 다음 ID'
-                autoComplete='off'
-              />
-            </label>
-            <Button type='submit' disabled={action.isPending || !(spreadsheet ?? settings.data?.spreadsheet_id ?? '').trim()}>
-              ID 저장
-            </Button>
-            <Button type='button' disabled={!configured || action.isPending} onClick={() => action.mutate('verify')}>
-              현재값 조회 검증
-            </Button>
-            <Button type='button' variant='primary' disabled={!configured || action.isPending} onClick={() => action.mutate('sync')}>
-              동기화
-            </Button>
-          </form>
           <p className='text-xs text-muted-foreground'>
-            Google 계정 연결 없이 서버 서비스 계정을 사용하는 경우 해당 계정에 시트를 공유하세요. 지원하지 않는 종목은 시트에 수동 가격과 기준일을
-            입력하세요. GOOGLEFINANCE는 지연될 수 있으며 과거 결과는 API로 가져올 수 없습니다.
+            새 전용 파일에 Quotes와 FX만 저장합니다. 계좌·수량·원가·개인 메모는 전송하지 않습니다. Google에는 조회 티커가 남으며 무료 시세는
+            지연되거나 지원되지 않을 수 있습니다. 기존 자산 시트의 개인정보는 자동 삭제되지 않습니다. 이전 후 Google에서 승인과 원격 파일을 직접
+            확인하세요.
           </p>
-          <dl className='grid gap-2 text-xs sm:grid-cols-3'>
-            <div>
-              <dt>조회 검증</dt>
-              <dd>{timestamp(settings.data?.verified_at)}</dd>
-            </div>
-            <div>
-              <dt>최근 동기화 시도</dt>
-              <dd>{timestamp(settings.data?.last_sync_at)}</dd>
-            </div>
-            <div>
-              <dt>최근 성공</dt>
-              <dd>{timestamp(settings.data?.last_success_at)}</dd>
-            </div>
-          </dl>
-          {settings.data?.last_error && <Alert variant='destructive'>{settings.data.last_error}</Alert>}
         </CardContent>
       </Card>
       {portfolio.isPending && <p role='status'>평가 정보를 불러오는 중…</p>}
@@ -336,7 +294,7 @@ export function PortfolioView() {
               {portfolio.data.issues.join(' · ')}
             </Alert>
           )}
-          <p className='text-xs text-faint'>평가 데이터 동기화: {timestamp(portfolio.data.synced_at)}</p>
+          <p className='text-xs text-faint'>평가 원본: 로컬 DB · 가격과 환율 기준일은 각 항목에서 확인하세요.</p>
           <Totals data={portfolio.data} />
           <Card>
             <CardHeader>

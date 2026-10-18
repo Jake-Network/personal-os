@@ -6,6 +6,9 @@
  */
 import type { HoldingInputExpectedVersion } from './holdingInputExpectedVersion';
 import type { HoldingInputRequestId } from './holdingInputRequestId';
+import type { HoldingInputAccountId } from './holdingInputAccountId';
+import type { HoldingInputPriceSource } from './holdingInputPriceSource';
+import type { HoldingInputTradeDate } from './holdingInputTradeDate';
 import type { HoldingInputQuantity } from './holdingInputQuantity';
 import type { HoldingInputAvgCost } from './holdingInputAvgCost';
 import type { HoldingInputAssetClass } from './holdingInputAssetClass';
@@ -22,15 +25,18 @@ export interface HoldingInput {
    */
   position_id: string;
   request_id?: HoldingInputRequestId;
+  account_id?: HoldingInputAccountId;
+  price_source?: HoldingInputPriceSource;
+  trade_date?: HoldingInputTradeDate;
   /**
    * @minLength 1
-   * @maxLength 80
+   * @maxLength 32
    * @pattern ^[A-Z0-9][A-Z0-9.:-]*$
    */
   ticker: string;
   /**
    * @minLength 1
-   * @maxLength 200
+   * @maxLength 120
    */
   label: string;
   /** @pattern ^[A-Z]{3}$ */

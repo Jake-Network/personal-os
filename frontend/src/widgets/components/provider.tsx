@@ -5,6 +5,8 @@ import { ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 
+import { SecurityGate } from '@/features/security/security-gate';
+
 import { Toaster } from '@/components/ui/sonner';
 
 import { getQueryClient } from '@/lib/react-query-hooks';
@@ -14,7 +16,7 @@ export default function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={getQueryClient()}>
       <ThemeProvider attribute='class' defaultTheme='system' enableSystem disableTransitionOnChange>
         <Toaster position='bottom-right' />
-        {children}
+        <SecurityGate>{children}</SecurityGate>
       </ThemeProvider>
     </QueryClientProvider>
   );

@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type HoldingInputQuoteMode = typeof HoldingInputQuoteMode[keyof typeof HoldingInputQuoteMode];
-
+export type HoldingInputQuoteMode = (typeof HoldingInputQuoteMode)[keyof typeof HoldingInputQuoteMode];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const HoldingInputQuoteMode = {

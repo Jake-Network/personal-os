@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type AccountCreateKind = typeof AccountCreateKind[keyof typeof AccountCreateKind];
-
+export type AccountCreateKind = (typeof AccountCreateKind)[keyof typeof AccountCreateKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const AccountCreateKind = {

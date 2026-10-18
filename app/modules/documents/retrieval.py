@@ -53,7 +53,8 @@ def visible_documents(session, categories=None, document_ids=None, excluded_cate
     if document_ids is not None:
         statement = statement.where(Document.id.in_(document_ids))
     documents = session.scalars(statement).all()
-    return [doc for doc in documents if not excluded.intersection(doc.categories)
+    from app.modules.context.record_privacy import record_allowed
+    return [doc for doc in documents if record_allowed(session, "documents", doc.id) and not excluded.intersection(doc.categories)
             and (allowed is None or set(doc.categories).intersection(allowed))
             and (document_ids is None or doc.id in document_ids)]
 

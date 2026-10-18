@@ -6,5 +6,5 @@
  */
 
 export type ListProposalsParams = {
-status?: string;
+  status?: string;
 };

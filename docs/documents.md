@@ -133,3 +133,7 @@ PostgreSQL 전용 검증은 반드시 폐기 가능한 테스트 DB를 사용합
 TEST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:15437/rag_test \
   uv run pytest tests/test_documents.py::test_postgresql_vector_search_and_migration_parity -q
 ```
+
+## 잠금과 파생 근거
+
+개인 문서 API는 앱 소유자 세션이 필요합니다. 앱 잠금은 모든 탭의 미리보기·캐시와 진행 중 상담을 정리하지만 승인된 로컬 색인은 계속됩니다. 문서의 공유 해제·삭제는 그 문서를 출처로 둔 기억 수정본·과거 대화·검색 결과의 전송 검사에도 적용됩니다. 요약과 기억은 출처를 보존하며 사용자 확인 전에는 확정된 사실로 다루지 않습니다. 로컬 임베딩과 원본·임시 파일은 OS 암호화 저장 영역에 두고, 전체 복구 절차는 [README](../README.md)를 따릅니다.

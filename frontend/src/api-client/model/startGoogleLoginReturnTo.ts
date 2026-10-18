@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type StartGoogleLoginReturnTo = typeof StartGoogleLoginReturnTo[keyof typeof StartGoogleLoginReturnTo];
-
+export type StartGoogleLoginReturnTo = (typeof StartGoogleLoginReturnTo)[keyof typeof StartGoogleLoginReturnTo];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const StartGoogleLoginReturnTo = {

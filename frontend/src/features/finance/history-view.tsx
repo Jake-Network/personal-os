@@ -21,6 +21,7 @@ export function HistoryView() {
   const client = useQueryClient();
   const [period, setPeriod] = useState('6m');
   const [month, setMonth] = useState('');
+  const [closing, setClosing] = useState(false);
   const [selected, setSelected] = useState<Snapshot | null>(null);
   const history = useQuery({ queryKey: ['finance', 'history', period], queryFn: () => financeApi.history(period) });
   const audit = useQuery({ queryKey: ['finance', 'audit', selected?.id], queryFn: () => financeApi.audit(selected!.id), enabled: !!selected });
@@ -54,7 +55,7 @@ export function HistoryView() {
           className='flex items-end gap-2'
           onSubmit={event => {
             event.preventDefault();
-            if (month) create.mutate(month);
+            if (month) setClosing(true);
           }}>
           <label className='text-xs'>
             월말 기록 생성
@@ -65,8 +66,26 @@ export function HistoryView() {
           </Button>
         </form>
       </div>
+      {closing && month && (
+        <Card>
+          <CardContent>
+            <h2 className='mb-3 font-semibold'>{month} 월말 근거 입력</h2>
+            <SnapshotCorrection
+              snapshot={{ rows: [], coverage: [] } as unknown as Snapshot}
+              createMonth={month}
+              onSaved={snapshot => {
+                setClosing(false);
+                setSelected(snapshot);
+              }}
+            />
+            <Button className='mt-2' onClick={() => setClosing(false)}>
+              취소
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       <p className='text-xs text-muted-foreground'>
-        이미 생성된 월은 중복 생성하지 않습니다. 과거 수량이나 가격의 근거가 없으면 불완전한 상태로 표시합니다.
+        당시 수량·잔액·종가·환율과 포함 범위가 충족된 월만 확정합니다. 기존 기록의 정정은 새 revision으로 보존합니다.
       </p>
       {history.data?.missing_months.length ? (
         <Alert variant='warning'>월말 기록 없음: {history.data.missing_months.map(value => value.slice(0, 7)).join(', ')}</Alert>

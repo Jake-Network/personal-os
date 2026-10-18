@@ -5,8 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type CashflowEntryItemKind = typeof CashflowEntryItemKind[keyof typeof CashflowEntryItemKind];
-
+export type CashflowEntryItemKind = (typeof CashflowEntryItemKind)[keyof typeof CashflowEntryItemKind];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const CashflowEntryItemKind = {

@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.modules.advisor.memory_manager import decision_journal_manager, memory_manager
 from app.modules.database import get_session
-from app.schema.advisor_schema import DecisionCreate, DecisionItem, DecisionReview, MemoryCreate, MemoryItem
+from app.schema.advisor_schema import DecisionCreate, DecisionItem, DecisionReview, MemoryCreate, MemoryItem, MemoryRevisionCreate, MemoryRevisionItem
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -34,7 +35,11 @@ def _decide(session: Session, memory_id: int, confirm: bool):
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
+        session.rollback()
         raise HTTPException(409, str(exc)) from exc
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(409, "memory was decided by another request") from exc
 
 
 @router.delete("/memories/{memory_id}", status_code=204)
@@ -61,3 +66,25 @@ def review_decision(entry_id: int, body: DecisionReview, session: Session = Depe
         return decision_journal_manager.review(session, entry_id, body)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/memories/{memory_id}/revisions", response_model=list[MemoryRevisionItem])
+def memory_revisions(memory_id: int, session: Session = Depends(get_session)):
+    from app.modules.advisor.memory_history_manager import memory_history_manager
+    try:
+        return memory_history_manager.revisions(session, memory_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/memories/{memory_id}/revisions", response_model=MemoryRevisionItem, status_code=201)
+def revise_memory(memory_id: int, body: MemoryRevisionCreate, session: Session = Depends(get_session)):
+    from app.modules.advisor.memory_history_manager import memory_history_manager
+    from sqlalchemy.exc import IntegrityError
+    try:
+        return memory_history_manager.revise(session, memory_id, body)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except (ValueError, IntegrityError) as exc:
+        session.rollback()
+        raise HTTPException(409, "memory revision conflict or invalid source/validity") from exc

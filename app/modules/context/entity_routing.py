@@ -69,9 +69,5 @@ def matched_investment_terms(
         return ()
     if override is not None and Category.INVESTMENT not in override:
         return ()
-    spreadsheet_id = session.scalar(select(PortfolioSettings.spreadsheet_id).where(PortfolioSettings.id == 1))
-    if spreadsheet_id:
-        terms = _sheets_terms(session, spreadsheet_id)
-    else:
-        terms = [term for row in session.execute(select(Holding.symbol, Holding.name)) for term in row]
+    terms = [term for row in session.execute(select(Holding.symbol, Holding.name)) for term in row]
     return _matched(query, terms)

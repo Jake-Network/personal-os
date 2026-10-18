@@ -40,6 +40,8 @@ def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, mo
 
     url = f"sqlite:///{tmp_path / 'startup.db'}"
     config = Config('alembic.ini')
+    from alembic.script import ScriptDirectory
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
     config.attributes['database_url'] = url
     if previous_revision:
         command.upgrade(config, previous_revision)
@@ -60,7 +62,7 @@ def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, mo
                 assert version == previous_revision and 'documents' not in tables
             else:
                 assert tables == set(Base.metadata.tables) | {'alembic_version'}
-                assert version == '0007_document_job_attempts'
+                assert version == expected_head
             with database.engine.connect() as connection:
                 if previous_revision:
                     assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'

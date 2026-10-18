@@ -26,7 +26,7 @@ RULES: tuple[tuple[tuple[str, ...], frozenset[Category]], ...] = (
       "portfolio", "stock", "invest"),
      frozenset({C.INVESTMENT, C.FINANCIAL})),
     (("면접", "interview"), frozenset({C.CAREER, C.CALENDAR, C.GOALS})),
-    (("이력서", "경력기술서", "자기소개서", "자소서", "resume", "curriculum vitae", "커리어", "회사", "채용", "지원", "이직", "오퍼", "연봉", "직무", "포지션", "jd", "career", "job", "offer"),
+    (("이력서", "경력기술서", "경력", "프로젝트", "기여", "재직", "피드백", "역량", "배운 점", "자기소개서", "자소서", "resume", "curriculum vitae", "커리어", "회사", "채용", "지원", "이직", "오퍼", "연봉", "직무", "포지션", "jd", "career", "job", "offer"),
      frozenset({C.CAREER, C.GOALS})),
     (("일정", "스케줄", "회의", "미팅", "meeting", "다음 주", "다음주", "이번 주", "이번주", "내일", "오늘", "주말", "약속", "마감", "할 일",
       "할일", "작업", "병행", "시간", "calendar", "schedule", "week", "deadline", "task"),
@@ -43,6 +43,16 @@ DOMAIN_DEFAULTS: dict[str, frozenset[Category]] = {
     "calendar": frozenset({C.CALENDAR, C.GOALS}),
     "health": frozenset({C.HEALTH, C.GOALS}),
 }
+
+_CAREER_RECORD_TERMS = frozenset({"경력", "프로젝트", "기여", "재직", "피드백", "역량", "배운 점"})
+
+
+def _matches_term(term: str, text: str) -> bool:
+    # A document title such as 비밀프로젝트 is not an explicit request for career records.
+    if term in _CAREER_RECORD_TERMS:
+        return re.search(r"(?<!\w)" + re.escape(term), text) is not None
+    return term in text
+
 
 _CONTINUATION = re.compile(
     r"^\s*(?:그럼|그러면|그렇다면|그런 경우|이 경우|그 경우|그 조건|이 조건|그 기준|이 기준|"
@@ -69,7 +79,7 @@ class ContextRouter:
             text = query.lower()
             requested = frozenset()
             for terms, bundle in RULES:
-                hits = [t for t in terms if t in text]
+                hits = [t for t in terms if _matches_term(t, text)]
                 if hits:
                     matched += hits
                     requested |= bundle

@@ -1,6 +1,6 @@
-"""Local trust boundary for a single-user API that has no authentication.
+"""Network trust boundary alongside the separate application-session middleware.
 
-The API trusts whoever can reach it, so it must only be reachable *as* a local service:
+The application is local-only; host/origin checks add protection against browser attacks:
 
 1. DNS rebinding: a web page on attacker.example can rebind its hostname to 127.0.0.1 and then
    read the API same-origin. The browser still sends `Host: attacker.example`, so every request's
@@ -13,8 +13,8 @@ The API trusts whoever can reach it, so it must only be reachable *as* a local s
    `Sec-Fetch-Site: cross-site` are refused. Requests with neither header (curl, tests, the Next
    server itself) are allowed: they cannot be forged by a web page.
 
-This is not authentication. Exposing the API beyond the local machine needs real authentication
-and TLS in front of it (see docs/RELIABILITY_REVIEW.md).
+These checks do not replace AppAuthMiddleware. Remote exposure requires a separate
+authentication and TLS design; the application remains a local single-user service.
 """
 
 import ipaddress

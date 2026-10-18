@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 
 import { getGetPrivacyQueryKey, useGetPrivacy, usePutPrivacy } from '@/api-client/generated/privacy/privacy';
 import type { Category, PrivacySettings } from '@/api-client/model';
+import { RecordSharing } from './record-sharing';
 import { ALL_CATEGORIES, CATEGORY_HINT, CATEGORY_LABEL } from '@/lib/labels';
 
 export function PrivacySettingsView() {
@@ -76,6 +77,7 @@ export function PrivacySettingsView() {
           ))}
         </ul>
       </Card>
+      <RecordSharing />
       <p className='mt-3 text-xs text-faint'>
         계좌번호와 인증정보는 설정과 상관없이 저장·전송하지 않습니다. 대시보드처럼 이 기기 안에서만 보는 화면에는 이 설정이 적용되지 않습니다.
       </p>
