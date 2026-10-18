@@ -9,7 +9,8 @@ from app.modules.database.model.advisor import AuditLog
 from app.modules.database.model.base import utcnow
 from app.modules.database.model.portfolio import PortfolioSettings
 from app.modules.portfolio import portfolio_manager as manager
-from app.modules.portfolio.sheets import SheetsClient, TABS, holding_version
+from app.modules.portfolio.holdings import editable_row
+from app.modules.portfolio.sheets import SheetsClient, TABS
 
 
 def listing(session, client=None, cached=False):
@@ -24,7 +25,7 @@ def listing(session, client=None, cached=False):
         if imported:
             result["initialized"] = True
             records = imported.payload.get("Holdings", [])
-            result["rows"] = [_editable(row) for row in records]
+            result["rows"] = [editable_row(row) for row in records]
         return result
     try:
         gateway = client or SheetsClient(session=session)
@@ -32,16 +33,10 @@ def listing(session, client=None, cached=False):
         result["initialized"] = all(tab in layout for tab in (*TABS, "Verification"))
         if result["initialized"]:
             records = gateway.holding_rows(settings.spreadsheet_id)
-            result["rows"] = [_editable(row) for row in records]
+            result["rows"] = [editable_row(row) for row in records]
     except Exception:
         result["warning"] = "Unable to read current Sheets rows. Check Google connection and spreadsheet access."
     return result
-
-
-def _editable(row):
-    return dict(row, position_id=row.get("id"), expected_version=holding_version(row),
-                quote_mode="auto" if row.get("source") == "googlefinance" else "manual",
-                manual_price=row.get("price") if row.get("source") != "googlefinance" else None)
 
 
 def _writer(session, client):

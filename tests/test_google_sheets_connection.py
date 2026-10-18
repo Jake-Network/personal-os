@@ -8,6 +8,7 @@ from app.modules.auth.google_oauth_manager import google_oauth_manager
 from app.modules.database.model.google_oauth import GoogleOAuthConnection
 from app.modules.portfolio import portfolio_manager as manager
 from app.modules.portfolio.sheets import SheetsClient, TABS
+from app.modules.portfolio.valuation import KINDS
 
 
 class FakeSheet:
@@ -19,7 +20,7 @@ class FakeSheet:
         tables["Holdings"] = [{"id": "h", "label": "Stock", "ticker": "TEST", "currency": "KRW",
                                "quantity": "2", "price": "10", "price_as_of": date.today().isoformat(),
                                "as_of": date.today().isoformat(), "source": "googlefinance"}]
-        tables["Coverage"] = [{"month": "current", **{k: "TRUE" for k in manager.KINDS}}]
+        tables["Coverage"] = [{"month": "current", **{k: "TRUE" for k in KINDS}}]
         return tables
 
 
