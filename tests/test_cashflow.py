@@ -96,3 +96,33 @@ def test_cashflow_input_validation_and_month_end(client, session):
 def test_cashflow_amount_precision_is_not_silently_rounded(client):
     body = {"occurred_on": "2026-09-01", "kind": "expense", "amount": "1.23456"}
     assert client.post("/api/data/cashflow-entries", json=body).status_code == 422
+
+
+def test_mixed_sources_warning_covers_trend_before_pagination(client, session):
+    session.add(CashflowEntry(occurred_on=date(2026, 8, 1), kind="expense", amount=Decimal("10")))
+    ledger(session, "expense", datetime(2026, 9, 2, tzinfo=UTC))
+    session.commit()
+    body = client.get("/api/finance/cashflow", params={"month": "2026-09", "page_size": 1}).json()
+    assert "cashflow_mixed_sources" in body["data_quality_flags"]
+    filtered = client.get("/api/finance/cashflow", params={"month": "2026-09", "kind": "income"}).json()
+    assert "cashflow_mixed_sources" not in filtered["data_quality_flags"]
+
+
+def test_cashflow_uses_advisor_base_currency_for_all_aggregates(client, session):
+    from app.modules.crud import app_setting_handler
+    app_setting_handler.set_value(session, "base_currency", {"currency": "USD"})
+    session.add_all([
+        CashflowEntry(occurred_on=date(2026, 9, 1), kind="expense", amount=Decimal("12.50"), currency="USD", category="식비"),
+        CashflowEntry(occurred_on=date(2026, 9, 1), kind="expense", amount=Decimal("2000")),
+    ])
+    session.commit()
+    body = client.get("/api/finance/cashflow", params={"month": "2026-09"}).json()
+    assert Decimal(body["summary"]["expense"]) == Decimal("12.50")
+    assert body["currency"] == "USD"
+    assert body["summary"]["foreign_count"] == 1
+    assert len(body["categories"]) == 1
+    assert body["categories"][0]["category"] == "식비"
+    assert Decimal(body["categories"][0]["amount"]) == Decimal("12.50")
+    assert Decimal(body["categories"][0]["share"]) == Decimal("100")
+    assert Decimal(body["trend"][-1]["expense"]) == Decimal("12.50")
+    assert "foreign_currency_excluded" in body["data_quality_flags"]

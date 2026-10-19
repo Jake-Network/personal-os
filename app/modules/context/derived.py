@@ -23,7 +23,8 @@ def fx_table_from_rates(base: str, rates: Iterable[FxRate]) -> tuple[FxTable, li
 
 
 def calendar_conflicts(events: list[CalendarEvent]) -> list[dict]:
-    """Overlapping pairs among events sorted by start."""
+    """Overlapping timed pairs among events sorted by start; all-day entries do not reserve time."""
+    events = [event for event in events if not event.all_day]
     out = []
     for i, a in enumerate(events):
         a_end = a.ends_at or a.starts_at

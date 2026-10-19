@@ -19,6 +19,8 @@ export function quoteRefreshNotice(data: HoldingsState): { variant: 'success' | 
       return { variant: 'warning', message: data.warning || '자동 시세 연결이 필요합니다. 시세 연결 설정을 확인해 주세요.' };
     case 'failed':
       return { variant: 'warning', message: `시세를 갱신하지 못했습니다. ${data.warning || '연결 상태를 확인하고 다시 시도해 주세요.'}` };
+    case 'partial':
+      return { variant: 'warning', message: `일부 시세를 갱신했습니다. ${data.warning || '갱신되지 않은 종목의 시세 상태를 확인해 주세요.'}` };
     case 'updated':
       return { variant: data.warning ? 'warning' : 'success', message: `시세를 갱신했습니다.${data.warning ? ` ${data.warning}` : ''}` };
     default:

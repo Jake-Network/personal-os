@@ -40,6 +40,34 @@ class Quotes:
         return [["KRX:005930", 20, "KRW", serial, 20]], []
 
 
+@pytest.mark.parametrize("unavailable", ["provider_error", "unsupported"])
+def test_partial_refresh_preserves_valid_prices_and_reports_warning(quote_session, unavailable):
+    session = quote_session
+    holdings.save(session, auto_input())
+    ticker = "KRX:000660" if unavailable == "provider_error" else "UNSUPPORTED:TEST"
+    holdings.save(session, auto_input(position_id="local-b", ticker=ticker))
+    fake = Quotes()
+    original_read = fake.read
+
+    def read(sheet):
+        quotes, fx = original_read(sheet)
+        if unavailable == "provider_error":
+            quotes.append([ticker, "#N/A", "KRW", 0, 20])
+        return quotes, fx
+
+    fake.read = read
+    market.initialize(session, fake)
+    result = holdings.refresh(session, fake)
+    assert result["refresh_state"] == "partial"
+    assert ticker in result["warning"]
+    session.expire_all()
+    good = session.scalar(select(Holding).where(Holding.symbol == "KRX:005930"))
+    unavailable_holding = session.scalar(select(Holding).where(Holding.symbol == ticker))
+    assert good.last_price == Decimal("20")
+    assert unavailable_holding.last_price is None
+    assert session.get(MarketSettings, 1).last_success_at is not None
+
+
 @pytest.mark.parametrize("edit", ["manual", "symbol", "currency", "mode_roundtrip"])
 def test_inflight_quote_cannot_overwrite_local_edit(quote_session, edit):
     session = quote_session

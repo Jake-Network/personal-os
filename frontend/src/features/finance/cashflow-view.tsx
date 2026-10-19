@@ -29,7 +29,7 @@ import { type LedgerDraft, LedgerEntrySheet } from './ledger-view';
 import { money } from './presentation';
 import { TRANSACTION_KIND_LABEL } from './transaction-kinds';
 
-const recordedMoney = (value: string | null) => (value === null ? '미기록' : money(value));
+const recordedMoney = (value: string | null, currency: string) => (value === null ? '미기록' : money(value, currency));
 function moveMonth(month: string, delta: number) {
   const [year, index] = month.split('-').map(Number);
   const date = new Date(Date.UTC(year, index - 1 + delta, 1));
@@ -162,24 +162,31 @@ export function CashflowView({ recordId }: { recordId: number | null }) {
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className='text-ui text-muted-foreground'>{label}</dt>
-                  <dd className='text-title font-semibold tabular-nums'>{recordedMoney(value)}</dd>
+                  <dd className='text-title font-semibold tabular-nums'>{recordedMoney(value, data.currency)}</dd>
                 </div>
               ))}
             </dl>
+            {data.data_quality_flags.includes('cashflow_mixed_sources') && (
+              <p className='mt-3 text-ui text-warning'>가계부와 거래 기록을 함께 합산했습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.</p>
+            )}
             {data.summary.foreign_count > 0 && (
-              <p className='mt-3 text-ui text-warning'>외화 기록 {data.summary.foreign_count}건은 원화 합계에서 제외했습니다.</p>
+              <p className='mt-3 text-ui text-warning'>
+                {data.currency === 'KRW'
+                  ? `외화 기록 ${data.summary.foreign_count}건은 원화 합계에서 제외했습니다.`
+                  : `다른 통화 기록 ${data.summary.foreign_count}건은 ${data.currency} 합계에서 제외했습니다.`}
+              </p>
             )}
           </Section>
           <Section title='분류별 지출'>
             {data.categories.length === 0 ? (
-              <EmptyState className='py-5'>집계할 원화 지출이 미기록 상태입니다.</EmptyState>
+              <EmptyState className='py-5'>집계할 {data.currency === 'KRW' ? '원화' : data.currency} 지출이 미기록 상태입니다.</EmptyState>
             ) : (
               <ul className='divide-y'>
                 {data.categories.map(item => (
                   <li key={item.category} className='flex items-center justify-between gap-3 py-2'>
                     <span>{item.category}</span>
                     <span className='text-right tabular-nums'>
-                      {money(item.amount)} <span className='ml-2 text-xs text-muted-foreground'>{item.share}%</span>
+                      {money(item.amount, data.currency)} <span className='ml-2 text-xs text-muted-foreground'>{item.share}%</span>
                     </span>
                   </li>
                 ))}
@@ -265,7 +272,7 @@ export function CashflowView({ recordId }: { recordId: number | null }) {
               </div>
             )}
           </Section>
-          <Section title='최근 6개월 소비 추이' info='선택한 조건의 기록된 원화 수입·지출입니다. 미기록 월은 0원과 구분합니다.'>
+          <Section title='최근 6개월 소비 추이' info={`선택한 조건의 기록된 ${data.currency === 'KRW' ? '원화' : data.currency} 수입·지출입니다. 미기록 월은 0과 구분합니다.`}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -278,10 +285,10 @@ export function CashflowView({ recordId }: { recordId: number | null }) {
                 {data.trend.map(item => (
                   <TableRow key={item.month}>
                     <TableCell>
-                      {item.month.replace('-', '년 ')}월{item.foreign_count > 0 && <span className='block text-xs text-warning'>외화 제외</span>}
+                      {item.month.replace('-', '년 ')}월{item.foreign_count > 0 && <span className='block text-xs text-warning'>다른 통화 제외</span>}
                     </TableCell>
-                    <TableCell className='text-right tabular-nums'>{recordedMoney(item.income)}</TableCell>
-                    <TableCell className='text-right tabular-nums'>{recordedMoney(item.expense)}</TableCell>
+                    <TableCell className='text-right tabular-nums'>{recordedMoney(item.income, data.currency)}</TableCell>
+                    <TableCell className='text-right tabular-nums'>{recordedMoney(item.expense, data.currency)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -141,3 +141,24 @@ def test_all_day_events_reach_the_model_as_all_day(session, monkeypatch):
     by_title = {e["title"]: e for e in result.data["events"]}
     assert by_title["연휴"]["all_day"] is True
     assert by_title["회의"]["all_day"] is False
+    assert result.data["conflicts"] == []
+
+
+def test_calendar_conflicts_keep_timed_overlaps_and_half_open_boundaries(session, utc_calendar):
+    day = datetime(2026, 10, 18, tzinfo=UTC)
+    events = [
+        CalendarEvent(title="종일", all_day=True, starts_at=day, ends_at=day + timedelta(days=1)),
+        CalendarEvent(title="회의", starts_at=day + timedelta(hours=9), ends_at=day + timedelta(hours=10)),
+        CalendarEvent(title="중복 회의", starts_at=day + timedelta(hours=9, minutes=30),
+                      ends_at=day + timedelta(hours=10)),
+        CalendarEvent(title="다음 회의", starts_at=day + timedelta(hours=10), ends_at=day + timedelta(hours=11)),
+    ]
+    session.add_all(events)
+    session.flush()
+
+    result = get_calendar_events(ToolContext(session, NOW, frozenset({Category.CALENDAR}), query="오늘 일정"))
+
+    assert len(result.data["events"]) == 4
+    assert result.data["conflicts"] == [
+        {"a": f"calendar_events:{events[1].id}", "b": f"calendar_events:{events[2].id}"},
+    ]

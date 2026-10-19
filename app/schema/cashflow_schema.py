@@ -38,6 +38,7 @@ class CashflowCategory(BaseModel):
 
 class CashflowResponse(BaseModel):
     month: str
+    currency: str
     items: list[CashflowRow]
     total: int
     page: int

@@ -115,6 +115,12 @@ def _fingerprint(target) -> str:
     return hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
 
 
+def _validate_target_changes(action: str, payload: dict, target) -> None:
+    if (action == "calendar_update" and target is not None and target.all_day
+            and {"starts_at", "ends_at"}.intersection(payload)):
+        raise ProposalError("all-day event times must be changed in the calendar")
+
+
 class ProposalManager:
     @staticmethod
     def record(session: Session, conversation_id: int, message_id: int, proposals: list[dict],
@@ -124,6 +130,7 @@ class ProposalManager:
             action = proposal.get("action")
             payload = _validate_payload(action, proposal.get("payload"))
             target = _target(session, action, payload)
+            _validate_target_changes(action, payload, target)
             if target is not None:
                 before = {}
                 for key in payload:
@@ -213,6 +220,7 @@ class ProposalManager:
         target = _target(session, action, p, lock=True)
         if target is not None and (not precondition or precondition != _fingerprint(target)):
             raise ProposalError("proposal target changed; request a new proposal")
+        _validate_target_changes(action, p, target)
         if action == "create_task":
             title = str(p.get("title", "")).strip()
             if not title:

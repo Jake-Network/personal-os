@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from app.config import settings
+from app.modules.crud import app_setting_handler
 from app.modules.database.model import CashflowEntry, FinancialTransaction
 from app.modules.finance.clock import local_today
 from app.modules.finance.ledger import INCOME, OUTFLOW
@@ -20,13 +21,14 @@ def load_flows(session, since: date, until: datetime):
     end_day = until.astimezone(zone).date()
     entries = list(session.scalars(select(CashflowEntry).where(
         CashflowEntry.occurred_on >= since, CashflowEntry.occurred_on <= end_day)))
-    transactions = list(session.scalars(select(FinancialTransaction).where(
+    transaction_query = select(FinancialTransaction).where(
         FinancialTransaction.occurred_at >= datetime.combine(since, time.min, zone),
         FinancialTransaction.occurred_at <= until,
-        FinancialTransaction.kind.in_(INCOME | OUTFLOW))))
+        FinancialTransaction.kind.in_(INCOME | OUTFLOW))
+    transactions = list(session.scalars(transaction_query))
     reversals = list(session.scalars(select(FinancialTransaction).where(
         FinancialTransaction.kind == "reversal",
-        FinancialTransaction.reverses_id.in_([r.id for r in transactions])))) if transactions else []
+        FinancialTransaction.reverses_id.in_(transaction_query.with_only_columns(FinancialTransaction.id))))) if transactions else []
     reversed_ids = {r.reverses_id for r in reversals}
     rows = [{"source": "cashflow_entries", "id": e.id, "occurred_on": e.occurred_on.isoformat(),
              "kind": e.kind, "original_kind": e.kind, "amount": str(e.amount), "currency": e.currency,
@@ -73,19 +75,23 @@ def report(session, month=None, kind=None, category=None, search=None, page=1, p
             and (not search or search.casefold() in (r["description"] or "").casefold())]
     current = sorted([r for r in rows if r["occurred_on"] >= selected.isoformat()],
                      key=lambda r: (r["occurred_on"], r["source"], r["id"]), reverse=True)
-    summary = summarize(current)
+    currency = (app_setting_handler.get_value(session, "base_currency") or {}).get("currency", "KRW")
+    summary = summarize(current, currency)
+    mixed_sources = len({r["source"] for r in rows if not r["is_reversed"]}) > 1
     buckets = {}
     for row in current:
-        if row["kind"] == "expense" and row["currency"] == "KRW" and not row["is_reversed"]:
+        if row["kind"] == "expense" and row["currency"] == currency and not row["is_reversed"]:
             buckets[row["category"]] = buckets.get(row["category"], Decimal(0)) + Decimal(row["amount"])
     total_expense = sum(buckets.values(), Decimal(0))
-    return {"month": selected.strftime("%Y-%m"), "items": current[(page-1)*page_size:page*page_size],
+    return {"month": selected.strftime("%Y-%m"), "currency": currency,
+            "items": current[(page-1)*page_size:page*page_size],
             "total": len(current), "page": page, "page_size": page_size, "summary": summary,
             "categories": [{"category": key, "amount": str(amount),
                             "share": str((amount / total_expense * 100).quantize(Decimal("0.01")))}
                            for key, amount in sorted(buckets.items(), key=lambda item: (-item[1], item[0]))],
             "trend": [{"month": month_offset(selected, i).strftime("%Y-%m"),
-                       **summarize([r for r in rows if r["occurred_on"][:7] == month_offset(selected, i).strftime("%Y-%m")])}
+                       **summarize([r for r in rows if r["occurred_on"][:7] == month_offset(selected, i).strftime("%Y-%m")], currency)}
                       for i in range(-5, 1)],
             "data_quality_flags": ["recorded_flows_only"] +
+                (["cashflow_mixed_sources"] if mixed_sources else []) +
                 (["foreign_currency_excluded"] if summary["foreign_count"] else [])}

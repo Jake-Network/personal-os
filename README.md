@@ -87,7 +87,7 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 | 문서함 | `/documents` | 문서 업로드·버전·공유 |
 | 설정 | `/settings/*` | AI 연결, 데이터 공유, 시세 연결, 자동 작업, 보안·백업, 화면 |
 
-달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
+달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 상담에서는 종일 일정의 제목만 변경 제안할 수 있으며 날짜·시각 변경은 달력에서 직접 합니다. 종일 일정은 시간 일정의 충돌 계산에서 제외합니다. 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
 
 ## 지속되는 상담 워크스페이스
 

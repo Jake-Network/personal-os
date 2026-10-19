@@ -17,6 +17,7 @@ function render(data: CashflowResponse) {
 
 const response: CashflowResponse = {
   month: '2026-10',
+  currency: 'KRW',
   items: [],
   total: 0,
   page: 1,
@@ -28,6 +29,23 @@ const response: CashflowResponse = {
 };
 
 describe('household ledger view', () => {
+  it('labels totals, categories, trends and excluded records in the response currency', () => {
+    const html = render({
+      ...response,
+      currency: 'USD',
+      summary: { income: null, expense: '12.5', net: '-12.5', record_count: 2, foreign_count: 1 },
+      categories: [{ category: '식비', amount: '12.5', share: '100' }],
+      trend: [{ month: '2026-09', income: null, expense: '12.5', net: '-12.5', record_count: 2, foreign_count: 1 }],
+    });
+    expect(html).toContain('12.5 USD');
+    expect(html).not.toContain('12.5원');
+    expect(html).toContain('다른 통화 기록 1건은 USD 합계에서 제외했습니다.');
+  });
+  it('shows a duplicate-entry warning when both sources contribute', () => {
+    expect(render({ ...response, data_quality_flags: ['cashflow_mixed_sources'] })).toContain(
+      '가계부와 거래 기록을 함께 합산했습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.',
+    );
+  });
   it('uses backend totals beyond the current page and distinguishes missing values from zero', () => {
     const html = render({
       ...response,

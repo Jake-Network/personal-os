@@ -372,7 +372,9 @@ def refresh(session, client=None):
         return {"refresh_state": "failed", "warning": warning, "refresh_after_seconds": 300}
     missing = sorted(symbols - expected)
     return {
-        "refresh_state": "failed" if failures or missing else "updated",
+        "refresh_state": ("partial" if valid_count else "failed")
+        if failures or missing
+        else "updated",
         "warning": f"자동 시세 미지원: {', '.join(missing)}. 날짜와 출처가 있는 수동 가격을 입력하세요."
         if missing
         else settings.last_error,

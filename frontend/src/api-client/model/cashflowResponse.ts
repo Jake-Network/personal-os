@@ -11,6 +11,7 @@ import type { CashflowMonth } from './cashflowMonth';
 
 export interface CashflowResponse {
   month: string;
+  currency: string;
   items: CashflowRow[];
   total: number;
   page: number;

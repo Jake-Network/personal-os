@@ -33,6 +33,14 @@ describe('quote refresh feedback', () => {
     expect(quoteRefreshNotice(state({ refresh_state: 'updated', warning: '일부 종목은 시세 대기 중입니다.' })).variant).toBe('warning');
     expect(quoteRefreshNotice(state({})).variant).toBe('info');
   });
+
+  it('reports partial success with the unavailable-price warning', () => {
+    const notice = quoteRefreshNotice(state({ refresh_state: 'partial', warning: '일부 종목은 수동 가격을 입력하세요.' }));
+    expect(notice.variant).toBe('warning');
+    expect(notice.message).toContain('일부 시세를 갱신했습니다.');
+    expect(notice.message).toContain('수동 가격을 입력하세요.');
+    expect(notice.message).not.toContain('갱신하지 못했습니다');
+  });
 });
 
 describe('quote refresh caches', () => {
