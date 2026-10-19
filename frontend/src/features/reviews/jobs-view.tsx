@@ -1,65 +1,221 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 
 import { customInstance } from '@/api-client/custom-client';
-import { errorMessage } from '@/api-client/api-error';
+import { EmptyState } from '@/components/empty-state';
+import { notify } from '@/components/notify';
+import { Section } from '@/components/page-container';
+import { QueryStatus } from '@/components/query-status';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Switch } from '@/components/ui/switch';
+import { dateTime } from '@/lib/utils/format';
 
-interface Schedule { id: number; name: string; cadence: string; enabled: boolean; next_run_at: string; }
-interface Job { id: number; status: string; enabled: boolean; attempts: number; max_attempts: number; last_error: string | null; result: { review_id?: number } | null; }
-const statuses: Record<string, string> = { pending: '대기', running: '실행 중', completed: '완료', cancelled: '허용 해제로 취소', failed: '실패' };
+interface Schedule {
+  id: number;
+  name: string;
+  cadence: string;
+  enabled: boolean;
+  next_run_at: string;
+}
+export interface Job {
+  id: number;
+  kind: string;
+  status: string;
+  enabled: boolean;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  result: { review_id?: number } | null;
+  created_at: string;
+  completed_at: string | null;
+}
 
-export function JobsView() {
+export const CADENCE_LABEL: Record<string, string> = { month: '매월', quarter: '분기마다', year: '매년' };
+const KIND_LABEL: Record<string, string> = { period_review: '기간 회고 초안', market_quote_refresh: '시세 갱신' };
+const STATUS: Record<string, { label: string; tone: NonNullable<BadgeProps['variant']> }> = {
+  pending: { label: '대기', tone: 'default' },
+  running: { label: '실행 중', tone: 'accent' },
+  completed: { label: '완료', tone: 'success' },
+  cancelled: { label: '허용 해제로 취소', tone: 'default' },
+  failed: { label: '실패', tone: 'destructive' },
+};
+
+export const jobsKey = ['background-jobs'] as const;
+
+function NewSchedule({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cache = useQueryClient();
   const [name, setName] = useState('정기 회고');
   const [cadence, setCadence] = useState('month');
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const create = useMutation({
+    mutationFn: () => customInstance({ method: 'POST', url: '/api/jobs/schedules', data: { name, cadence, enabled } }),
+    onSuccess: async () => {
+      await cache.invalidateQueries({ queryKey: ['job-schedules'] });
+      notify.success('정기 회고를 추가했습니다');
+      onClose();
+    },
+    onError: notify.error,
+  });
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent className='w-[min(420px,calc(100%-32px))]'>
+        <DialogHeader>
+          <DialogTitle>정기 회고 추가</DialogTitle>
+        </DialogHeader>
+        <form
+          className='flex flex-col gap-3'
+          onSubmit={e => {
+            e.preventDefault();
+            create.mutate();
+          }}>
+          <div className='flex flex-col gap-1'>
+            <Label htmlFor='schedule-name'>이름</Label>
+            <Input id='schedule-name' required maxLength={120} value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div className='flex flex-col gap-1'>
+            <Label htmlFor='schedule-cadence'>주기</Label>
+            <NativeSelect id='schedule-cadence' value={cadence} onChange={e => setCadence(e.target.value)}>
+              {Object.entries(CADENCE_LABEL).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <label className='flex items-center gap-2'>
+            <Checkbox checked={enabled} onCheckedChange={v => setEnabled(v === true)} />
+            바로 실행 허용
+          </label>
+          <div className='flex justify-end gap-2'>
+            <Button type='button' onClick={onClose}>
+              취소
+            </Button>
+            <Button type='submit' variant='primary' disabled={create.isPending}>
+              추가
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Work the app runs on its own, only after you allow it. */
+export function JobsView() {
+  const cache = useQueryClient();
+  const [adding, setAdding] = useState(false);
   const quoteConsent = useQuery({ queryKey: ['quote-refresh-consent'], queryFn: () => customInstance<{ enabled: boolean }>({ url: '/api/jobs/quote-refresh' }) });
-  const setQuoteConsent = useMutation({ mutationFn: (value: boolean) => customInstance({ method: 'PUT', url: '/api/jobs/quote-refresh', data: { enabled: value } }), onSuccess: () => { void cache.invalidateQueries({ queryKey: ['quote-refresh-consent'] }); void cache.invalidateQueries({ queryKey: ['background-jobs'] }); } });
   const schedules = useQuery({ queryKey: ['job-schedules'], queryFn: () => customInstance<Schedule[]>({ url: '/api/jobs/schedules' }) });
-  const jobs = useQuery({ queryKey: ['background-jobs'], queryFn: () => customInstance<Job[]>({ url: '/api/jobs' }), refetchInterval: 15000 });
-  const create = useMutation({ mutationFn: () => customInstance({ method: 'POST', url: '/api/jobs/schedules', data: { name, cadence, enabled } }), onSuccess: () => cache.invalidateQueries({ queryKey: ['job-schedules'] }) });
-  const activate = useMutation({ mutationFn: (schedule: Schedule) => customInstance({ method: 'PATCH', url: `/api/jobs/schedules/${schedule.id}`, data: { enabled: !schedule.enabled } }), onSuccess: () => { void cache.invalidateQueries({ queryKey: ['job-schedules'] }); void cache.invalidateQueries({ queryKey: ['background-jobs'] }); } });
-  const retry = useMutation({ mutationFn: (id: number) => customInstance({ method: 'POST', url: `/api/jobs/${id}/retry` }), onSuccess: () => cache.invalidateQueries({ queryKey: ['background-jobs'] }) });
-  return <div className="mx-auto max-w-4xl space-y-5 p-4 md:p-8">
-    <h1 className="text-2xl font-semibold">백그라운드 작업</h1>
-    <p className="text-sm text-muted-foreground">활성화한 회고는 앱 잠금 중에도 로컬에서 실행합니다. 외부 모델 호출 없이 완료된 달·분기·연도의 기록을 모아 초안을 만듭니다. 앱이 종료된 동안의 작업은 재시작 후 순서대로 처리합니다.</p>
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="font-medium">Google 시세 갱신</h2>
-      <p className="text-sm text-muted-foreground">허용하면 약 5분 간격으로 시세 전용 파일을 갱신합니다. Google에는 거래소·티커·통화쌍만 전송하며, 앱 잠금 중에도 실행합니다. 시세 전용 연결을 먼저 설정하세요.</p>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={quoteConsent.data?.enabled ?? false} disabled={quoteConsent.isLoading || setQuoteConsent.isPending || !!quoteConsent.error} onChange={e => setQuoteConsent.mutate(e.target.checked)} />시세 자동 갱신 실행 허용</label>
-      {(quoteConsent.error || setQuoteConsent.error) && <p role="alert">{errorMessage(quoteConsent.error || setQuoteConsent.error)}</p>}
-    </section>
-    <form className="space-y-3 rounded-lg border p-4" onSubmit={event => { event.preventDefault(); create.mutate(); }}>
-      <label className="block text-sm">이름<Input required maxLength={120} value={name} onChange={e => setName(e.target.value)} /></label>
-      <label className="block text-sm">주기<select className="ml-3 rounded border p-2" value={cadence} onChange={e => setCadence(e.target.value)}><option value="month">매월</option><option value="quarter">분기마다</option><option value="year">매년</option></select></label>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />이 주기 작업 실행을 허용합니다</label>
-      <Button type="submit" disabled={create.isPending}>주기 작업 등록</Button>
-      {create.error && <p role="alert">{errorMessage(create.error)}</p>}
-    </form>
-    {schedules.isLoading && <p>주기 작업을 불러오는 중입니다.</p>}
-    {schedules.error && <p role="alert">{errorMessage(schedules.error)}</p>}
-    {schedules.data?.length === 0 && <p>등록한 주기 작업이 없습니다.</p>}
-    {schedules.data?.map(schedule => <article className="space-y-2 rounded border p-3" key={schedule.id}>
-      <h2 className="font-medium">{schedule.name} · {schedule.enabled ? '활성' : '중지'}</h2>
-      <p className="text-sm">다음 처리 기준: {schedule.next_run_at}</p>
-      <Button disabled={activate.isPending} onClick={() => activate.mutate(schedule)}>{schedule.enabled ? '실행 허용 해제' : '실행 허용'}</Button>
-    </article>)}
-    {activate.error && <p role="alert">{errorMessage(activate.error)}</p>}
-    <h2 className="text-xl font-medium">실행 내역</h2>
-    {jobs.isLoading && <p>작업을 불러오는 중입니다.</p>}
-    {jobs.error && <p role="alert">{errorMessage(jobs.error)}</p>}
-    {jobs.data?.length === 0 && <p>실행 내역이 없습니다.</p>}
-    {jobs.data?.map(job => <article className="flex flex-wrap items-center gap-3 rounded border p-3" key={job.id}>
-      <span>#{job.id} · {job.enabled ? statuses[job.status] ?? job.status : '실행 미승인'} · 시도 {job.attempts}/{job.max_attempts}</span>
-      {job.last_error && <span>실패: {job.last_error}</span>}
-      {job.result?.review_id && <Link className="underline" href="/reviews">회고 초안 확인</Link>}
-      {job.status === 'failed' && <Button disabled={retry.isPending} onClick={() => retry.mutate(job.id)}>재시도</Button>}
-    </article>)}
-    {retry.error && <p role="alert">{errorMessage(retry.error)}</p>}
-  </div>;
+  const jobs = useQuery({ queryKey: jobsKey, queryFn: () => customInstance<Job[]>({ url: '/api/jobs' }), refetchInterval: 15000 });
+  const refreshJobs = () => cache.invalidateQueries({ queryKey: jobsKey });
+
+  const setQuoteConsent = useMutation({
+    mutationFn: (value: boolean) => customInstance({ method: 'PUT', url: '/api/jobs/quote-refresh', data: { enabled: value } }),
+    onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['quote-refresh-consent'] }), refreshJobs()]),
+    onError: notify.error,
+  });
+  const activate = useMutation({
+    mutationFn: (schedule: Schedule) => customInstance({ method: 'PATCH', url: `/api/jobs/schedules/${schedule.id}`, data: { enabled: !schedule.enabled } }),
+    onSuccess: () => Promise.all([cache.invalidateQueries({ queryKey: ['job-schedules'] }), refreshJobs()]),
+    onError: notify.error,
+  });
+  const retry = useMutation({ mutationFn: (id: number) => customInstance({ method: 'POST', url: `/api/jobs/${id}/retry` }), onSuccess: refreshJobs, onError: notify.error });
+
+  return (
+    <div className='max-w-[860px]'>
+      <Section
+        title='시세 자동 갱신'
+        info={<p>허용하면 약 5분마다 시세 전용 Google 파일을 갱신합니다. Google에는 거래소·티커·통화쌍만 보내며, 앱이 잠겨 있어도 실행합니다.</p>}>
+        <QueryStatus pending={quoteConsent.isPending} error={quoteConsent.error} retry={quoteConsent.refetch} label='시세 갱신 설정' rows={1} />
+        {quoteConsent.data && (
+          <div className='flex items-center gap-3 py-2'>
+            <div className='flex-1'>
+              <p>보유 종목 시세를 자동으로 갱신</p>
+              <p className='text-xs text-muted-foreground'>
+                먼저{' '}
+                <Link href='/settings/market' className='text-primary hover:underline'>
+                  시세 연결
+                </Link>
+                을 설정하세요.
+              </p>
+            </div>
+            <Switch
+              aria-label='시세 자동 갱신 허용'
+              checked={quoteConsent.data.enabled}
+              disabled={setQuoteConsent.isPending}
+              onCheckedChange={v => setQuoteConsent.mutate(v)}
+            />
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title='정기 회고'
+        count={schedules.data?.length}
+        info={<p>완료된 달·분기·연도의 경력·결정·월말 재무 기록을 모아 회고 초안을 만듭니다. 외부 AI를 호출하지 않으며, 앱이 꺼져 있던 동안의 작업은 다시 켤 때 순서대로 처리합니다.</p>}
+        actions={
+          <Button size='sm' onClick={() => setAdding(true)}>
+            <Plus /> 추가
+          </Button>
+        }>
+        <QueryStatus pending={schedules.isPending} error={schedules.error} retry={schedules.refetch} label='정기 회고' rows={2} />
+        {schedules.data?.length === 0 && <p className='py-2 text-ui text-muted-foreground'>등록한 정기 회고가 없습니다.</p>}
+        <ul className='divide-y'>
+          {schedules.data?.map(s => (
+            <li key={s.id} className='flex items-center gap-3 py-2'>
+              <div className='flex-1'>
+                <p className='font-medium'>{s.name}</p>
+                <p className='text-xs text-muted-foreground'>
+                  {CADENCE_LABEL[s.cadence] ?? s.cadence} · {s.enabled ? `다음 실행 ${dateTime(s.next_run_at)}` : '실행 허용 안 됨'}
+                </p>
+              </div>
+              <Switch aria-label={`${s.name} 실행 허용`} checked={s.enabled} disabled={activate.isPending} onCheckedChange={() => activate.mutate(s)} />
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title='실행 내역'>
+        <QueryStatus pending={jobs.isPending} error={jobs.error} retry={jobs.refetch} label='실행 내역' />
+        {jobs.data?.length === 0 && <EmptyState>아직 실행된 작업이 없습니다.</EmptyState>}
+        <ul className='divide-y'>
+          {jobs.data?.map(job => {
+            const status = job.enabled ? (STATUS[job.status] ?? { label: job.status, tone: 'default' as const }) : { label: '실행 허용 안 됨', tone: 'warning' as const };
+            return (
+              <li key={job.id} className='flex flex-wrap items-center gap-x-3 gap-y-1 py-2'>
+                <span className='font-medium'>{KIND_LABEL[job.kind] ?? '작업'}</span>
+                <Badge variant={status.tone}>{status.label}</Badge>
+                <span className='text-xs text-muted-foreground'>{dateTime(job.completed_at ?? job.created_at)}</span>
+                {job.status === 'failed' && <span className='text-xs text-muted-foreground'>시도 {job.attempts}/{job.max_attempts}</span>}
+                {job.result?.review_id && (
+                  <Link className='text-ui text-primary hover:underline' href='/reflect/reviews'>
+                    회고 초안 보기
+                  </Link>
+                )}
+                {job.status === 'failed' && (
+                  <Button size='sm' className='ml-auto' disabled={retry.isPending} onClick={() => retry.mutate(job.id)}>
+                    다시 시도
+                  </Button>
+                )}
+                {job.last_error && <p className='w-full text-xs text-destructive'>{job.last_error}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+
+      <NewSchedule open={adding} onClose={() => setAdding(false)} />
+    </div>
+  );
 }

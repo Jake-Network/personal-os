@@ -407,7 +407,7 @@ def get_calendar_events(ctx: ToolContext, days: int = 14) -> ToolResult:
             "now": ctx.now.isoformat(),
             "events": [
                 {"ref": f"calendar_events:{e.id}", "title": e.title, "kind": e.kind, "starts_at": iso_or_none(e.starts_at),
-                 "ends_at": iso_or_none(e.ends_at), "location": e.location}
+                 "ends_at": iso_or_none(e.ends_at), "all_day": e.all_day, "location": e.location}
                 for e in events
             ],
             "conflicts": calendar_conflicts(events),

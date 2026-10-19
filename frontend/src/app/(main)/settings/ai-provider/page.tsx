@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 import { AIProviderSettings } from '@/features/settings/components/ai-provider-settings';
 
-export const metadata: Metadata = { title: 'AI Provider' };
+export const metadata: Metadata = { title: 'AI 연결' };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 

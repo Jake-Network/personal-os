@@ -29,7 +29,7 @@ def setup_diagnostics(settings: Settings) -> dict:
                 ("GOOGLE_OAUTH_CLIENT_ID", settings.google_oauth_client_id),
                 ("GOOGLE_OAUTH_CLIENT_SECRET", settings.google_oauth_client_secret)) if not value],
             "frontend_url": settings.frontend_url,
-            "login_url": f"{settings.frontend_url.rstrip('/')}/finance",
+            "login_url": f"{settings.frontend_url.rstrip('/')}/settings/market",
             "redirect_uri": settings.google_oauth_redirect_uri,
             "redirect_uri_supported": supported,
             "callback_host_matches_frontend": bool(hostname and hostname == frontend.hostname)}

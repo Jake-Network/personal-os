@@ -1,28 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 
 import { EmptyState } from '@/components/empty-state';
-import { notify } from '@/components/notify';
-import { PageContainer, PageHeader } from '@/components/page-container';
-import { Alert } from '@/components/ui/alert';
+import { Section } from '@/components/page-container';
+import { QueryStatus } from '@/components/query-status';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
-import { SheetsHoldingsView } from '@/features/holdings/holdings-view';
 
-import { RESOURCE_API, type Row } from '../api/resource-api';
+import type { Row } from '../api/resource-api';
 import { RESOURCES, enumLabel, fieldLabel } from '../consts/resources';
+import { useResourceRows } from '../hooks/use-resource';
+import { useRecordParam } from '../hooks/use-record-param';
 import { useSchemaFields } from '../hooks/use-schema-fields';
 import type { FieldSpec } from '../utils/schema-fields';
-import { DataForm } from './data-form';
-import { HISTORY_RESOURCES, ValueHistoryDialog } from './value-history-dialog';
+import { RecordSheet } from './record-sheet';
 
 const MONEY_FIELDS = new Set(['balance', 'value', 'amount', 'monthly_payment', 'avg_cost', 'last_price']);
 const NUMERIC_FIELDS = new Set([
@@ -37,152 +34,101 @@ const NUMERIC_FIELDS = new Set([
   'target_value',
 ]);
 
-function cell(row: Row, col: string, field?: FieldSpec): string {
+export function cellText(row: Row, col: string, field?: FieldSpec): string {
   const v = row[col];
   if (v === null || v === undefined || v === '') return '—';
   if (MONEY_FIELDS.has(col)) return money(v as string, (row.currency as string) ?? 'KRW');
   if (field?.kind === 'enum') return enumLabel(v);
+  if (field?.kind === 'boolean') return v ? '예' : '아니오';
   if (field?.kind === 'date') return dateOnly(v as string);
   if (field?.kind === 'datetime') return dateTime(v as string);
   return plain(v);
 }
 
-export function DataTableView({ resource }: { resource: string }) {
-  return resource === 'holdings' ? <SheetsHoldingsView /> : <LegacyDataTableView resource={resource} />;
+interface Props {
+  resource: string;
+  title?: string;
+  columns?: string[];
+  /** Deep-linked record from `?record=`; only one table per page should take it. */
+  recordId?: number | null;
+  addLabel?: string;
+  emptyText?: string;
+  info?: ReactNode;
+  /** Custom rendering for a column. */
+  render?: Partial<Record<string, (row: Row) => ReactNode>>;
 }
 
-function LegacyDataTableView({ resource }: { resource: string }) {
-  const meta = RESOURCES.find(r => r.name === resource);
-  const api = RESOURCE_API[resource];
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<Row | 'new' | null>(null);
-  const [historyOf, setHistoryOf] = useState<Row | null>(null);
-
+/** A plain list of one record type with add/edit in the record sheet. For reference data without a richer view. */
+export function ResourceTable({ resource, title, columns, recordId = null, addLabel, emptyText, info, render }: Props) {
+  const meta = RESOURCES.find(r => r.name === resource)!;
+  const rows = useResourceRows(resource);
   const fields = useSchemaFields(resource);
-  const rows = useQuery({ queryKey: api?.queryKey ?? ['unknown', resource], queryFn: () => api.list(), enabled: !!api });
-
-  const invalidate = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: api.queryKey }),
-      queryClient.invalidateQueries({ queryKey: ['finance'] }),
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] }),
-    ]);
-  const save = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => (editing === 'new' ? api.create(payload) : api.update((editing as Row).id, payload)),
-    onSuccess: () => {
-      setEditing(null);
-      return invalidate();
-    },
-  });
-  const remove = useMutation({ mutationFn: (id: number) => api.remove(id), onSuccess: invalidate, onError: notify.error });
-
-  if (!meta || !api) {
-    return (
-      <PageContainer>
-        <EmptyState>알 수 없는 데이터 종류입니다.</EmptyState>
-      </PageContainer>
-    );
-  }
+  const [selected, setSelected] = useRecordParam(recordId);
+  const [creating, setCreating] = useState(false);
+  const cols = columns ?? meta.columns;
   const fieldMap = Object.fromEntries((fields.data ?? []).map(f => [f.name, f]));
-  const loadError = fields.error ?? rows.error;
+  const editing = selected === null ? null : (rows.data?.find(r => r.id === selected) ?? null);
 
   return (
-    <PageContainer>
-      <PageHeader
-        eyebrow={meta.group}
-        title={meta.label}
-        description={
-          meta.financial
-            ? '직접 입력한 값만 사용합니다. AI는 이 데이터를 변경할 수 없고, 모든 변경은 감사로그에 남습니다.'
-            : 'AI 상담이 이 데이터를 조회해 답변합니다.'
-        }
-        actions={
-          <Button variant='primary' disabled={!fields.data} onClick={() => setEditing('new')}>
-            추가
-          </Button>
-        }
-      />
-
-      {loadError && (
-        <Alert variant='destructive' className='mb-3'>
-          {loadError.message}
-        </Alert>
-      )}
-
-      <Card>
+    <Section
+      title={title ?? meta.label}
+      count={rows.data?.length}
+      info={info}
+      actions={
+        <Button size='sm' onClick={() => setCreating(true)}>
+          <Plus /> {addLabel ?? '추가'}
+        </Button>
+      }>
+      <QueryStatus pending={rows.isPending} error={rows.error} retry={rows.refetch} label={meta.label} />
+      {rows.data && rows.data.length > 0 && (
         <Table>
           <TableHeader>
             <TableRow>
-              {meta.columns.map(c => (
+              {cols.map(c => (
                 <TableHead key={c} className={cn(NUMERIC_FIELDS.has(c) && 'text-right')}>
                   {fieldLabel(c)}
                 </TableHead>
               ))}
-              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(rows.data ?? []).map(row => (
-              <TableRow key={row.id}>
-                {meta.columns.map(c => (
+            {rows.data.map(row => (
+              <TableRow key={row.id} className='cursor-pointer' onClick={() => setSelected(row.id)}>
+                {cols.map((c, i) => (
                   <TableCell key={c} className={cn(NUMERIC_FIELDS.has(c) && 'text-right tabular-nums')}>
-                    {cell(row, c, fieldMap[c])}
+                    {i === 0 ? (
+                      <button type='button' className='text-left font-medium hover:underline' onClick={() => setSelected(row.id)}>
+                        {render?.[c]?.(row) ?? cellText(row, c, fieldMap[c])}
+                      </button>
+                    ) : (
+                      (render?.[c]?.(row) ?? cellText(row, c, fieldMap[c]))
+                    )}
                   </TableCell>
                 ))}
-                <TableCell className='whitespace-nowrap text-right'>
-                  <span className='mr-2 text-xs text-faint'>ID {row.id}</span>
-                  {HISTORY_RESOURCES.has(resource) && (
-                    <Button size='sm' variant='ghost' onClick={() => setHistoryOf(row)}>
-                      이력
-                    </Button>
-                  )}
-                  <Button size='sm' variant='ghost' onClick={() => setEditing(row)}>
-                    수정
-                  </Button>
-                  <Button
-                    size='sm'
-                    variant='ghost-destructive'
-
-                    onClick={() => confirm(`이 ${meta.label} 항목을 삭제할까요?`) && remove.mutate(row.id)}>
-                    삭제
-                  </Button>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-        {rows.data?.length === 0 && <EmptyState>아직 등록된 {meta.label}이(가) 없습니다.</EmptyState>}
-        {rows.isPending && <EmptyState>불러오는 중…</EmptyState>}
-      </Card>
-
-      <Dialog open={!!editing && !!fields.data} onOpenChange={open => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {meta.label} {editing === 'new' ? '추가' : '수정'}
-            </DialogTitle>
-            <DialogDescription>필수 항목은 *로 표시됩니다.</DialogDescription>
-          </DialogHeader>
-          {editing && fields.data && (
-            <DataForm
-              fields={fields.data}
-              current={editing === 'new' ? undefined : editing}
-              submitLabel={editing === 'new' ? '추가' : '저장'}
-              onSubmit={save.mutateAsync}
-              onCancel={() => setEditing(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {historyOf && (
-        <ValueHistoryDialog
-          resource={resource}
-          id={historyOf.id}
-          label={String(historyOf.name ?? historyOf.symbol ?? meta.label)}
-          onClose={() => setHistoryOf(null)}
-        />
       )}
-    </PageContainer>
+      {rows.data?.length === 0 && (
+        <EmptyState
+          action={
+            <Button size='sm' variant='primary' onClick={() => setCreating(true)}>
+              <Plus /> {addLabel ?? `${meta.label} 추가`}
+            </Button>
+          }>
+          {emptyText ?? `아직 기록된 ${meta.label} 항목이 없습니다.`}
+        </EmptyState>
+      )}
+      <RecordSheet
+        resource={resource}
+        record={creating ? null : editing}
+        open={creating || editing !== null}
+        onClose={() => {
+          setCreating(false);
+          setSelected(null);
+        }}
+      />
+    </Section>
   );
 }

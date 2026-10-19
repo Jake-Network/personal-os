@@ -42,6 +42,8 @@ export type FinanceLine = {
   ticker: string | null;
   price: string | null;
   price_as_of: string | null;
+  /** The day the balance or quantity was recorded for. */
+  as_of?: string | null;
   fx_rate: string | null;
   fx_as_of: string | null;
   value_krw: string | null;

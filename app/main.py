@@ -33,6 +33,7 @@ from app.router import (
     jobs_router,
     market_data_router,
     advisor_runtime_router,
+    locale_router,
 )
 
 
@@ -96,5 +97,6 @@ async def advisor_error_handler(_request: Request, exc: AdvisorError):
 
 for module in (health_router, oauth_callback_router, ai_provider_router, privacy_router, advisor_router,
                proposal_router, memory_router, personal_data_router, dashboard_router, portfolio_router, google_oauth_router, document_router, security_router,
-               transfer_policy_router, career_router, reviews_router, jobs_router, market_data_router, advisor_runtime_router):
+               transfer_policy_router, career_router, reviews_router, jobs_router, market_data_router, advisor_runtime_router,
+               locale_router):
     app.include_router(module.router)

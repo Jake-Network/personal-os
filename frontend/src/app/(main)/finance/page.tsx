@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+
 import { PortfolioView } from '@/features/finance/portfolio-view';
 
-export const metadata: Metadata = { title: '포트폴리오' };
+export const metadata: Metadata = { title: '자산' };
 
-export default function FinancePage() {
+export default function Page() {
   return <PortfolioView />;
 }

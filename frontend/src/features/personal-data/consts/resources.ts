@@ -93,6 +93,7 @@ export const FIELD_LABEL: Record<string, string> = {
   application_id: '연결할 채용 지원',
   stage: '단계',
   starts_at: '시작',
+  all_day: '종일',
   ends_at: '종료',
   location: '장소',
   prep_notes: '준비 메모',

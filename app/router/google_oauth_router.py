@@ -23,7 +23,7 @@ def _check_origin(request: Request) -> None:
     frontend = urlsplit(settings.frontend_url)
     allowed = {f"{frontend.scheme}://{frontend.netloc}", str(request.base_url).rstrip("/")}
     if origin and origin not in allowed:
-        raise HTTPException(403, f"Google 로그인은 {settings.frontend_url.rstrip('/')}/finance 에서 시작하세요.")
+        raise HTTPException(403, f"Google 로그인은 {settings.frontend_url.rstrip('/')}/settings/market 에서 시작하세요.")
     if request.headers.get("sec-fetch-site") == "cross-site":
         raise HTTPException(403, "Cross-site request is not allowed")
 
@@ -55,13 +55,14 @@ def start_login(request: Request, response: Response, write_access: bool = False
 
 @router.get("/callback", include_in_schema=False)
 async def callback(request: Request, session: Session = Depends(get_session)):
-    result, target = "error", "/finance"
+    # `return_to` keeps its API values; they name the screen that started the connection.
+    result, target = "error", "/settings/market"
     try:
         conn = await google_oauth_manager.handle_callback(session, dict(request.query_params), request.cookies.get(COOKIE),
             authorization_guard=lambda: app_auth.guard_oauth_commit(session, request.cookies.get(app_auth.COOKIE)))
         result = "connected"
-        target = {"finance": "/finance", "holdings": "/data/holdings"}.get(
-            getattr(conn, "_google_return_to", "finance"), "/finance")
+        target = {"finance": "/settings/market", "holdings": "/finance/investments"}.get(
+            getattr(conn, "_google_return_to", "finance"), "/settings/market")
     except Exception:
         session.rollback()
     response = RedirectResponse(f"{settings.frontend_url.rstrip('/')}{target}?google_oauth={result}", status_code=303)

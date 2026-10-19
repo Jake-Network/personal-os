@@ -7,7 +7,7 @@ not modelled: nothing that must never reach an LLM is stored here in the first p
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.database.model.base import Base, UTCDateTime, utcnow
@@ -171,6 +171,8 @@ class CalendarEvent(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(32), default="personal")  # personal | work | interview | workout | deadline
     starts_at: Mapped[datetime] = mapped_column(UTCDateTime())
     ends_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # All-day events span local midnights in PERSONAL_OS_TIMEZONE: [first day 00:00, day after last 00:00).
+    all_day: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     location: Mapped[str | None] = mapped_column(String(200))
     notes: Mapped[str | None] = mapped_column(Text)
 

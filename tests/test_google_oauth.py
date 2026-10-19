@@ -280,7 +280,7 @@ def test_google_api_callback_sets_browser_binding_and_never_exposes_tokens(googl
     response = client.get("/api/finance/google/callback", params={"state": query["state"][0], "code": "private-auth-code"},
                           follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"].endswith("/finance?google_oauth=connected")
+    assert response.headers["location"].endswith("/settings/market?google_oauth=connected")
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "Max-Age=0" in response.headers["set-cookie"]
     status = client.get("/api/finance/google/status")

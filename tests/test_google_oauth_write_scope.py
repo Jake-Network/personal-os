@@ -105,7 +105,7 @@ def test_holdings_return_target_is_bound_to_pending_state(client, monkeypatch):
     response = client.get("/api/finance/google/callback", params={
         "state": query["state"][0], "code": "code", "return_to": "https://attacker.invalid",
     }, follow_redirects=False)
-    assert response.headers["location"].endswith("/data/holdings?google_oauth=connected")
+    assert response.headers["location"].endswith("/finance/investments?google_oauth=connected")
 
 
 def test_arbitrary_return_target_is_rejected(client, monkeypatch):

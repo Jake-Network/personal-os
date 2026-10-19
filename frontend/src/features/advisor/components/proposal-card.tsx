@@ -19,7 +19,7 @@ import { enumLabel, fieldLabel } from '@/features/personal-data/consts/resources
 
 import type { MemoryProposal } from '../types';
 
-const cardClass = 'rounded-lg border border-dashed border-input bg-card px-3 py-2.5';
+const cardClass = 'rounded-lg border bg-card px-3.5 py-3 shadow-sm';
 
 type Proposal = Pick<ProposalItem, 'id' | 'action' | 'payload' | 'rationale'> & { status?: string };
 
@@ -52,12 +52,12 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
   return (
     <div className={cardClass}>
       <div className='flex items-center gap-2'>
-        <Badge variant='accent'>제안 · {ACTION_LABEL[proposal.action] ?? proposal.action}</Badge>
+        <span className='text-ui font-semibold'>{ACTION_LABEL[proposal.action] ?? '변경'} 제안</span>
         <span className='flex-1' />
-        {state === 'approved' && <Badge variant='success'>승인되어 반영됨</Badge>}
+        {state === 'approved' && <Badge variant='success'>승인해 반영함</Badge>}
         {state === 'rejected' && <Badge>거절됨</Badge>}
       </div>
-      <dl className='my-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs'>
+      <dl className='my-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-ui'>
         {Object.entries(proposal.payload)
           .filter(([key]) => !key.startsWith('_'))
           .map(([k, v]) => (
@@ -70,7 +70,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
             </div>
           ))}
       </dl>
-      {proposal.rationale && <div className='mb-2 text-xs text-faint'>{proposal.rationale}</div>}
+      {proposal.rationale && <p className='mb-2.5 text-xs text-muted-foreground'>{proposal.rationale}</p>}
       {error && (
         <Alert variant='destructive' className='mb-2'>
           {errorMessage(error)}
@@ -79,12 +79,12 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
       {!state && (
         <div className='flex flex-wrap items-center gap-2'>
           <Button size='sm' variant='primary' disabled={busy} onClick={() => approve.mutate({ proposalId: proposal.id })}>
-            승인하고 반영
+            {approve.isPending ? '반영하는 중…' : '승인하고 반영'}
           </Button>
-          <Button size='sm' disabled={busy} onClick={() => reject.mutate({ proposalId: proposal.id })}>
+          <Button size='sm' variant='ghost' disabled={busy} onClick={() => reject.mutate({ proposalId: proposal.id })}>
             거절
           </Button>
-          <span className='text-xs text-faint'>승인 전에는 아무것도 변경되지 않습니다.</span>
+          <span className='text-2xs text-faint'>승인하기 전에는 바뀌지 않습니다.</span>
         </div>
       )}
     </div>
@@ -93,7 +93,8 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
 
 export function MemoryProposalCard({ memory }: { memory: MemoryProposal }) {
   const queryClient = useQueryClient();
-  const queryOptions = { query: { refetchInterval: 5000 } };
+  // A memory may be confirmed elsewhere (승인 대기); the mutations below invalidate these lists.
+  const queryOptions = { query: { refetchOnWindowFocus: true } };
   const proposed = useListMemories({ status: 'proposed' }, queryOptions);
   const confirmed = useListMemories({ status: 'confirmed' }, queryOptions);
   const rejected = useListMemories({ status: 'rejected' }, queryOptions);
@@ -132,21 +133,22 @@ export function MemoryProposalCard({ memory }: { memory: MemoryProposal }) {
   return (
     <div className={cardClass}>
       <div className='flex items-center gap-2'>
-        <Badge variant='accent'>기억 제안 · {MEMORY_KIND_LABEL[memory.kind] ?? memory.kind}</Badge>
+        <span className='text-ui font-semibold'>기억해 둘까요?</span>
+        <Badge>{MEMORY_KIND_LABEL[memory.kind] ?? '기억'}</Badge>
         <span className='flex-1' />
         {state === 'confirmed' && <Badge variant='success'>저장됨</Badge>}
         {state === 'rejected' && <Badge>저장 안 함</Badge>}
         {state === 'deleted' && <Badge>삭제됨</Badge>}
       </div>
-      <div className='my-2'>{state === 'deleted' ? '이 기억 후보는 삭제되었습니다.' : (current?.content ?? memory.content)}</div>
+      <p className='my-2 text-ui'>{state === 'deleted' ? '이 기억 후보는 삭제되었습니다.' : (current?.content ?? memory.content)}</p>
       {loadError && <Alert variant='destructive'>{errorMessage(loadError)}</Alert>}
       {!state && (
-        <div className='flex gap-2'>
+        <div className='flex flex-wrap gap-2'>
           <Button size='sm' variant='primary' disabled={busy} onClick={() => confirmMemory.mutate({ memoryId: memory.id })}>
-            장기 기억에 저장
+            기억하기
           </Button>
-          <Button size='sm' disabled={busy} onClick={() => rejectMemory.mutate({ memoryId: memory.id })}>
-            이번 상담에만 남기기
+          <Button size='sm' variant='ghost' disabled={busy} onClick={() => rejectMemory.mutate({ memoryId: memory.id })}>
+            이번 상담에만
           </Button>
         </div>
       )}

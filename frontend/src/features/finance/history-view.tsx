@@ -1,189 +1,261 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { PageContainer, PageHeader } from '@/components/page-container';
+import { useQuery } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+
+import { TabToolbar } from '@/components/area-layout';
+import { EmptyState } from '@/components/empty-state';
+import { Section } from '@/components/page-container';
+import { QualityBadge } from '@/components/quality-badge';
+import { QueryStatus } from '@/components/query-status';
+import { ListSkeleton } from '@/components/skeleton';
 import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { monthLabel } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
 
 import { financeApi, type Snapshot } from './api';
 import { HistoryChart } from './history-chart';
-import { Holdings, Totals } from './portfolio-view';
-import { money, timestamp } from './presentation';
-import { SnapshotCorrection } from './snapshot-correction';
+import { PositionsTable } from './positions-table';
+import { issueFlags, money, timestamp } from './presentation';
+import { type CorrectionTarget, SnapshotCorrection } from './snapshot-correction';
+
+const PERIODS = [
+  ['6m', '6개월'],
+  ['1y', '1년'],
+  ['all', '전체'],
+] as const;
+
+function Change({ snapshot }: { snapshot: Snapshot }) {
+  if (!snapshot.complete || snapshot.change_krw == null) return <span className='text-xs text-faint'>비교 불가</span>;
+  const negative = snapshot.change_krw.startsWith('-');
+  return (
+    <span className={cn('tabular-nums', negative ? 'text-destructive' : 'text-success')}>
+      {negative ? '' : '+'}
+      {money(snapshot.change_krw)}
+      <span className='block text-xs text-faint'>{snapshot.change_pct == null ? '비율 계산 불가' : `${snapshot.change_pct}%`}</span>
+    </span>
+  );
+}
+
+function SnapshotDetail({ snapshot, onClose, onSaved }: { snapshot: Snapshot; onClose: () => void; onSaved: (s: Snapshot) => void }) {
+  const [correcting, setCorrecting] = useState(false);
+  const audit = useQuery({ queryKey: ['finance', 'audit', snapshot.id], queryFn: () => financeApi.audit(snapshot.id) });
+  return (
+    <Sheet open onOpenChange={open => !open && onClose()}>
+      <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
+        <div className='flex flex-col gap-4 p-5'>
+          <div className='flex flex-wrap items-center gap-2 pr-8'>
+            <SheetTitle className='text-title font-semibold'>{monthLabel(snapshot.month)} 월말 기록</SheetTitle>
+            {snapshot.complete ? <Badge variant='success'>확정</Badge> : <QualityBadge flags={issueFlags(snapshot.issues)} label='근거 부족' />}
+          </div>
+          {correcting ? (
+            <SnapshotCorrection
+              target={{ kind: 'correct', snapshot }}
+              onCancel={() => setCorrecting(false)}
+              onSaved={saved => {
+                setCorrecting(false);
+                onSaved(saved);
+              }}
+            />
+          ) : (
+            <>
+              <dl className='grid grid-cols-3 gap-3'>
+                {[
+                  ['순자산', snapshot.net_worth],
+                  ['총자산', snapshot.total_assets],
+                  ['부채', snapshot.total_liabilities],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className='text-xs text-muted-foreground'>{label}</dt>
+                    <dd className='font-semibold tabular-nums'>{money(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+              <PositionsTable data={snapshot} />
+              <p className='text-ui text-muted-foreground'>
+                {snapshot.reason} · {timestamp(snapshot.created_at)}
+              </p>
+              <div>
+                <Button onClick={() => setCorrecting(true)}>정정하기</Button>
+              </div>
+              <section>
+                <h3 className='mb-2 text-ui font-semibold'>변경 기록</h3>
+                {audit.isPending && <ListSkeleton rows={2} />}
+                {audit.error && <Alert variant='destructive'>{audit.error.message}</Alert>}
+                <ol className='divide-y'>
+                  {audit.data?.map((rev, i) => (
+                    <li key={rev.id} className='flex flex-wrap items-baseline gap-x-3 py-2 text-ui'>
+                      <span className='font-medium'>{i === 0 ? '최초 기록' : `정정 ${i}`}</span>
+                      <span className='text-xs text-faint'>{timestamp(rev.created_at)}</span>
+                      <span className='flex-1'>{rev.reason}</span>
+                      <span className='tabular-nums'>{money(rev.net_worth)}</span>
+                      {!rev.complete && <span className='text-xs text-warning'>근거 부족</span>}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (s: Snapshot) => void }) {
+  const [month, setMonth] = useState('');
+  const [target, setTarget] = useState<CorrectionTarget | null>(null);
+  return (
+    <Sheet open onOpenChange={open => !open && onClose()}>
+      <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
+        <div className='flex flex-col gap-4 p-5'>
+          <SheetTitle className='pr-8 text-title font-semibold'>{target?.kind === 'create' ? `${monthLabel(target.month)} 월말 기록` : '월말 기록 만들기'}</SheetTitle>
+          {target ? (
+            <SnapshotCorrection target={target} onCancel={() => setTarget(null)} onSaved={onSaved} />
+          ) : (
+            <form
+              className='flex items-end gap-2'
+              onSubmit={e => {
+                e.preventDefault();
+                if (month) setTarget({ kind: 'create', month });
+              }}>
+              <div className='flex flex-col gap-1'>
+                <Label htmlFor='close-month'>기록할 달</Label>
+                <Input id='close-month' type='month' value={month} onChange={e => setMonth(e.target.value)} required />
+              </div>
+              <Button type='submit' variant='primary' disabled={!month}>
+                다음
+              </Button>
+            </form>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 export function HistoryView() {
-  const client = useQueryClient();
-  const [period, setPeriod] = useState('6m');
-  const [month, setMonth] = useState('');
+  const [period, setPeriod] = useState<(typeof PERIODS)[number][0]>('6m');
   const [closing, setClosing] = useState(false);
   const [selected, setSelected] = useState<Snapshot | null>(null);
   const history = useQuery({ queryKey: ['finance', 'history', period], queryFn: () => financeApi.history(period) });
-  const audit = useQuery({ queryKey: ['finance', 'audit', selected?.id], queryFn: () => financeApi.audit(selected!.id), enabled: !!selected });
-  const create = useMutation({ mutationFn: financeApi.create, onSuccess: () => client.invalidateQueries({ queryKey: ['finance'] }) });
   const snapshots = [...(history.data?.snapshots ?? [])].sort((a, b) => a.month.localeCompare(b.month));
+  const missing = history.data?.missing_months ?? [];
+
   return (
-    <PageContainer className='space-y-4'>
-      <PageHeader
-        title='월별 순자산 기록'
-        description='월말 보유 수량과 유효한 종가·환율을 보존합니다. 오늘의 보유 수량으로 과거를 추정하지 않습니다.'
-        actions={
-          <Button asChild>
-            <Link href='/finance'>포트폴리오</Link>
-          </Button>
-        }
-      />
-      {(history.error || create.error) && <Alert variant='destructive'>{(history.error ?? create.error)?.message}</Alert>}
-      <div className='flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex gap-2' aria-label='조회 기간'>
-          {[
-            ['6m', '6M'],
-            ['1y', '1Y'],
-            ['all', 'All'],
-          ].map(([value, label]) => (
-            <Button key={value} aria-pressed={period === value} variant={period === value ? 'primary' : 'default'} onClick={() => setPeriod(value)}>
+    <>
+      <TabToolbar>
+        <div className='inline-flex rounded-md bg-muted p-0.5' role='group' aria-label='조회 기간'>
+          {PERIODS.map(([value, label]) => (
+            <button
+              key={value}
+              type='button'
+              aria-pressed={period === value}
+              onClick={() => setPeriod(value)}
+              className={cn('h-7 rounded-sm px-3 text-ui text-muted-foreground', period === value && 'bg-card font-medium text-foreground shadow-sm')}>
               {label}
-            </Button>
+            </button>
           ))}
         </div>
-        <form
-          className='flex items-end gap-2'
-          onSubmit={event => {
-            event.preventDefault();
-            if (month) setClosing(true);
-          }}>
-          <label className='text-xs'>
-            월말 기록 생성
-            <Input type='month' value={month} onChange={event => setMonth(event.target.value)} required />
-          </label>
-          <Button disabled={!month || create.isPending} type='submit'>
-            기록 생성
-          </Button>
-        </form>
-      </div>
-      {closing && month && (
-        <Card>
-          <CardContent>
-            <h2 className='mb-3 font-semibold'>{month} 월말 근거 입력</h2>
-            <SnapshotCorrection
-              snapshot={{ rows: [], coverage: [] } as unknown as Snapshot}
-              createMonth={month}
-              onSaved={snapshot => {
-                setClosing(false);
-                setSelected(snapshot);
-              }}
-            />
-            <Button className='mt-2' onClick={() => setClosing(false)}>
-              취소
-            </Button>
-          </CardContent>
-        </Card>
+        <Button variant='primary' className='ml-auto' onClick={() => setClosing(true)}>
+          <Plus /> 월말 기록 만들기
+        </Button>
+      </TabToolbar>
+
+      {missing.length > 0 && (
+        <Alert variant='warning' className='mb-4'>
+          월말 기록이 없는 달: {missing.map(m => monthLabel(m)).join(', ')}
+        </Alert>
       )}
-      <p className='text-xs text-muted-foreground'>
-        당시 수량·잔액·종가·환율과 포함 범위가 충족된 월만 확정합니다. 기존 기록의 정정은 새 revision으로 보존합니다.
-      </p>
-      {history.data?.missing_months.length ? (
-        <Alert variant='warning'>월말 기록 없음: {history.data.missing_months.map(value => value.slice(0, 7)).join(', ')}</Alert>
-      ) : null}
-      <Card>
-        <CardHeader>
-          <CardTitle>순자산 · 총자산 · 부채 추이</CardTitle>
-        </CardHeader>
-        <CardContent>
+
+      <Section
+        title='순자산 추이'
+        info={
+          <>
+            <p>그 달 말일의 수량·잔액과 유효한 종가·환율이 모두 있는 달만 확정합니다. 오늘의 수량이나 시세로 과거를 채우지 않습니다.</p>
+            <p>월별 차이는 입출금·지출·평가 변동이 섞인 값이라, 거래 기록 없이 투자 수익이나 저축으로 단정할 수 없습니다.</p>
+          </>
+        }>
+        <QueryStatus pending={history.isPending} error={history.error} retry={history.refetch} label='월별 기록' rows={3} />
+        {history.data && (
           <HistoryChart
-            months={snapshots.map(snapshot => ({
-              month: snapshot.month,
-              complete: snapshot.complete,
-              net_worth_krw: snapshot.net_worth,
-              total_assets_krw: snapshot.total_assets,
-              total_liabilities_krw: snapshot.total_liabilities,
+            months={snapshots.map(s => ({
+              month: s.month,
+              complete: s.complete,
+              net_worth_krw: s.net_worth,
+              total_assets_krw: s.total_assets,
+              total_liabilities_krw: s.total_liabilities,
             }))}
           />
-        </CardContent>
-      </Card>
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {['월', '순자산', '총자산', '부채', '전월 대비 KRW / %', '현금 / 투자', '완전성', '검토'].map(label => (
-                <TableHead key={label}>{label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {snapshots.map(snapshot => {
-              const comparable = snapshot.complete && snapshot.change_krw != null;
-              return (
-                <TableRow key={snapshot.id}>
+        )}
+      </Section>
+
+      <Section title='월별 기록' count={snapshots.length}>
+        {history.data && !snapshots.length && (
+          <EmptyState
+            action={
+              <Button size='sm' variant='primary' onClick={() => setClosing(true)}>
+                <Plus /> 월말 기록 만들기
+              </Button>
+            }>
+            선택한 기간에 월말 기록이 없습니다.
+          </EmptyState>
+        )}
+        {snapshots.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>월</TableHead>
+                <TableHead className='text-right'>순자산</TableHead>
+                <TableHead className='hidden text-right md:table-cell'>총자산</TableHead>
+                <TableHead className='hidden text-right md:table-cell'>부채</TableHead>
+                <TableHead className='text-right'>전월 대비</TableHead>
+                <TableHead>상태</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...snapshots].reverse().map(snapshot => (
+                <TableRow key={snapshot.id} className='cursor-pointer' onClick={() => setSelected(snapshot)}>
                   <TableCell>
-                    {snapshot.month.slice(0, 7)}
-                    <small className='block text-faint'>수정 {snapshot.revision}</small>
+                    <button type='button' className='font-medium hover:underline' onClick={() => setSelected(snapshot)}>
+                      {monthLabel(snapshot.month)}
+                    </button>
+                    {snapshot.revision > 1 && <span className='ml-1.5 text-xs text-faint'>정정됨</span>}
                   </TableCell>
-                  <TableCell>{money(snapshot.net_worth)}</TableCell>
-                  <TableCell>{money(snapshot.total_assets)}</TableCell>
-                  <TableCell>{money(snapshot.total_liabilities)}</TableCell>
-                  <TableCell>
-                    {comparable ? (
-                      <>
-                        {money(snapshot.change_krw)}
-                        <small className='block'>{snapshot.change_pct == null ? '비율 계산 불가' : `${snapshot.change_pct}%`}</small>
-                      </>
-                    ) : (
-                      '비교 불가'
-                    )}
+                  <TableCell className='text-right tabular-nums'>{money(snapshot.net_worth)}</TableCell>
+                  <TableCell className='hidden text-right tabular-nums md:table-cell'>{money(snapshot.total_assets)}</TableCell>
+                  <TableCell className='hidden text-right tabular-nums md:table-cell'>{money(snapshot.total_liabilities)}</TableCell>
+                  <TableCell className='text-right'>
+                    <Change snapshot={snapshot} />
                   </TableCell>
-                  <TableCell>
-                    {money(snapshot.cash)}
-                    <small className='block'>{money(snapshot.investments)}</small>
-                  </TableCell>
-                  <TableCell>
-                    {snapshot.complete ? '완전' : '불완전'}
-                    <small className='block text-warning'>{snapshot.issues.join(' · ')}</small>
-                  </TableCell>
-                  <TableCell>
-                    <Button size='sm' onClick={() => setSelected(snapshot)}>
-                      명세 · 감사 이력
-                    </Button>
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    {snapshot.complete ? <span className='text-xs text-faint'>확정</span> : <QualityBadge flags={issueFlags(snapshot.issues)} label='근거 부족' />}
                   </TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        {!snapshots.length && (
-          <p className='p-5 text-muted-foreground'>{history.isPending ? '불러오는 중…' : '선택한 기간에 월말 기록이 없습니다.'}</p>
+              ))}
+            </TableBody>
+          </Table>
         )}
-      </Card>
-      {selected && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{selected.month.slice(0, 7)} 월말 검토</CardTitle>
-            <Button onClick={() => setSelected(null)}>닫기</Button>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <Totals data={selected} />
-            <Holdings data={selected} />
-            <p>
-              기록 사유: {selected.reason} · {timestamp(selected.created_at)}
-            </p>
-            <SnapshotCorrection key={selected.id} snapshot={selected} onSaved={setSelected} />
-            <h3 className='font-semibold'>감사 이력 (원본 보존)</h3>
-            {audit.error && <Alert variant='destructive'>{audit.error.message}</Alert>}
-            {audit.isPending && <p>감사 이력 불러오는 중…</p>}
-            {audit.data?.map(revision => (
-              <p key={revision.id}>
-                수정 {revision.revision} · {timestamp(revision.created_at)} · {revision.reason} · {money(revision.net_worth)} ·{' '}
-                {revision.complete ? '완전' : '불완전'}
-              </p>
-            ))}
-          </CardContent>
-        </Card>
+      </Section>
+
+      {selected && <SnapshotDetail key={selected.id} snapshot={selected} onClose={() => setSelected(null)} onSaved={setSelected} />}
+      {closing && (
+        <CloseMonthSheet
+          onClose={() => setClosing(false)}
+          onSaved={snapshot => {
+            setClosing(false);
+            setSelected(snapshot);
+          }}
+        />
       )}
-    </PageContainer>
+    </>
   );
 }

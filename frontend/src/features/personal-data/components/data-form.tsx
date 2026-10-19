@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { type ReactNode, useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { errorMessage } from '@/api-client/api-error';
 import { cn } from '@/lib/utils';
 
 import { enumLabel, fieldLabel } from '../consts/resources';
-import { type FormValues, initialValues, toPayload } from '../utils/form-values';
+import { ALL_DAY, type FormValues, hasAllDay, initialValues, toggleAllDayValue, toPayload } from '../utils/form-values';
 import type { FieldSpec } from '../utils/schema-fields';
 import type { RecordOption } from '../utils/record-options';
 import { hasRecordChoices, RecordSelect } from './record-select';
@@ -26,13 +26,24 @@ interface Props {
   enumLabels?: Record<string, string>;
   current?: Record<string, unknown>;
   recordChoices?: Record<string, RecordOption[]>;
+  /** Fields kept in the payload with their current value but not shown (internal IDs, request keys). */
+  hidden?: string[];
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
   onCancel: () => void;
+  /** Extra actions on the left of the submit row (e.g. delete). */
+  extraActions?: ReactNode;
 }
 
-export function DataForm({ fields, labels, enumLabels, current, recordChoices, submitLabel, onSubmit, onCancel }: Props) {
-  const { register, control, handleSubmit, formState } = useForm<FormValues>({ defaultValues: initialValues(fields, current) });
+export function DataForm({ fields, labels, enumLabels, current, recordChoices, hidden, submitLabel, onSubmit, onCancel, extraActions }: Props) {
+  const { register, control, handleSubmit, formState, getValues, setValue } = useForm<FormValues>({ defaultValues: initialValues(fields, current) });
+  const allDayForm = hasAllDay(fields);
+  const allDayValue = useWatch({ control, name: ALL_DAY.flag });
+  const allDay = allDayForm && Boolean(allDayValue);
+  const flipAllDay = (next: boolean) => {
+    setValue(ALL_DAY.start, toggleAllDayValue(String(getValues(ALL_DAY.start) ?? ''), next, '09:00'));
+    setValue(ALL_DAY.end, toggleAllDayValue(String(getValues(ALL_DAY.end) || getValues(ALL_DAY.start) || ''), next, '10:00'));
+  };
   const [error, setError] = useState<string | null>(null);
 
   const submit = handleSubmit(async values => {
@@ -48,6 +59,7 @@ export function DataForm({ fields, labels, enumLabels, current, recordChoices, s
     <form onSubmit={submit} className='flex flex-col gap-2.5'>
       <div className='grid grid-cols-1 gap-3.5 md:grid-cols-2'>
         {fields.map(f => {
+          if (hidden?.includes(f.name)) return null;
           const id = `f-${f.name}`;
           if (f.kind === 'boolean') {
             return (
@@ -57,7 +69,13 @@ export function DataForm({ fields, labels, enumLabels, current, recordChoices, s
                 control={control}
                 render={({ field }) => (
                   <label className='mt-[18px] inline-flex cursor-pointer select-none items-center gap-2'>
-                    <Checkbox checked={Boolean(field.value)} onCheckedChange={v => field.onChange(v === true)} />
+                    <Checkbox
+                      checked={Boolean(field.value)}
+                      onCheckedChange={v => {
+                        field.onChange(v === true);
+                        if (allDayForm && f.name === ALL_DAY.flag) flipAllDay(v === true);
+                      }}
+                    />
                     {labels?.[f.name] ?? fieldLabel(f.name)}
                   </label>
                 )}
@@ -67,7 +85,8 @@ export function DataForm({ fields, labels, enumLabels, current, recordChoices, s
           return (
             <div key={f.name} className={cn('flex flex-col gap-1', f.kind === 'longtext' && 'md:col-span-2')}>
               <Label htmlFor={id}>
-                {labels?.[f.name] ?? fieldLabel(f.name)} {f.required && <span className='text-destructive'>*</span>}
+                {allDay && f.name === ALL_DAY.start ? '시작일' : allDay && f.name === ALL_DAY.end ? '마지막 날' : (labels?.[f.name] ?? fieldLabel(f.name))}{' '}
+                {(f.required || (allDay && f.name === ALL_DAY.end)) && <span className='text-destructive'>*</span>}
               </Label>
               {hasRecordChoices(f.name) || recordChoices?.[f.name] ? (
                 <Controller
@@ -104,7 +123,7 @@ export function DataForm({ fields, labels, enumLabels, current, recordChoices, s
                 <Input
                   id={id}
                   required={f.required}
-                  type={f.kind === 'date' ? 'date' : f.kind === 'datetime' ? 'datetime-local' : 'text'}
+                  type={f.kind === 'date' || (allDay && (f.name === ALL_DAY.start || f.name === ALL_DAY.end)) ? 'date' : f.kind === 'datetime' ? 'datetime-local' : 'text'}
                   inputMode={f.kind === 'decimal' ? 'decimal' : f.kind === 'integer' ? 'numeric' : undefined}
                   pattern={f.kind === 'decimal' ? '-?[0-9]+(\\.[0-9]+)?' : f.kind === 'integer' ? '-?[0-9]+' : undefined}
                   maxLength={f.name === 'currency' || f.name === 'base' || f.name === 'quote' ? 3 : undefined}
@@ -120,7 +139,8 @@ export function DataForm({ fields, labels, enumLabels, current, recordChoices, s
           {error}
         </Alert>
       )}
-      <div className='flex justify-end gap-2'>
+      <div className='mt-2 flex items-center justify-end gap-2'>
+        {extraActions && <div className='mr-auto flex items-center gap-1'>{extraActions}</div>}
         <Button type='button' onClick={onCancel}>
           취소
         </Button>

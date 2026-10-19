@@ -13,7 +13,7 @@ def test_missing_client_configuration_is_actionable_without_disclosing_credentia
     status = manager.status(session)
     assert status["configured"] is False
     assert status["setup"]["missing_fields"] == ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"]
-    assert status["setup"]["login_url"] == "http://127.0.0.1:5173/finance"
+    assert status["setup"]["login_url"] == "http://127.0.0.1:5173/settings/market"
     assert status["setup"]["redirect_uri"] == "http://127.0.0.1:8000/api/finance/google/callback"
     configured = GoogleOAuthManager(Settings(google_oauth_client_id="private-client-id", google_oauth_client_secret="private-secret"))
     text = json.dumps(configured.status(session))

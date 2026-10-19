@@ -35,8 +35,8 @@ export function ValueHistoryDialog({ resource, id, label, onClose }: { resource:
     <Dialog open onOpenChange={open => !open && onClose()}>
       <DialogContent className='max-w-2xl'>
         <DialogHeader>
-          <DialogTitle>{label} 변경 이력</DialogTitle>
-          <DialogDescription>직접 입력한 값의 기록입니다. 값의 차이는 입력 변경이며 투자 수익이 아닙니다.</DialogDescription>
+          <DialogTitle>{label} 변경 기록</DialogTitle>
+          <DialogDescription>직접 입력한 값이 바뀐 기록입니다. 차이는 입력 변경이며 수익이 아닙니다.</DialogDescription>
         </DialogHeader>
         {history.error && <Alert variant='destructive'>{history.error.message}</Alert>}
         {history.isPending && <EmptyState>불러오는 중…</EmptyState>}

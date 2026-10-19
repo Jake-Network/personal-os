@@ -29,8 +29,15 @@ export default {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      // Named steps for the dense UI sizes between Tailwind's defaults.
+      fontSize: {
+        '2xs': ['11px', '16px'],
+        ui: ['13px', '20px'],
+        title: ['15px', '22px'],
+        display: ['22px', '28px'],
+      },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', 'sans-serif'],
+        sans: ['var(--font-pretendard)', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', 'sans-serif'],
         mono: ['ui-monospace', 'SF Mono', 'Menlo', 'Consolas', 'monospace'],
       },
       keyframes: {

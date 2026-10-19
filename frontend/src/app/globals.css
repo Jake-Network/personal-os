@@ -16,7 +16,7 @@
     --secondary-foreground: 60 4% 11%;
     --muted: 60 12% 93%;
     --muted-foreground: 60 3% 35%;
-    --faint: 60 3% 53%;
+    --faint: 60 3% 42%;
     --accent: 153 19% 91%;
     --accent-foreground: 163 33% 27%;
     --destructive: 7 57% 41%;
@@ -46,7 +46,7 @@
     --secondary-foreground: 60 12% 92%;
     --muted: 80 4% 15%;
     --muted-foreground: 60 5% 67%;
-    --faint: 60 3% 50%;
+    --faint: 60 4% 60%;
     --accent: 158 19% 17%;
     --accent-foreground: 159 29% 61%;
     --destructive: 8 71% 70%;
@@ -67,7 +67,7 @@
   }
 
   body {
-    @apply bg-background text-[14px] leading-[1.55] text-foreground antialiased;
+    @apply bg-background text-sm leading-[1.55] text-foreground antialiased;
   }
 
   h1,
@@ -104,7 +104,7 @@
     @apply rounded-sm bg-muted px-1 font-mono text-xs;
   }
   .markdown table {
-    @apply my-2 w-full border-collapse text-[13px];
+    @apply my-2 w-full border-collapse text-ui;
   }
   .markdown th,
   .markdown td {

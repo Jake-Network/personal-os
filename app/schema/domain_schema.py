@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.modules.finance.formatting import quantity_text
 
@@ -184,8 +184,15 @@ class CalendarEventCreate(BaseModel):
     kind: Literal["personal", "work", "interview", "workout", "deadline"] = "personal"
     starts_at: datetime
     ends_at: datetime | None = None
+    all_day: bool = False
     location: str | None = None
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _all_day_needs_end(self):
+        if self.all_day and (self.ends_at is None or self.ends_at <= self.starts_at):
+            raise ValueError("종일 일정에는 시작보다 늦은 종료 시각이 필요합니다")
+        return self
 
 
 class CalendarEventItem(_Item, CalendarEventCreate):

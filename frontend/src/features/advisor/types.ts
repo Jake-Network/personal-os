@@ -42,6 +42,8 @@ export interface InspectorData {
   /** Earlier messages not replayed because they may hold data from a now-excluded category. */
   history_withheld_messages?: number;
   history_withheld_categories?: string[];
+  /** The model that wrote the answer, when the panel shows a saved answer's data. */
+  model?: string | null;
 }
 
 export interface WebSource {

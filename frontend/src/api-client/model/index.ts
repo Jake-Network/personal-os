@@ -258,6 +258,7 @@ export * from './listConversationsParams';
 export * from './listMemoriesParams';
 export * from './listPeriodReviewsParams';
 export * from './listProposalsParams';
+export * from './localeSettings';
 export * from './loginStartResponse';
 export * from './memoryCreate';
 export * from './memoryCreateKind';

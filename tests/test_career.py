@@ -92,6 +92,7 @@ def test_career_api_and_timeline_contract(client):
     timeline = client.get("/api/timeline", params={"start": "2023-01-01", "end": "2024-01-01", "domain": "career"})
     assert timeline.status_code == 200, timeline.text
     assert timeline.json()["items"][0]["occurred_on"] == "2022"
+    assert timeline.json()["items"][0]["href"] == f"/career/records?record={row['id']}"
     assert client.get("/api/timeline", params={"start": "2024-01-01", "end": "2023-01-01"}).status_code == 422
     assert client.post("/api/career/records", json={"kind": "project", "title": "오류", "started_on": "2023-02-30"}).status_code == 422
 
