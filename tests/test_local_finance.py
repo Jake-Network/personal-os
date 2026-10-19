@@ -162,6 +162,32 @@ def transaction(kind, request, **kwargs):
     )
 
 
+def test_listing_keeps_reversal_status_outside_requested_year(session):
+    original = ledger_manager.record(session, transaction("income", "old-income").model_copy(
+        update={"occurred_at": datetime(2025, 6, 1, tzinfo=UTC)}
+    ))
+    ledger_manager.record(session, transaction("reversal", "next-year-reverse", reverses_id=original["id"]).model_copy(
+        update={"occurred_at": datetime(2026, 6, 1, tzinfo=UTC)}
+    ))
+    listed = ledger_manager.listing(session, 2025)
+    assert len(listed) == 1
+    assert listed[0]["is_reversed"] is True
+    assert ledger_manager.listing(session, 2026)[0]["is_reversed"] is False
+    assert ledger_manager.trend(session, 2025)["cashflow_by_currency"] == {}
+
+
+def test_local_portfolio_uses_living_expense_eligibility(session):
+    from app.modules.portfolio.local_portfolio import portfolio
+
+    for kind, liquid in [("checking", True), ("deposit", False), ("pension", True), ("other", True)]:
+        session.add(Account(name=kind, kind=kind, is_liquid=liquid, currency="KRW", balance=100, balance_as_of=date.today()))
+    session.commit()
+    lines = {line["label"]: line for line in portfolio(session)["lines"]}
+    assert {name: line["spendable"] for name, line in lines.items()} == {
+        "checking": True, "deposit": False, "pension": False, "other": False,
+    }
+
+
 def test_transfers_trades_and_reversals_do_not_inflate_income(session):
     a = Account(
         name="a",

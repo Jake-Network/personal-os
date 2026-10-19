@@ -73,7 +73,6 @@ interface ListRow {
 }
 
 function toRows(ledger: LedgerEntry[], cashflow: Row[], year: number): ListRow[] {
-  const reversed = new Set(ledger.filter(e => e.kind === 'reversal' && e.reverses_id).map(e => e.reverses_id));
   const fromLedger = ledger.map<ListRow>(e => {
     const day = zonedDayKey(e.occurred_at);
     return {
@@ -87,7 +86,7 @@ function toRows(ledger: LedgerEntry[], cashflow: Row[], year: number): ListRow[]
       amount: e.amount,
       currency: e.currency,
       ledger: e,
-      reversed: reversed.has(e.id),
+      reversed: e.is_reversed,
     };
   });
   const fromCashflow = cashflow

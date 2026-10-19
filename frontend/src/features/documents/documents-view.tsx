@@ -60,7 +60,7 @@ function StatusLabel({ status }: { status: string }) {
 }
 
 /** A replacement still processing while the previous version keeps answering searches. */
-const replacing = (d: PersonalDocument) => d.active_version_id !== null && d.latest_version_id !== null && d.active_version_id !== d.latest_version_id;
+export const replacing = (d: PersonalDocument) => IN_PROGRESS.has(d.status) && d.active_version_id !== null && d.latest_version_id !== null && d.active_version_id !== d.latest_version_id;
 
 function useDocumentAction() {
   const client = useQueryClient();
@@ -262,6 +262,9 @@ function DocumentSheet({ doc, onClose }: { doc: PersonalDocument; onClose: () =>
               {doc.as_of && <span>· 기준일 {dateOnly(doc.as_of)}</span>}
             </div>
             {replacing(doc) && <p className='mt-2 text-ui text-muted-foreground'>새 버전을 처리하는 동안에는 이전 버전으로 검색합니다.</p>}
+            {doc.status === 'failed' && doc.active_version_id !== null && doc.active_version_id !== doc.latest_version_id && (
+              <p className='mt-2 text-ui text-muted-foreground'>새 버전 처리에 실패했습니다. 이전 버전으로 검색합니다.</p>
+            )}
             {doc.error && (
               <Alert variant='destructive' className='mt-2'>
                 {doc.error}

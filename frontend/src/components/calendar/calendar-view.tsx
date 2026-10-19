@@ -79,7 +79,9 @@ function ItemChip({ item, conflict, onOpen, compact }: { item: CalendarItem; con
         conflict && 'ring-1 ring-warning',
       )}>
       {conflict && <TriangleAlert className='size-3 shrink-0' aria-label='겹치는 일정' />}
-      {!item.allDay && !compact && !/^\d{4}-\d{2}-\d{2}$/.test(item.start) && <span className='shrink-0 tabular-nums opacity-80'>{timeOnly(item.start)}</span>}
+      {!item.allDay && !compact && !/^\d{4}-\d{2}-\d{2}$/.test(item.start) && (
+        <span className='shrink-0 tabular-nums opacity-80'>{timeOnly(item.start)}</span>
+      )}
       <span className='truncate'>{item.title}</span>
     </button>
   );
@@ -111,7 +113,7 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
   const month = anchor.slice(0, 7);
 
   useEffect(() => {
-    if (view === 'week' && weekScroll.current) weekScroll.current.scrollTop = (8 * 60 / SLOT) * SLOT_PX;
+    if (view === 'week' && weekScroll.current) weekScroll.current.scrollTop = ((8 * 60) / SLOT) * SLOT_PX;
   }, [view]);
 
   useEffect(() => {
@@ -164,7 +166,10 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
     tabIndex: day === focusDay ? 0 : -1,
     'aria-selected': inRange(day, dayRange),
     'aria-label': `${dayLabel(day)}${day === today ? ', 오늘' : ''}`,
-    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => keyNav(e, day),
+    onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+      // Item buttons keep their native Enter/Space activation and arrow-key behavior.
+      if (e.target === e.currentTarget) keyNav(e, day);
+    },
     onFocus: () => setFocusDay(day),
     onPointerDown: (e: PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -290,7 +295,10 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
           </div>
         ) : (
           <div className='overflow-hidden rounded-lg border bg-card'>
-            <div role='grid' aria-label={`${title} 종일 항목. 날짜를 누르거나 끌어서 종일 일정 추가`} className='grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b'>
+            <div
+              role='grid'
+              aria-label={`${title} 종일 항목. 날짜를 누르거나 끌어서 종일 일정 추가`}
+              className='grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b'>
               <div className='border-r' />
               {week.map((day, i) => (
                 <div
@@ -309,7 +317,11 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
                 </div>
               ))}
             </div>
-            <div ref={weekScroll} className='max-h-[560px] overflow-y-auto' onPointerUp={finishTimeDrag} onPointerLeave={() => timeDrag && finishTimeDrag()}>
+            <div
+              ref={weekScroll}
+              className='max-h-[560px] overflow-y-auto'
+              onPointerUp={finishTimeDrag}
+              onPointerLeave={() => timeDrag && finishTimeDrag()}>
               <div className='relative grid grid-cols-[52px_repeat(7,minmax(0,1fr))]'>
                 <div className='border-r'>
                   {Array.from({ length: 24 }, (_, h) => (
@@ -322,7 +334,8 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
                   <div key={day} className='relative border-r last:border-r-0'>
                     {Array.from({ length: (24 * 60) / SLOT }, (_, s) => {
                       const minute = s * SLOT;
-                      const selected = timeDrag?.day === day && minute >= Math.min(timeDrag.from, timeDrag.to) && minute <= Math.max(timeDrag.from, timeDrag.to);
+                      const selected =
+                        timeDrag?.day === day && minute >= Math.min(timeDrag.from, timeDrag.to) && minute <= Math.max(timeDrag.from, timeDrag.to);
                       return (
                         <div
                           key={s}
@@ -330,7 +343,11 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
                           tabIndex={-1}
                           aria-label={`${dayLabel(day)} ${Math.floor(minute / 60)}시 ${minute % 60}분에 일정 추가`}
                           style={{ height: SLOT_PX }}
-                          className={cn('cursor-pointer border-b border-border/50 hover:bg-muted/50', s % 2 === 1 && 'border-border', selected && 'bg-accent')}
+                          className={cn(
+                            'cursor-pointer border-b border-border/50 hover:bg-muted/50',
+                            s % 2 === 1 && 'border-border',
+                            selected && 'bg-accent',
+                          )}
                           onPointerDown={e => {
                             if (e.button !== 0) return;
                             // Touch input captures the pointer; release it so dragging reaches the next slots.
@@ -383,17 +400,22 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
           .filter(day => day.slice(0, 7) === month)
           .map(day => {
             const dayItems = sorted.filter(i => coversDay(i, day, tz));
-            if (!dayItems.length && day !== today) return null;
             return (
               <li key={day} className='flex gap-3 border-b py-2'>
-                <div className={cn('w-14 shrink-0 pt-0.5 text-xs text-faint', day === today && 'font-semibold text-primary')}>{dayLabel(day).replace(/^\d+월 /, '')}</div>
+                <div className={cn('w-14 shrink-0 pt-0.5 text-xs text-faint', day === today && 'font-semibold text-primary')}>
+                  {dayLabel(day).replace(/^\d+월 /, '')}
+                </div>
                 <div className='flex min-w-0 flex-1 flex-col gap-1'>
                   {dayItems.map(i => (
                     <ItemChip key={i.key} item={i} conflict={conflicts.has(i.key)} onOpen={() => onOpenItem(i)} />
                   ))}
-                  {!dayItems.length && <span className='text-xs text-faint'>오늘은 비어 있습니다</span>}
+                  {!dayItems.length && <span className='text-xs text-faint'>{day === today ? '오늘은 비어 있습니다' : '일정 없음'}</span>}
                 </div>
-                <Button size='icon-sm' variant='ghost' aria-label={`${dayLabel(day)}에 추가`} onClick={() => onSelect({ kind: 'days', start: day, end: day })}>
+                <Button
+                  size='icon-sm'
+                  variant='ghost'
+                  aria-label={`${dayLabel(day)}에 추가`}
+                  onClick={() => onSelect({ kind: 'days', start: day, end: day })}>
                   <Plus />
                 </Button>
               </li>

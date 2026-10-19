@@ -31,23 +31,16 @@ export const INSPECTOR_TITLE = {
   snapshot: '답변 당시 데이터',
 } as const;
 
-/** Where each evidence table's records are managed; citations deep-link there with `?record=`. */
+/** Only tables whose destination understands this record ID may open an editor. */
 const RECORD_PATH: Record<string, string> = {
   tasks: '/plan/tasks',
   goals: '/plan/goals',
   calendar_events: '/plan/events',
   workout_logs: '/plan/workouts',
   job_applications: '/career',
-  interviews: '/career',
   career_criteria: '/career/criteria',
   accounts: '/finance/accounts',
-  liabilities: '/finance/accounts',
-  other_assets: '/finance/accounts',
   cashflow_entries: '/finance/transactions',
-  planned_expenses: '/finance/transactions',
-  financial_transactions: '/finance/transactions',
-  holdings: '/finance/investments',
-  fx_rates: '/finance/investments',
 };
 
 export function evidenceHref(table: string | undefined, id: number | undefined): string | null {

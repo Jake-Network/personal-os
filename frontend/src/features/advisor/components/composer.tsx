@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { CATEGORY_HINT, CATEGORY_LABEL } from '@/lib/labels';
+import { ALL_CATEGORIES, CATEGORY_HINT, CATEGORY_LABEL } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
 import { documentsApi, documentsKey } from '@/features/documents/api';
@@ -24,16 +24,14 @@ import { RecordSelect } from '@/features/personal-data/components/record-select'
 import type { AdvisorSend } from '../hooks/use-advisor-send';
 import { MAX_DOCUMENTS } from '../utils/send-logic';
 
-const SHARE_CATEGORIES: Category[] = ['financial', 'investment', 'career', 'calendar', 'health', 'goals'];
-
 const toolClass =
   'inline-flex h-7 items-center gap-1 rounded-md border border-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5';
 const toolOn = 'border-input bg-accent text-accent-foreground hover:bg-accent';
 
 /** What this question shares, summarized in one stable control; the toggles live in its popover. */
-function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; privacyBlocked: Category[] }) {
+export function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; privacyBlocked: Category[] }) {
   const { preview, input } = send;
-  const on = preview ? SHARE_CATEGORIES.filter(c => preview.categories.includes(c)) : [];
+  const on = preview ? ALL_CATEGORIES.filter(c => preview.categories.includes(c)) : [];
   const label = !input.trim() ? '공유 범위' : !preview ? '공유 범위 확인 중' : on.length ? `${on.slice(0, 2).map(c => CATEGORY_LABEL[c]).join('·')}${on.length > 2 ? ` 외 ${on.length - 2}` : ''} 공유` : '개인 기록 공유 안 함';
   return (
     <Popover>
@@ -46,16 +44,16 @@ function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; privacyBloc
         <p className='text-xs text-faint'>이번 질문에 함께 보낼 기록</p>
         {!preview && <p className='text-ui text-muted-foreground'>질문을 입력하면 보낼 기록이 여기에 표시됩니다.</p>}
         {preview &&
-          SHARE_CATEGORIES.map(c => {
+          ALL_CATEGORIES.map(c => {
             const blocked = privacyBlocked.includes(c);
             const checked = preview.categories.includes(c);
             const id = `share-${c}`;
             return (
               <div key={c} className='flex items-center gap-2'>
-                <Switch id={id} checked={checked} disabled={blocked || send.busy} onCheckedChange={() => send.toggleCategory(c)} />
+                <Switch id={id} checked={checked} disabled={blocked || c === 'profile' || send.busy} onCheckedChange={() => send.toggleCategory(c)} />
                 <Label htmlFor={id} className={cn('flex-1', blocked && 'text-faint')}>
                   {CATEGORY_LABEL[c]}
-                  <span className='block text-2xs font-normal text-faint'>{blocked ? '데이터 공유 설정에서 제외됨' : CATEGORY_HINT[c]}</span>
+                  <span className='block text-2xs font-normal text-faint'>{c === 'profile' ? '개인 프로필 공유는 기본 공유 설정에서 변경할 수 있습니다.' : blocked ? '데이터 공유 설정에서 제외됨' : CATEGORY_HINT[c]}</span>
                 </Label>
               </div>
             );

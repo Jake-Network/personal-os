@@ -49,6 +49,7 @@ export type FinanceLine = {
   value_krw: string | null;
   unrealized_gain_krw: string | null;
   issues: string[];
+  spendable?: boolean;
 };
 
 export type Portfolio = {

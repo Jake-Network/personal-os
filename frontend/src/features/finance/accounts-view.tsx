@@ -10,7 +10,6 @@ import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
 import { Section } from '@/components/page-container';
-import { QualityBadge } from '@/components/quality-badge';
 import { QueryStatus } from '@/components/query-status';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,7 +23,8 @@ import { useResourceRows } from '@/features/personal-data/hooks/use-resource';
 import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 
 import { type FinanceLine, financeApi } from './api';
-import { issueFlags, money } from './presentation';
+import { AccountValuationStatus, Spendability } from './account-valuation';
+import { money } from './presentation';
 
 interface ListConfig {
   resource: 'accounts' | 'liabilities' | 'other-assets';
@@ -36,7 +36,7 @@ interface ListConfig {
   amountField: 'balance' | 'value';
   asOfField: 'balance_as_of' | 'value_as_of';
   detail: (row: Row) => string;
-  extra?: { heading: string; cell: (row: Row) => ReactNode };
+  extra?: { heading: string; cell: (line?: FinanceLine) => ReactNode };
   info?: ReactNode;
 }
 
@@ -52,7 +52,7 @@ const LISTS: ListConfig[] = [
     detail: row => [row.institution, enumLabel(row.kind)].filter(Boolean).join(' · '),
     extra: {
       heading: '생활비',
-      cell: row => (row.is_liquid ? <span className='text-xs'>사용 가능</span> : <span className='text-xs text-faint'>제외</span>),
+      cell: line => <Spendability spendable={line?.spendable} />,
     },
     info: '"생활비로 사용 가능"을 켠 현금성 계좌만 생활비 현금과 버틸 기간 계산에 들어갑니다.',
   },
@@ -79,11 +79,11 @@ const LISTS: ListConfig[] = [
   },
 ];
 
-function RecordList({ config, lines, selected, onSelect }: { config: ListConfig; lines: FinanceLine[]; selected: number | null; onSelect: (id: number | null) => void }) {
+function RecordList({ config, lines, pending, failed, selected, onSelect }: { config: ListConfig; lines: FinanceLine[]; pending: boolean; failed: boolean; selected: number | null; onSelect: (id: number | null) => void }) {
   const rows = useResourceRows(config.resource);
   const [creating, setCreating] = useState(false);
   const editing = selected === null ? null : (rows.data?.find(r => r.id === selected) ?? null);
-  const issuesOf = (row: Row) => lines.find(l => l.kind === config.kind && l.id === String(row.id))?.issues ?? [];
+  const lineOf = (row: Row) => lines.find(l => l.kind === config.kind && l.id === String(row.id));
 
   return (
     <Section
@@ -110,7 +110,7 @@ function RecordList({ config, lines, selected, onSelect }: { config: ListConfig;
           </TableHeader>
           <TableBody>
             {rows.data.map(row => {
-              const issues = issuesOf(row);
+              const line = lineOf(row);
               const asOf = row[config.asOfField] as string | null;
               return (
                 <TableRow key={row.id} className='cursor-pointer' onClick={() => onSelect(row.id)}>
@@ -133,9 +133,9 @@ function RecordList({ config, lines, selected, onSelect }: { config: ListConfig;
                       '미기록'
                     )}
                   </TableCell>
-                  {config.extra && <TableCell className='hidden md:table-cell'>{config.extra.cell(row)}</TableCell>}
+                  {config.extra && <TableCell className='hidden md:table-cell'>{config.extra.cell(pending || failed ? undefined : line)}</TableCell>}
                   <TableCell onClick={e => e.stopPropagation()}>
-                    {issues.length ? <QualityBadge flags={issueFlags(issues)} /> : <span className='text-xs text-faint'>확인됨</span>}
+                    <AccountValuationStatus line={line} pending={pending} failed={failed} />
                   </TableCell>
                 </TableRow>
               );
@@ -201,8 +201,9 @@ export function AccountsView({ recordId }: { recordId: number | null }) {
 
   return (
     <>
+      <QueryStatus pending={portfolio.isPending} error={portfolio.error} retry={portfolio.refetch} label='자산 검증' rows={1} />
       {LISTS.map((config, i) => (
-        <RecordList key={config.resource} config={config} lines={lines} selected={selection[i][0]} onSelect={selection[i][1]} />
+        <RecordList key={config.resource} config={config} lines={lines} pending={portfolio.isFetching} failed={portfolio.isError} selected={selection[i][0]} onSelect={selection[i][1]} />
       ))}
       <CoverageConfirm />
     </>

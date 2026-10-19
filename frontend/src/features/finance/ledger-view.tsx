@@ -36,6 +36,7 @@ export type LedgerEntry = {
   source: string;
   note: string | null;
   reverses_id?: number | null;
+  is_reversed: boolean;
 };
 
 export interface LedgerDraft {

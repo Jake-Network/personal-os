@@ -13,6 +13,7 @@ from app.modules.database.model import (
 )
 from app.modules.finance.clock import local_today
 from app.modules.finance.formatting import quantity_text
+from app.modules.finance.liquidity_policy import account_spendable
 from app.modules.portfolio.valuation import enrich_rows, value_positions
 
 
@@ -67,6 +68,10 @@ def rows(session, kinds=None):
                     currency=obj.currency,
                     balance=str(getattr(obj, amount)),
                     as_of=getattr(obj, when).isoformat(),
+                    **(
+                        {"spendable": account_spendable(obj.kind, obj.is_liquid)}
+                        if kind == "cash" else {}
+                    ),
                 )
             )
     rates = [
