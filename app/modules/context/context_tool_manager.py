@@ -6,11 +6,10 @@ the model never receives connection strings or SQL.
 """
 
 from collections.abc import Callable
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,7 +21,6 @@ from app.modules.crud import (
     app_setting_handler,
     calendar_event_handler,
     career_criterion_handler,
-    cashflow_entry_handler,
     fx_rate_handler,
     goal_handler,
     holding_handler,
@@ -35,7 +33,7 @@ from app.modules.crud import (
     task_handler,
     workout_log_handler,
 )
-from app.modules.database.model import FinancialTransaction, FxRate, Holding, LocalFinanceCoverage
+from app.modules.database.model import FxRate, Holding, LocalFinanceCoverage
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
 from app.modules.context.derived import calendar_conflicts, fx_table_from_rates
@@ -175,24 +173,11 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
     zone = ZoneInfo(settings.timezone)
     today = as_aware(ctx.now).astimezone(zone).date()
     since = date(today.year - 1, today.month, 1)
-    entries = [e for e in cashflow_entry_handler.get_since(s, since) if e.occurred_on <= today]
-    # A reversal may be recorded outside this reporting window. It still removes
-    # its original fact, and remains a dependency of this calculation.
-    transactions = list(s.scalars(select(FinancialTransaction).where(
-        FinancialTransaction.occurred_at >= datetime.combine(since, time.min, zone),
-        FinancialTransaction.occurred_at <= ctx.now,
-        FinancialTransaction.kind.in_(("income", "dividend", "interest", "expense", "fee", "tax")),
-    )))
-    reversals = list(s.scalars(select(FinancialTransaction).where(
-        FinancialTransaction.reverses_id.in_([t.id for t in transactions]),
-        FinancialTransaction.kind == "reversal",
-    ))) if transactions else []
-    reversed_ids = {r.reverses_id for r in reversals}
-    from app.modules.finance.ledger import INCOME
-    flows = [(e.occurred_on, e.amount, e.currency, e.kind, e.category or "uncategorized") for e in entries]
-    flows += [(as_aware(t.occurred_at).astimezone(zone).date(), Decimal(t.payload["amount"]),
-               t.payload["currency"], "income" if t.kind in INCOME else "expense", "uncategorized")
-              for t in transactions if t.id not in reversed_ids]
+    from app.modules.finance.cashflow import load_flows
+    rows, entries, transactions, reversals = load_flows(s, since, ctx.now)
+    flows = [(date.fromisoformat(r["occurred_on"]), Decimal(r["amount"]), r["currency"],
+              r["kind"], "uncategorized" if r["category"] == "미분류" else r["category"])
+             for r in rows if not r["is_reversed"]]
     planned = planned_expense_handler.get_upcoming(s, today)
     base = base_currency(s)
     foreign = [e for e in flows if e[2] != base]

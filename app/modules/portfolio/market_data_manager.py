@@ -3,6 +3,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
+from math import ceil
 
 from sqlalchemy import select, update
 
@@ -152,22 +153,20 @@ def refresh(session, client=None):
     settings = session.get(MarketSettings, 1)
     if settings is None:
         return {
+            "refresh_state": "not_connected",
             "warning": "시세 전용 Google 파일을 연결하세요. 로컬 보유 내역은 계속 편집할 수 있습니다."
         }
     now = utcnow()
     if settings.last_attempt_at and now - settings.last_attempt_at < timedelta(
         seconds=300
     ):
-        return {
-            "refresh_after_seconds": max(
-                1,
-                int(
-                    (
-                        settings.last_attempt_at + timedelta(seconds=300) - now
-                    ).total_seconds()
-                ),
-            )
-        }
+        remaining = max(
+            1, ceil((settings.last_attempt_at + timedelta(seconds=300) - now).total_seconds())
+        )
+        message = f"시세를 새로 갱신하지 않았습니다. 조회 간격 제한으로 {remaining}초 후 다시 조회할 수 있습니다."
+        if settings.last_error:
+            message += f" 이전 조회: {settings.last_error}"
+        return {"refresh_state": "cooldown", "refresh_after_seconds": remaining, "warning": message}
     from app.modules.portfolio.portfolio_manager import _source
 
     principal = _source(session)[0]
@@ -192,7 +191,10 @@ def refresh(session, client=None):
     )
     if claimed.rowcount != 1:
         session.rollback()
-        return {"refresh_after_seconds": 300}
+        return {
+            "refresh_state": "cooldown", "refresh_after_seconds": 300,
+            "warning": "다른 시세 조회가 진행 중입니다. 잠시 후 다시 확인하세요.",
+        }
     session.commit()  # claim survives network failure/restart and enforces common cooldown
     try:
         positions = session.scalars(
@@ -235,7 +237,7 @@ def refresh(session, client=None):
                 "시세 수식 계산 대기 중입니다. 다음 갱신에서 확인합니다."
             )
             session.commit()
-            return {"warning": settings.last_error, "refresh_after_seconds": 300}
+            return {"refresh_state": "waiting", "warning": settings.last_error, "refresh_after_seconds": 300}
         # Serialize the result commit with replacement, after all network calls.
         _lock_refresh_result(session, principal, gateway.source_identity, spreadsheet_id, now)
         by_symbol = {r[0]: r for r in quotes if r}
@@ -273,17 +275,28 @@ def refresh(session, client=None):
                     )
                 )
                 continue  # calculation/error/unsupported: never overwrite a prior valid price
+            invalid_reason = None
+            trade = None
             try:
                 trade = _trade_time(row[3])
             except ValueError:
-                continue
+                invalid_reason = "거래 시각을 확인할 수 없습니다"
             price = parse_decimal(row[1])
             currency = row[2]
             if currency not in position_currencies[symbol]:
-                failures.append(f"{symbol}: quote currency mismatch")
-                continue
+                invalid_reason = "종목 통화와 시세 통화가 다릅니다"
             delay = parse_decimal(row[4])
-            if delay is None or trade > now + timedelta(minutes=5):
+            if delay is None:
+                invalid_reason = "시세 지연 정보를 확인할 수 없습니다"
+            if trade is not None and trade > now + timedelta(minutes=5):
+                invalid_reason = "거래 시각이 미래입니다"
+            if invalid_reason:
+                failures.append(f"{symbol}: {invalid_reason}")
+                for expected_currency in position_currencies[symbol]:
+                    _observation(
+                        session, symbol, expected_currency, "googlefinance_status",
+                        {"state": "provider_error", "attempt_at": now.isoformat()},
+                    )
                 continue
             payload = {
                 "state": "ready",
@@ -356,9 +369,10 @@ def refresh(session, client=None):
             .values(last_error=warning)
         )
         session.commit()
-        return {"warning": warning}
+        return {"refresh_state": "failed", "warning": warning, "refresh_after_seconds": 300}
     missing = sorted(symbols - expected)
     return {
+        "refresh_state": "failed" if failures or missing else "updated",
         "warning": f"자동 시세 미지원: {', '.join(missing)}. 날짜와 출처가 있는 수동 가격을 입력하세요."
         if missing
         else settings.last_error,

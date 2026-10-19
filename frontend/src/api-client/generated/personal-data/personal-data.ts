@@ -1461,6 +1461,93 @@ export const useCreateCashflowEntries = <TError = ErrorType<HTTPValidationError>
   return useMutation(mutationOptions, queryClient);
 };
 /**
+ * @summary Get Item
+ */
+export const getCashflowEntries = (itemId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<CashflowEntryItem>({ url: `/api/data/cashflow-entries/${itemId}`, method: 'GET', signal }, options);
+};
+
+export const getGetCashflowEntriesQueryKey = (itemId?: number) => {
+  return [`/api/data/cashflow-entries/${itemId}`] as const;
+};
+
+export const getGetCashflowEntriesQueryOptions = <TData = Awaited<ReturnType<typeof getCashflowEntries>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCashflowEntriesQueryKey(itemId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashflowEntries>>> = ({ signal }) => getCashflowEntries(itemId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!itemId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCashflowEntries>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetCashflowEntriesQueryResult = NonNullable<Awaited<ReturnType<typeof getCashflowEntries>>>;
+export type GetCashflowEntriesQueryError = ErrorType<HTTPValidationError>;
+
+export function useGetCashflowEntries<TData = Awaited<ReturnType<typeof getCashflowEntries>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, Awaited<ReturnType<typeof getCashflowEntries>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetCashflowEntries<TData = Awaited<ReturnType<typeof getCashflowEntries>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, Awaited<ReturnType<typeof getCashflowEntries>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetCashflowEntries<TData = Awaited<ReturnType<typeof getCashflowEntries>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Item
+ */
+
+export function useGetCashflowEntries<TData = Awaited<ReturnType<typeof getCashflowEntries>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getCashflowEntries>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetCashflowEntriesQueryOptions(itemId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary Update Item
  */
 export const updateCashflowEntries = (

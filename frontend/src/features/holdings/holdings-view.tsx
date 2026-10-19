@@ -28,6 +28,8 @@ import { useMarketStatus } from '@/features/finance/market-connection';
 import { issueFlags, money } from '@/features/finance/presentation';
 
 import { holdingDraft, holdingsApi, quantityText, type HoldingInput, type SheetHolding } from './api';
+import { returnPercent, returnTone, signedMoney } from './presentation';
+import { QuoteRefreshNotice, useQuoteRefresh } from './use-quote-refresh';
 
 const blank = (): HoldingInput => ({
   position_id: crypto.randomUUID(),
@@ -44,6 +46,28 @@ const blank = (): HoldingInput => ({
 });
 
 const QUOTE_FAILED: Record<string, string> = { unsupported: '자동 시세를 지원하지 않는 종목입니다', provider_error: '시세 제공처 오류' };
+
+function HoldingReturn({ row, line }: { row: SheetHolding; line?: FinanceLine }) {
+  const missing = row.avg_cost == null || row.avg_cost === '' ? '매수가 입력 필요' : line?.price == null ? '시세 확인 필요' : null;
+  const tone = returnTone(line?.unrealized_return_pct);
+  if (missing) return <span className='text-xs font-normal text-faint'>{missing}</span>;
+  const unavailableReason = /^0+(\.0+)?$/.test(row.avg_cost ?? '')
+    ? '매수가 0 · 수익률 계산 불가'
+    : /^0+(\.0+)?$/.test(row.quantity)
+      ? '수량 0 · 수익률 계산 불가'
+      : '수익률 계산 불가';
+  return (
+    <span
+      className={`block break-words tabular-nums ${tone === 'positive' ? 'text-success' : tone === 'negative' ? 'text-destructive' : 'text-foreground'}`}>
+      {line?.unrealized_return_pct == null ? (
+        <span className='block text-xs font-normal text-faint'>{unavailableReason}</span>
+      ) : (
+        <span className='block text-base font-semibold'>{returnPercent(line.unrealized_return_pct)}</span>
+      )}
+      {line?.unrealized_gain_native != null && <span className='block text-xs'>{signedMoney(line.unrealized_gain_native, row.currency)}</span>}
+    </span>
+  );
+}
 
 /** One status per holding: saved and priced, waiting for a quote, quote failed, or the valuation needs checking. */
 function HoldingStatus({ row, line }: { row: SheetHolding; line?: FinanceLine }) {
@@ -95,7 +119,17 @@ function HoldingSheet({
           <fieldset className='grid grid-cols-1 gap-3 sm:grid-cols-2' disabled={saving || !canWrite}>
             <div className='flex flex-col gap-1'>
               <Label htmlFor='h-ticker'>종목 코드 *</Label>
-              <Input id='h-ticker' required value={draft.ticker} placeholder='NASDAQ:AAPL' onChange={e => onChange({ ticker: e.target.value })} />
+              <Input
+                id='h-ticker'
+                aria-describedby='h-ticker-help'
+                required
+                value={draft.ticker}
+                placeholder='NASDAQ:NVDA'
+                onChange={e => onChange({ ticker: e.target.value })}
+              />
+              <p id='h-ticker-help' className='text-xs text-faint'>
+                예: SCHD는 NYSEARCA:SCHD, 엔비디아는 NASDAQ:NVDA
+              </p>
             </div>
             <div className='flex flex-col gap-1'>
               <Label htmlFor='h-label'>이름</Label>
@@ -114,16 +148,37 @@ function HoldingSheet({
               />
             </div>
             <div className='flex flex-col gap-1'>
-              <Label htmlFor='h-cost'>평균 매수가</Label>
-              <Input id='h-cost' inputMode='decimal' pattern='[0-9]+(\.[0-9]+)?' value={draft.avg_cost ?? ''} onChange={e => onChange({ avg_cost: e.target.value || null })} />
+              <Label htmlFor='h-cost'>1주 평균 매수가 ({draft.currency || '통화 선택'})</Label>
+              <Input
+                id='h-cost'
+                aria-describedby='h-cost-help'
+                inputMode='decimal'
+                pattern='[0-9]+(\.[0-9]+)?'
+                placeholder='1주를 산 가격'
+                value={draft.avg_cost ?? ''}
+                onChange={e => onChange({ avg_cost: e.target.value || null })}
+              />
+              <p id='h-cost-help' className='text-xs text-faint'>
+                입력하면 시세와 비교한 수익률을 보여드립니다.
+              </p>
             </div>
             <div className='flex flex-col gap-1'>
               <Label htmlFor='h-cur'>통화 *</Label>
-              <Input id='h-cur' required pattern='[A-Z]{3}' value={draft.currency} placeholder='USD' onChange={e => onChange({ currency: e.target.value.toUpperCase() })} />
+              <Input
+                id='h-cur'
+                required
+                pattern='[A-Z]{3}'
+                value={draft.currency}
+                placeholder='USD'
+                onChange={e => onChange({ currency: e.target.value.toUpperCase() })}
+              />
             </div>
             <div className='flex flex-col gap-1'>
               <Label htmlFor='h-class'>자산 종류</Label>
-              <NativeSelect id='h-class' value={draft.asset_class} onChange={e => onChange({ asset_class: e.target.value as HoldingInput['asset_class'] })}>
+              <NativeSelect
+                id='h-class'
+                value={draft.asset_class}
+                onChange={e => onChange({ asset_class: e.target.value as HoldingInput['asset_class'] })}>
                 <option value='equity'>주식</option>
                 <option value='etf'>ETF</option>
                 <option value='crypto'>가상자산</option>
@@ -138,7 +193,9 @@ function HoldingSheet({
                 <option value='manual'>직접 입력 (자동 시세 미지원 종목)</option>
               </NativeSelect>
               <p className='text-xs text-faint'>
-                {draft.quote_mode === 'auto' ? '거래소를 포함한 코드로 조회합니다. 외화는 기록된 환율로 원화 평가합니다.' : '가격과 그 기준일을 함께 입력하세요.'}
+                {draft.quote_mode === 'auto'
+                  ? '거래소를 포함한 코드로 조회합니다. 외화는 기록된 환율로 원화 평가합니다.'
+                  : '가격과 그 기준일을 함께 입력하세요.'}
               </p>
             </div>
             {draft.quote_mode === 'manual' && (
@@ -156,7 +213,13 @@ function HoldingSheet({
                 </div>
                 <div className='flex flex-col gap-1'>
                   <Label htmlFor='h-asof'>가격 기준일 *</Label>
-                  <Input id='h-asof' required type='date' value={draft.price_as_of ?? ''} onChange={e => onChange({ price_as_of: e.target.value || null })} />
+                  <Input
+                    id='h-asof'
+                    required
+                    type='date'
+                    value={draft.price_as_of ?? ''}
+                    onChange={e => onChange({ price_as_of: e.target.value || null })}
+                  />
                 </div>
               </>
             )}
@@ -202,13 +265,7 @@ function Holdings() {
   const holdings = useQuery({ queryKey: ['finance', 'holdings'], queryFn: holdingsApi.list });
   const [draft, setDraft] = useState<{ value: HoldingInput; isNew: boolean } | null>(null);
   const invalidate = () => client.invalidateQueries({ queryKey: ['finance'] });
-  const refresh = useMutation({
-    mutationFn: holdingsApi.refresh,
-    onSuccess: data => {
-      client.setQueryData(['finance', 'holdings'], data);
-      void client.invalidateQueries({ queryKey: ['finance', 'portfolio'] });
-    },
-  });
+  const refresh = useQuoteRefresh();
   const { mutate: refreshQuotes, isPending: refreshing } = refresh;
   const refreshRef = useRef(() => refreshQuotes());
   useEffect(() => {
@@ -260,12 +317,16 @@ function Holdings() {
           <p>종목·수량·원가는 이 컴퓨터에만 저장합니다. Google에는 시세 조회용 종목 코드만 보냅니다.</p>
           <p>자동 시세는 최대 20분 늦을 수 있고, 이 화면이 열려 있는 동안 5분마다 다시 조회합니다.</p>
           <p>가격이나 환율이 없는 종목은 0으로 계산하지 않고 합계에서 뺍니다.</p>
+          <p>
+            평가 수익률은 1주 평균 매수가 대비 현재 가격의 변화입니다. 평가손익은 보유 수량을 반영하며, 수수료·세금·배당·환율 변동은 포함하지
+            않습니다.
+          </p>
         </>
       }
       actions={
         <>
           <Button size='sm' variant='ghost' disabled={!initialized || busy} onClick={() => refresh.mutate()}>
-            <RefreshCw className={refreshing ? 'animate-spin' : undefined} /> 시세 조회
+            <RefreshCw className={refreshing ? 'animate-spin' : undefined} /> 시세 갱신
           </Button>
           <Button size='sm' disabled={!canWrite || !initialized || busy} onClick={() => open(null)}>
             <Plus /> 종목 추가
@@ -276,8 +337,8 @@ function Holdings() {
         <QuoteConnectionLine />
       </div>
       <QueryStatus pending={holdings.isPending} error={holdings.error} retry={holdings.refetch} label='보유 종목' rows={3} />
-      {refresh.error && <Alert variant='destructive' className='mb-2'>시세를 조회하지 못했습니다. {refresh.error.message}</Alert>}
-      {holdings.data?.warning && (
+      <QuoteRefreshNotice refresh={refresh} />
+      {!refresh.data && holdings.data?.warning && (
         <Alert variant='warning' className='mb-2'>
           {holdings.data.warning}
         </Alert>
@@ -289,49 +350,121 @@ function Holdings() {
               <Plus /> 종목 추가
             </Button>
           }>
-          아직 기록한 보유 종목이 없습니다.
+          종목과 보유 수량, 1주 평균 매수가를 입력해 수익률을 확인하세요.
         </EmptyState>
       )}
       {rows.length > 0 && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>종목</TableHead>
-              <TableHead className='text-right'>수량</TableHead>
-              <TableHead className='hidden text-right md:table-cell'>평균 매수가</TableHead>
-              <TableHead className='text-right'>시세</TableHead>
-              <TableHead className='text-right'>원화 평가액</TableHead>
-              <TableHead>상태</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <div className='divide-y md:hidden'>
             {rows.map(row => {
               const line = lineOf(row);
               return (
-                <TableRow key={row.position_id} className={canWrite ? 'cursor-pointer' : undefined} onClick={() => canWrite && !busy && open(row)}>
-                  <TableCell>
-                    <button type='button' className='text-left font-medium hover:underline disabled:no-underline' disabled={!canWrite || busy} onClick={() => open(row)}>
-                      {row.label || row.ticker}
-                    </button>
-                    <span className='block text-xs text-faint'>
-                      {row.ticker} · {row.currency}
-                    </span>
-                  </TableCell>
-                  <TableCell className='text-right tabular-nums'>{row.quantity == null ? '확인 필요' : quantityText(row.quantity)}</TableCell>
-                  <TableCell className='hidden text-right tabular-nums md:table-cell'>{money(row.avg_cost, row.currency)}</TableCell>
-                  <TableCell className='text-right tabular-nums'>
-                    {money(line?.price, row.currency)}
-                    {line?.price_as_of && <span className='block text-xs text-faint'>{dateOnly(line.price_as_of)}</span>}
-                  </TableCell>
-                  <TableCell className='text-right tabular-nums'>{money(line?.value_krw)}</TableCell>
-                  <TableCell onClick={e => e.stopPropagation()}>
+                <article key={row.position_id} className='py-4 first:pt-2'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <button
+                        type='button'
+                        className='break-words text-left font-semibold hover:underline disabled:no-underline'
+                        disabled={!canWrite || busy}
+                        onClick={() => open(row)}>
+                        {row.label || row.ticker}
+                      </button>
+                      <p className='break-words text-xs text-faint'>
+                        {row.ticker} · {row.quantity == null ? '수량 확인 필요' : `수량 ${quantityText(row.quantity)}`}
+                      </p>
+                    </div>
+                    <div className='min-w-0 max-w-[55%] text-right'>
+                      <span className='block text-xs text-faint'>평가 수익률 · 손익</span>
+                      <HoldingReturn row={row} line={line} />
+                    </div>
+                  </div>
+                  <dl className='mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg bg-muted/40 p-3 text-xs'>
+                    <div>
+                      <dt className='text-faint'>1주 평균 매수가</dt>
+                      <dd className='mt-1 break-words tabular-nums'>
+                        {row.avg_cost == null ? '매수가 입력 필요' : money(row.avg_cost, row.currency)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className='text-faint'>현재 가격</dt>
+                      <dd className='mt-1 break-words tabular-nums'>{line?.price == null ? '시세 확인 필요' : money(line.price, row.currency)}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-faint'>총 매수금액</dt>
+                      <dd className='mt-1 break-words tabular-nums'>{money(line?.cost_basis_native, row.currency)}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-faint'>원화 평가액</dt>
+                      <dd className='mt-1 break-words tabular-nums'>{money(line?.value_krw)}</dd>
+                    </div>
+                  </dl>
+                  <div className='mt-2 flex flex-wrap items-center justify-between gap-2'>
                     <HoldingStatus row={row} line={line} />
-                  </TableCell>
-                </TableRow>
+                    {line?.price_as_of && <span className='text-xs text-faint'>가격 기준 {dateOnly(line.price_as_of)}</span>}
+                  </div>
+                </article>
               );
             })}
-          </TableBody>
-        </Table>
+          </div>
+          <div className='hidden md:block'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>종목</TableHead>
+                  <TableHead className='text-right'>수량</TableHead>
+                  <TableHead className='text-right'>평균 매수가 · 총 매수금액</TableHead>
+                  <TableHead className='text-right'>현재 가격</TableHead>
+                  <TableHead className='text-right'>원화 평가액</TableHead>
+                  <TableHead className='text-right'>평가 수익률 · 손익</TableHead>
+                  <TableHead>상태</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(row => {
+                  const line = lineOf(row);
+                  return (
+                    <TableRow
+                      key={row.position_id}
+                      className={canWrite ? 'cursor-pointer' : undefined}
+                      onClick={() => canWrite && !busy && open(row)}>
+                      <TableCell>
+                        <button
+                          type='button'
+                          className='text-left font-medium hover:underline disabled:no-underline'
+                          disabled={!canWrite || busy}
+                          onClick={() => open(row)}>
+                          {row.label || row.ticker}
+                        </button>
+                        <span className='block text-xs text-faint'>
+                          {row.ticker} · {row.currency}
+                        </span>
+                      </TableCell>
+                      <TableCell className='text-right tabular-nums'>{row.quantity == null ? '확인 필요' : quantityText(row.quantity)}</TableCell>
+                      <TableCell className='text-right tabular-nums'>
+                        {row.avg_cost == null ? <span className='text-xs text-faint'>매수가 입력 필요</span> : money(row.avg_cost, row.currency)}
+                        {line?.cost_basis_native != null && (
+                          <span className='block text-xs text-faint'>총 {money(line.cost_basis_native, row.currency)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className='text-right tabular-nums'>
+                        {line?.price == null ? <span className='text-xs text-faint'>시세 확인 필요</span> : money(line.price, row.currency)}
+                        {line?.price_as_of && <span className='block text-xs text-faint'>{dateOnly(line.price_as_of)}</span>}
+                      </TableCell>
+                      <TableCell className='text-right tabular-nums'>{money(line?.value_krw)}</TableCell>
+                      <TableCell className='text-right'>
+                        <HoldingReturn row={row} line={line} />
+                      </TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <HoldingStatus row={row} line={line} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <p className='mt-3 text-xs text-faint'>평가 수익률은 종목 통화 기준입니다. 수수료·세금·배당·환율 변동 제외</p>
+        </>
       )}
       {draft && (
         <HoldingSheet

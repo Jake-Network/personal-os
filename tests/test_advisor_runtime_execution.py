@@ -108,6 +108,48 @@ def finish(database):
     assert asyncio.run(process_one(database))
 
 
+def test_running_followup_sends_saved_workout_and_respects_health_exclusion(runtime_env):
+    from datetime import date
+    from app.modules.database.model import WorkoutLog
+
+    client, database, provider = runtime_env
+    performed_on = date.today() - timedelta(days=2)
+    with database.session() as session:
+        workout = WorkoutLog(performed_on=performed_on, activity="합성 마라톤 10km",
+                             duration_minutes=50, intensity="moderate")
+        session.add(workout)
+        session.commit()
+        workout_id = workout.id
+
+    def consult(request_id, message, **options):
+        offset = len(provider.requests)
+        provider.replies.append(FINAL)
+        response = client.post('/api/advisor/conversations/1/runs', json={
+            'request_id': request_id, 'message': message, 'depth': 'auto', **options})
+        assert response.status_code == 201, response.text
+        finish(database)
+        completed = client.get(f"/api/advisor/runs/{response.json()['id']}").json()
+        assert completed['status'] == 'completed', completed
+        assert len(provider.requests) == offset + 1
+        return provider.requests[offset:]
+
+    consult('running-goal', '하프 마라톤 1시간 35분 하는건 좀 무리일까?')
+    requests = consult('running-history', '내가 토요일에 10km를 어떻게 훈련했지?')
+    for request in requests:
+        context = next(item for item in request.input if item['role'] == 'developer'
+                       and item['content'].startswith('Context Package'))
+        package = json.loads(context['content'].split('\n', 1)[1])
+        recent = package['data']['get_health_summary']['recent']
+        assert recent == [{'ref': f'workout_logs:{workout_id}', 'on': performed_on.isoformat(),
+                           'activity': '합성 마라톤 10km', 'minutes': 50, 'intensity': 'moderate'}]
+
+    restricted = consult('running-private', '내가 토요일에 10km를 어떻게 훈련했지?', exclude=['health'])
+    for request in restricted:
+        outbound = json.dumps([request.instructions, request.input], ensure_ascii=False)
+        assert 'get_health_summary' not in outbound
+        assert '합성 마라톤 10km' not in outbound
+
+
 def test_legacy_subscriber_has_terminal_error_after_cancel(runtime_env):
     from app.router.advisor_runtime_router import subscribe
     client, _, provider = runtime_env

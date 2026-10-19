@@ -1,7 +1,8 @@
 """Sheets holdings edits, explicit synchronization and append-only snapshot review."""
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.modules.database import get_session
@@ -126,3 +127,20 @@ from app.schema.market_data_schema import CoverageInput
 def confirm_coverage(body: CoverageInput, session: Session = Depends(get_session)):
     from app.modules.portfolio.local_portfolio import confirm_coverage as confirm
     return confirm(session, body.kinds)
+
+
+from app.modules.finance import cashflow
+from app.schema.cashflow_schema import CashflowResponse
+
+
+@router.get("/cashflow", response_model=CashflowResponse)
+def household_cashflow(
+    month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    kind: Literal["income", "expense"] | None = None,
+    category: str | None = Query(None, max_length=64),
+    search: str | None = Query(None, max_length=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    session: Session = Depends(get_session),
+):
+    return _call(cashflow.report, session, month, kind, category, search, page, page_size)

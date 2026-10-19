@@ -48,6 +48,10 @@ export type FinanceLine = {
   fx_as_of: string | null;
   value_krw: string | null;
   unrealized_gain_krw: string | null;
+  /** Quote-currency purchase cost and price return; excludes fees, dividends and FX. */
+  cost_basis_native?: string | null;
+  unrealized_gain_native?: string | null;
+  unrealized_return_pct?: string | null;
   issues: string[];
   spendable?: boolean;
 };

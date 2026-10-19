@@ -17,7 +17,7 @@ import { RESOURCES } from '../consts/resources';
 import { useInvalidateResource } from '../hooks/use-resource';
 import { useSchemaFields } from '../hooks/use-schema-fields';
 import type { RecordOption } from '../utils/record-options';
-import { DataForm } from './data-form';
+import { DataForm, type FieldSuggestions } from './data-form';
 import { HISTORY_RESOURCES, ValueHistoryDialog } from './value-history-dialog';
 
 export interface RecordSheetProps {
@@ -34,13 +34,28 @@ export interface RecordSheetProps {
   labels?: Record<string, string>;
   hidden?: string[];
   recordChoices?: Record<string, RecordOption[]>;
+  suggestions?: FieldSuggestions;
   onSaved?: (saved: unknown) => void;
   /** Read-only details shown above the form when editing. */
   children?: ReactNode;
 }
 
 /** The one way to add or edit a personal record: a side sheet with the schema-driven form. */
-export function RecordSheet({ resource, record, open, onClose, defaults, title, note, labels, hidden, recordChoices, onSaved, children }: RecordSheetProps) {
+export function RecordSheet({
+  resource,
+  record,
+  open,
+  onClose,
+  defaults,
+  title,
+  note,
+  labels,
+  hidden,
+  recordChoices,
+  suggestions,
+  onSaved,
+  children,
+}: RecordSheetProps) {
   const meta = RESOURCES.find(r => r.name === resource);
   const api = RESOURCE_API[resource];
   const fields = useSchemaFields(resource);
@@ -49,6 +64,7 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const save = useMutation({
+    retry: false,
     mutationFn: (payload: Record<string, unknown>) => (record ? api.update(record.id, payload) : api.create(payload)),
     onSuccess: saved => {
       notify.success(record ? '저장했습니다' : '추가했습니다');
@@ -58,6 +74,7 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
     onSettled: () => invalidate(resource),
   });
   const remove = useMutation({
+    retry: false,
     mutationFn: (id: number) => api.remove(id),
     onSuccess: () => {
       notify.success('삭제했습니다');
@@ -74,7 +91,9 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
     if (!record) return;
     const ok = await confirm({
       title: `${label}을(를) 삭제할까요?`,
-      description: meta?.financial ? '항목은 목록에서 사라지고, 지금까지의 변경 기록과 월말 기록은 그대로 남습니다.' : '이 항목이 목록과 달력에서 사라집니다. 되돌릴 수 없습니다.',
+      description: meta?.financial
+        ? '항목은 목록에서 사라지고, 지금까지의 변경 기록과 월말 기록은 그대로 남습니다.'
+        : '이 항목이 목록과 달력에서 사라집니다. 되돌릴 수 없습니다.',
       confirmLabel: '삭제',
       destructive: true,
     });
@@ -98,6 +117,7 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
                 labels={labels}
                 hidden={hidden}
                 recordChoices={recordChoices}
+                suggestions={suggestions}
                 current={record ?? defaults}
                 submitLabel={record ? '저장' : '추가'}
                 onSubmit={save.mutateAsync}
@@ -105,7 +125,13 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
                 extraActions={
                   record && (
                     <>
-                      <Button type='button' size='icon' variant='ghost-destructive' aria-label='삭제' disabled={remove.isPending} onClick={() => void askRemove()}>
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='ghost-destructive'
+                        aria-label='삭제'
+                        disabled={remove.isPending}
+                        onClick={() => void askRemove()}>
                         <Trash2 />
                       </Button>
                       {HISTORY_RESOURCES.has(resource) && (
@@ -122,7 +148,12 @@ export function RecordSheet({ resource, record, open, onClose, defaults, title, 
         </SheetContent>
       </Sheet>
       {historyOpen && record && (
-        <ValueHistoryDialog resource={resource} id={record.id} label={String(record.name ?? record.symbol ?? label)} onClose={() => setHistoryOpen(false)} />
+        <ValueHistoryDialog
+          resource={resource}
+          id={record.id}
+          label={String(record.name ?? record.symbol ?? label)}
+          onClose={() => setHistoryOpen(false)}
+        />
       )}
     </>
   );

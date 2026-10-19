@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
       ['/data/other-assets', '/finance/accounts'],
       ['/data/holdings', '/finance/investments'],
       ['/data/fx-rates', '/finance/investments'],
-      ['/data/cashflow-entries', '/finance/transactions'],
+      ['/data/cashflow-entries', '/finance/cashflow'],
       ['/data/planned-expenses', '/finance/transactions'],
       ['/finance/records', '/finance/transactions'],
       ['/data/job-applications', '/career'],

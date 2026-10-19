@@ -1,3 +1,5 @@
+import pytest
+
 from app.enums.context_category import Category as C
 from app.modules.context.routing import context_router as router
 
@@ -24,3 +26,17 @@ def test_exclusions_win_and_are_reported():
 def test_follow_up_reuses_previous_categories():
     d = router.route("그럼 그 다음은?", previous=frozenset({C.CAREER}))
     assert d.reason == "previous_turn" and C.CAREER in d.selected
+
+
+@pytest.mark.parametrize("query", [
+    "하프 마라톤 1시간 35분 하는건 좀 무리일까?",
+    "토요일에 마라톤 훈련 했고 일요일에는 8km 5분 30초 훈련 했어",
+    "내가 토요일에 10km를 어떻게 훈련했지?",
+])
+def test_running_questions_select_workout_records(query):
+    # Calendar words and a previous non-health scope must not hide workout data.
+    decision = router.route(query, previous=frozenset({C.CALENDAR, C.GOALS}))
+    assert C.HEALTH in decision.selected
+    blocked = router.route(query, excluded=frozenset({C.HEALTH}))
+    assert C.HEALTH not in blocked.selected
+    assert C.HEALTH in blocked.excluded

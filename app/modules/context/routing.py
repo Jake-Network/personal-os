@@ -31,7 +31,7 @@ RULES: tuple[tuple[tuple[str, ...], frozenset[Category]], ...] = (
     (("일정", "스케줄", "회의", "미팅", "meeting", "다음 주", "다음주", "이번 주", "이번주", "내일", "오늘", "주말", "약속", "마감", "할 일",
       "할일", "작업", "병행", "시간", "calendar", "schedule", "week", "deadline", "task"),
      frozenset({C.CALENDAR, C.GOALS})),
-    (("운동", "건강", "헬스", "러닝", "회복", "수면", "체중", "workout", "health", "exercise"),
+    (("운동", "건강", "헬스", "러닝", "마라톤", "훈련", "달리기", "회복", "수면", "체중", "workout", "health", "exercise"),
      frozenset({C.HEALTH, C.GOALS})),
     (("목표", "우선순위", "인생", "장기", "개월", "goal", "priorit"), frozenset({C.GOALS})),
 )

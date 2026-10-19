@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Plus, Wallet } from 'lucide-react';
+import { ChevronRight, Plus, RefreshCw, Wallet } from 'lucide-react';
 
 import { useSummary } from '@/api-client/generated/dashboard/dashboard';
 import { EmptyState } from '@/components/empty-state';
@@ -17,12 +17,19 @@ import { dateOnly, money as formatMoney } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
 import type { DashboardSummary } from '@/features/dashboard/types';
+import { QuoteRefreshNotice, useQuoteRefresh } from '@/features/holdings/use-quote-refresh';
 
 import { financeApi, type Portfolio } from './api';
 import { PositionsTable } from './positions-table';
 import { allocationPercent, issueFlags, money } from './presentation';
 
-const SPENDABLE_FLAGS = ['spendable_liquidity_unknown', 'monthly_expense_unknown', 'monthly_expense_insufficient_coverage', 'cashflow_mixed_sources', 'stale_balance'];
+const SPENDABLE_FLAGS = [
+  'spendable_liquidity_unknown',
+  'monthly_expense_unknown',
+  'monthly_expense_insufficient_coverage',
+  'cashflow_mixed_sources',
+  'stale_balance',
+];
 
 function runwayText(runway: DashboardSummary['computed']['runway'] | undefined): string {
   if (runway?.available && runway.months) return `월평균 지출 기준 약 ${runway.months}개월${runway.understated ? ' (환산 못한 외화 계좌 제외)' : ''}`;
@@ -38,11 +45,27 @@ function oldest(dates: (string | null | undefined)[]): string | null {
 }
 
 /** A headline figure that opens the tab where it is recorded. */
-function Figure({ label, value, sub, href, flags, flagLabel }: { label: string; value: string; sub: ReactNode; href: string; flags: QualityFlag[]; flagLabel?: string }) {
+function Figure({
+  label,
+  value,
+  sub,
+  href,
+  flags,
+  flagLabel,
+}: {
+  label: string;
+  value: string;
+  sub: ReactNode;
+  href: string;
+  flags: QualityFlag[];
+  flagLabel?: string;
+}) {
   return (
     <div className='relative flex flex-col gap-1 rounded-lg border bg-card p-4 shadow-sm hover:border-primary/40'>
       <div className='flex items-center justify-between gap-2'>
-        <Link href={href} className='text-ui text-muted-foreground after:absolute after:inset-0 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
+        <Link
+          href={href}
+          className='text-ui text-muted-foreground after:absolute after:inset-0 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
           {label}
         </Link>
         <ChevronRight className='size-4 text-faint' aria-hidden />
@@ -94,6 +117,7 @@ function Allocation({ data }: { data: Portfolio }) {
 }
 
 export function PortfolioView() {
+  const refresh = useQuoteRefresh();
   const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
   const summary = useSummary({ query: { select: d => d as DashboardSummary } });
   const data = portfolio.data;
@@ -103,6 +127,13 @@ export function PortfolioView() {
 
   return (
     <>
+      <div className='mb-3 flex justify-end'>
+        <Button variant='primary' disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+          <RefreshCw className={refresh.isPending ? 'animate-spin' : undefined} />
+          {refresh.isPending ? '시세 확인 중…' : '시세 갱신'}
+        </Button>
+      </div>
+      <QuoteRefreshNotice refresh={refresh} />
       <QueryStatus pending={portfolio.isPending} error={portfolio.error} retry={portfolio.refetch} label='자산 평가' rows={3} />
       {data && !data.lines.length && (
         <EmptyState
@@ -128,7 +159,9 @@ export function PortfolioView() {
               sub={
                 <>
                   자산 {money(data.total_assets)} · 부채 {money(data.total_liabilities)}
-                  {oldest(data.lines.map(l => l.as_of)) && <span className='block'>가장 오래된 기준일 {dateOnly(oldest(data.lines.map(l => l.as_of)))}</span>}
+                  {oldest(data.lines.map(l => l.as_of)) && (
+                    <span className='block'>가장 오래된 기준일 {dateOnly(oldest(data.lines.map(l => l.as_of)))}</span>
+                  )}
                 </>
               }
               flags={issueFlags(data.issues)}

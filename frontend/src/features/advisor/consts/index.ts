@@ -40,7 +40,7 @@ const RECORD_PATH: Record<string, string> = {
   job_applications: '/career',
   career_criteria: '/career/criteria',
   accounts: '/finance/accounts',
-  cashflow_entries: '/finance/transactions',
+  cashflow_entries: '/finance/cashflow',
 };
 
 export function evidenceHref(table: string | undefined, id: number | undefined): string | null {

@@ -114,10 +114,10 @@ class FxRateItem(_Item, FxRateCreate):
 class CashflowEntryCreate(BaseModel):
     occurred_on: date
     kind: Literal["income", "expense"]
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
     currency: str = Field("KRW", min_length=3, max_length=3)
-    category: str | None = None
-    description: str | None = None
+    category: str | None = Field(None, max_length=64)
+    description: str | None = Field(None, max_length=200)
 
 
 class CashflowEntryItem(_Item, CashflowEntryCreate):

@@ -345,3 +345,36 @@ def test_actual_advisor_payload_uses_same_unavailable_local_valuation(
     assert investment["total_value_base"] is None
     assert investment["recorded_subtotal_base"] == "200.00"
     assert investment["weight_by_currency_pct"] == {}
+
+
+def test_quote_cooldown_reports_wait_and_preserves_previous_failure(session):
+    holdings.save(session, body().model_copy(update={"quote_mode": "auto"}))
+    fake = FakeQuotes()
+    market.initialize(session, fake)
+    settings = session.get(MarketSettings, 1)
+    settings.last_attempt_at = datetime.now(UTC)
+    settings.last_error = "시세 수식 계산 대기 중입니다. 다음 갱신에서 확인합니다."
+    session.commit()
+    result = holdings.refresh(session, fake)
+    assert result["refresh_state"] == "cooldown"
+    assert 1 <= result["refresh_after_seconds"] <= 300
+    assert "초 후" in result["warning"]
+    assert "수식 계산 대기" in result["warning"]
+    assert "갱신하지 않았습니다" in result["warning"]
+    assert fake.calls == []
+
+
+def test_google_nyse_american_exchange_code_is_supported():
+    assert quote_rows(["NYSEAMERICAN:GLDM"])[0][0] == "NYSEAMERICAN:GLDM"
+
+
+@pytest.mark.parametrize("column,invalid", [(3, "not-a-trade-time"), (4, "#N/A"), (3, 999999)])
+def test_invalid_quote_metadata_is_a_visible_failure(session, column, invalid):
+    holdings.save(session, body().model_copy(update={"quote_mode": "auto"}))
+    fake = FakeQuotes()
+    fake.quotes[0][column] = invalid
+    market.initialize(session, fake)
+    result = holdings.refresh(session, fake)
+    assert result["refresh_state"] == "failed"
+    assert result["warning"]
+    assert session.scalar(select(Holding)).last_price is None

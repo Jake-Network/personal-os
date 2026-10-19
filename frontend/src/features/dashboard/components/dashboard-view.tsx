@@ -34,9 +34,9 @@ const FLAG_FIX: Record<string, string> = {
   net_worth_incomplete: '/finance',
   stale_price: '/finance/investments',
   missing_fx: '/finance/investments',
-  monthly_expense_unknown: '/finance/transactions',
-  monthly_expense_insufficient_coverage: '/finance/transactions',
-  cashflow_mixed_sources: '/finance/transactions',
+  monthly_expense_unknown: '/finance/cashflow',
+  monthly_expense_insufficient_coverage: '/finance/cashflow',
+  cashflow_mixed_sources: '/finance/cashflow',
   spendable_liquidity_unknown: '/finance/accounts',
 };
 
@@ -211,7 +211,7 @@ export function DashboardView() {
               flags={financeFlags(['spendable_liquidity_unknown'])}
             />
             <Figure
-              href='/finance/transactions'
+              href='/finance/cashflow'
               label='월평균 지출'
               value={expense?.available ? moneyShort(expense.monthly_average) : '미기록'}
               sub={

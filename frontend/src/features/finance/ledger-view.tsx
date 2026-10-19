@@ -48,16 +48,27 @@ export interface LedgerDraft {
 }
 
 /** Append-only ledger entry form. Recording a transaction does not change balances or quantities. */
-export function LedgerEntrySheet({ draft, title, onClose }: { draft: LedgerDraft; title: string; onClose: () => void }) {
+export function LedgerEntrySheet({
+  draft,
+  title,
+  onClose,
+  allowedKinds,
+}: {
+  draft: LedgerDraft;
+  title: string;
+  allowedKinds?: string[];
+  onClose: () => void;
+}) {
   const client = useQueryClient();
   const schema = useSchemaFields('/api/finance/transactions');
   const record = useMutation({
+    retry: false,
     mutationFn: (data: Record<string, unknown>) => customInstance({ url: '/api/finance/transactions', method: 'POST', data }),
     onSuccess: () => {
       notify.success('거래를 기록했습니다. 잔액과 수량은 따로 갱신하세요');
       onClose();
     },
-    onSettled: () => client.invalidateQueries({ queryKey: ['finance'] }),
+    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: ['/api/dashboard'] })]),
   });
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
@@ -67,10 +78,12 @@ export function LedgerEntrySheet({ draft, title, onClose }: { draft: LedgerDraft
           {schema.isPending && <ListSkeleton rows={5} />}
           {schema.data && (
             <DataForm
-              fields={schema.data}
+              fields={schema.data.map(field =>
+                field.name === 'kind' && allowedKinds ? { ...field, options: field.options?.filter(option => allowedKinds.includes(option)) } : field,
+              )}
               labels={LABELS}
               enumLabels={TRANSACTION_KIND_LABEL}
-              hidden={['request_id', ...(draft.reverses_id ? ['reverses_id'] : [])]}
+              hidden={['request_id', ...(draft.reverses_id ? ['reverses_id', 'kind', 'currency'] : [])]}
               current={{ currency: 'KRW', ...draft }}
               submitLabel='기록'
               onCancel={onClose}

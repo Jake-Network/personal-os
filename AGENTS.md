@@ -85,6 +85,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - API 계약의 원본은 백엔드 OpenAPI다. `frontend/src/api-client/generated/`와 `model/`은 수작업 수정하지 않고 재생성한다. 공용 전송·오류·SSE 처리는 기존 클라이언트를 사용한다. 데이터 입력 폼의 스키마를 프런트엔드에 중복 정의하지 않는다.
 - 상담의 SSE 계약(`context`, `delta`, `done`, `error`), 취소·오류 표시와 대화 이동 중 스트림 수명을 보호한다. 기능 변경 시 관련 Query 캐시 무효화도 확인한다.
 - 상담 실행의 공개 진입점은 `app/modules/advisor/runtime/service.py`의 `ConversationRuntime`이다. 모델 호출은 `ContextAssembler`와 기존 Gateway를 거친다. HTTP 구독 해제로 서버 run을 취소하지 않는다. 앱 전체 1개 실행·대화당 미종결 1개, 질문 ID·revision 기반 재개, 명시적 중지·재시도와 답변 revision을 유지한다. lease·세대 검사와 checkpoint 쓰기 권한을 함께 보호하고 외부 호출 완료가 불명확한 복구는 자동 재호출하지 않는다. 체크포인터 DDL은 Alembic migration 경로에서만 실행한다.
+- 웹 조사는 `runtime/graph.py`의 `web_search` 노드와 `app/modules/web_search/`를 사용한다. 요청별 명시적 허용과 별도의 공개 검색어만 외부 전송하며 개인 데이터로 검색어를 확장하지 않는다. 실제 수집한 본문의 선택된 발췌를 `ContextAssembler`의 예산·스냅샷·출처 검증 경로에 합친다. IP 고정·리다이렉트 검증·크기·시간 한도와 운영 Docker의 수집 거부를 유지한다.
 - 한국어 UI를 기본으로 하고 기존 라벨·포맷 유틸리티를 재사용한다. 데이터 없음, 공유 제외, 연결 필요, 오래된 데이터, 부분 성공과 실패를 서로 다른 상태로 표시하고 다음 행동을 제공한다.
 - 문서 인덱싱 변경 시 버전 활성화, lease·heartbeat·작업 소유권·재시도 상한·중복 완료 방지를 함께 검토한다. 파생 데이터 처리 실패가 기존 검색 가능한 버전을 없애지 않게 한다.
 
@@ -126,6 +127,14 @@ corepack yarn generate-api
 테스트는 결과뿐 아니라 **모델에 실제로 전달되는 payload**를 검사한다. 예를 들어 최신 잔고 반영, 공유 제외 후 과거 턴 차단, 요청한 일정 범위, 정확한 계산 결과와 불완전성 플래그를 합성 데이터와 가짜 제공자로 확인한다. 모킹된 요청 경로 통과와 실제 LLM의 답변 품질·OAuth·Sheets 연동 성공을 구별한다. 실제 연동 또는 품질 평가가 필요한 작업에서는 측정한 환경과 결과를 별도로 보고한다.
 
 ## 작업 방식과 완료 기준
+
+프로젝트 전용 스킬은 `.agents/skills/`에서 관리한다. 아래 작업에서는 해당 `SKILL.md`만 읽어 적용하며 공통 정책은 이 문서를 따른다. 전역 OMX 스킬과 구분되는 이름을 사용한다.
+
+| 작업 | 스킬 |
+| --- | --- |
+| 개인정보·재무·승인·실행·API 동작의 테스트 기반 구현 | [personal-os-tdd](.agents/skills/personal-os-tdd/SKILL.md) |
+| 원인 불명 오류·성능 저하·동시성 문제의 재현과 수정 | [personal-os-diagnosing-bugs](.agents/skills/personal-os-diagnosing-bugs/SKILL.md) |
+| PR·브랜치·미커밋 변경 리뷰와 구현 후 자체 검토 | [personal-os-code-review](.agents/skills/personal-os-code-review/SKILL.md) |
 
 - 시작할 때 Git 상태와 적용되는 지침을 확인하고 관련 호출 경로·스키마·테스트를 읽는다. 관련 없는 변경과 개인 로컬 파일을 보존한다.
 - 승인된 가역적 로컬 작업은 구현·검증까지 진행한다. 독립적인 탐색·검증은 네이티브 서브에이전트로 병렬화할 수 있으며 파일 편집 책임은 겹치지 않게 한다. OMX는 실제 런타임 지원이 있거나 명시적으로 요청된 경우에만 사용한다.
