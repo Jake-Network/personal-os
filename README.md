@@ -257,16 +257,3 @@ PDF·로그인·JavaScript 렌더링이 필요한 페이지와 압축 응답은 
 
 PDF·Markdown·TXT를 주제별로 올리고 기존 DB 정보와 함께 상담할 수 있습니다.
 문서함, 로컬 임베딩, pgvector 설정과 공유·삭제 동작은 [문서 상담 가이드](docs/documents.md)를 참고하세요.
-
-## 개발 에이전트 스킬
-
-프로젝트 전용 스킬은 `.agents/skills/`에 있으며 작업에 맞춰 선택하거나 이름으로 요청할 수 있습니다.
-
-- `$personal-os-tdd`: 실패 테스트 → 최소 구현 → 필요한 정리와 회귀 확인.
-- `$personal-os-diagnosing-bugs`: 재현·최소화 → 가설 검증 → 수정·원래 증상 재확인.
-- `$personal-os-code-review`: 요구 동작과 프로젝트 규칙을 구분해 PR·브랜치·미커밋 변경을 검토.
-
-예: “`$personal-os-diagnosing-bugs`로 상담 재개 시 답변이 중복되는 원인을 찾아 수정해줘.”
-일반 동작 변경·어려운 버그·구현 후 자체 검토의 선택 기준은 [AGENTS.md](AGENTS.md#작업-방식과-완료-기준)에 있습니다. 스킬이 목록에 보이지 않는 세션에서는 해당 `SKILL.md`를 직접 읽어 적용할 수 있습니다.
-
-[mattpocock/skills](https://github.com/mattpocock/skills/tree/49dd158d1076134a641b33efb035946536778336)의 세 스킬을 기준으로 조정했습니다. 각 스킬의 `metadata.upstream`에 원본을 고정하고 [MIT 라이선스](.agents/skills/LICENSE.mattpocock)를 보존합니다. 자동 업데이트 대신 필요한 원본 변경만 검토해 반영합니다. 테스트 경계는 기존 계약에 따라 자율 선택하며, 개인정보·영속성 검증과 미커밋 파일 리뷰를 포함합니다. 커밋·푸시·병합은 명시적으로 요청한 범위만 수행합니다.

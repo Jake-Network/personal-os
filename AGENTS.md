@@ -128,14 +128,6 @@ corepack yarn generate-api
 
 ## 작업 방식과 완료 기준
 
-프로젝트 전용 스킬은 `.agents/skills/`에서 관리한다. 아래 작업에서는 해당 `SKILL.md`만 읽어 적용하며 공통 정책은 이 문서를 따른다. 전역 OMX 스킬과 구분되는 이름을 사용한다.
-
-| 작업 | 스킬 |
-| --- | --- |
-| 개인정보·재무·승인·실행·API 동작의 테스트 기반 구현 | [personal-os-tdd](.agents/skills/personal-os-tdd/SKILL.md) |
-| 원인 불명 오류·성능 저하·동시성 문제의 재현과 수정 | [personal-os-diagnosing-bugs](.agents/skills/personal-os-diagnosing-bugs/SKILL.md) |
-| PR·브랜치·미커밋 변경 리뷰와 구현 후 자체 검토 | [personal-os-code-review](.agents/skills/personal-os-code-review/SKILL.md) |
-
 - 시작할 때 Git 상태와 적용되는 지침을 확인하고 관련 호출 경로·스키마·테스트를 읽는다. 관련 없는 변경과 개인 로컬 파일을 보존한다.
 - 승인된 가역적 로컬 작업은 구현·검증까지 진행한다. 독립적인 탐색·검증은 네이티브 서브에이전트로 병렬화할 수 있으며 파일 편집 책임은 겹치지 않게 한다. OMX는 실제 런타임 지원이 있거나 명시적으로 요청된 경우에만 사용한다.
 - 작은 diff와 기존 유틸리티를 우선한다. 정리·리팩터링은 무엇을 단순화하는지 먼저 밝히고 동작 보존을 확인한다. 요청 없는 의존성 추가나 아키텍처 확장을 피한다.

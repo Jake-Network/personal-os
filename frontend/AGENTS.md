@@ -85,8 +85,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## 검증과 문서 유지
 
-테스트 기반 구현·버그 진단·변경 리뷰는 [루트의 프로젝트 전용 스킬](../AGENTS.md#작업-방식과-완료-기준)을 사용한다. 프런트엔드 검증 경로와 화면 확인은 이 문서로 보완한다.
-
 아래 명령은 `frontend/`에서 실행한다. API 재생성은 실행 중인 백엔드의 `/openapi.json` 또는 `OPENAPI_TARGET`으로 지정한 저장된 스키마를 사용한다. 프런트엔드 검증만을 위해 개인 운영 DB를 초기화하지 않는다.
 
 ```bash
