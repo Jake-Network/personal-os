@@ -254,6 +254,7 @@ def refresh(session, client=None):
     result = refresh_market(session, client)
     return dict(
         listing(session),
+        refresh_state=result.get("refresh_state"),
         warning=result.get("warning"),
         refresh_after_seconds=result.get("refresh_after_seconds", 300),
     )

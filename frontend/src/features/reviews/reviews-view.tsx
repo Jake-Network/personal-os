@@ -1,109 +1,256 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { NotebookPen } from 'lucide-react';
+import Link from 'next/link';
 
 import { customInstance } from '@/api-client/custom-client';
 import { errorMessage } from '@/api-client/api-error';
+import { EmptyState } from '@/components/empty-state';
+import { notify } from '@/components/notify';
+import { Section } from '@/components/page-container';
+import { QueryStatus } from '@/components/query-status';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import { todayKey } from '@/lib/utils/zoned';
 
-interface Review { id: number; status: string; period: string; start_on: string; end_on: string; content: string; evidence: { decision_ids?: number[]; outcome_ids?: number[] }; }
-interface Job { id: number; status: string; enabled: boolean; attempts: number; max_attempts: number; last_error: string | null; result: { review_id?: number } | null; }
-interface LinkedItem { id: number; title: string; }
-interface Decision { id: number; title: string; expected_outcome: string | null; }
-interface Outcome { id: number; actual_outcome: string; expected_outcome: string | null; reviewed_at: string | null; }
-const labels: Record<string, string> = { draft: '초안', confirmed: '확정', pending: '대기', running: '실행 중', completed: '완료', cancelled: '허용 해제로 취소', failed: '실패' };
+import { recordHref } from '@/features/personal-data/hooks/use-record-param';
 
-function ReviewCard({ review }: { review: Review }) {
+import { jobsKey } from './jobs-view';
+import { periodRange, periodTitle, previousPeriod, type ReviewPeriod } from './period';
+
+interface Review {
+  id: number;
+  status: string;
+  period: string;
+  start_on: string;
+  end_on: string;
+  content: string;
+  evidence: { decision_ids?: number[]; outcome_ids?: number[] };
+}
+interface LinkedItem {
+  id: number;
+  title: string;
+}
+
+export const reviewsKey = ['period-reviews'] as const;
+const PERIOD_LABEL: Record<ReviewPeriod, string> = { month: '월간', quarter: '분기', year: '연간' };
+
+function ChipToggle({ items, value, onChange, label }: { items: LinkedItem[]; value: number[]; onChange: (v: number[]) => void; label: string }) {
+  if (!items.length) return <p className='text-xs text-faint'>기록된 {label} 없음</p>;
+  return (
+    <div className='flex flex-wrap gap-1.5' role='group' aria-label={label}>
+      {items.map(item => {
+        const on = value.includes(item.id);
+        return (
+          <button
+            key={item.id}
+            type='button'
+            aria-pressed={on}
+            onClick={() => onChange(on ? value.filter(v => v !== item.id) : [...value, item.id])}
+            className={cn(
+              'inline-flex h-7 items-center rounded-full border px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              on ? 'border-primary bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
+            )}>
+            {item.title}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReviewCard({ review, decisions }: { review: Review; decisions: Map<number, string> }) {
   const cache = useQueryClient();
   const [content, setContent] = useState(review.content);
   const confirm = useMutation({
     mutationFn: () => customInstance({ method: 'POST', url: `/api/reviews/${review.id}/confirm`, data: { content } }),
-    onSuccess: () => cache.invalidateQueries({ queryKey: ['period-reviews'] }),
+    onSuccess: async () => {
+      await cache.invalidateQueries({ queryKey: reviewsKey });
+      notify.success('회고를 확정했습니다');
+    },
+    onError: notify.error,
   });
-  return <article className="space-y-3 rounded-lg border p-4">
-    <h2 className="font-medium">{review.start_on} ~ {review.end_on} (종료일 제외) · {labels[review.status] ?? review.status}</h2>
-    <p className="text-sm text-muted-foreground">결정 {review.evidence.decision_ids?.join(', ') || '없음'} · 결과 회고 {review.evidence.outcome_ids?.join(', ') || '없음'}</p>
-    <label className="block text-sm">회고 내용<Textarea className="mt-1 min-h-32" value={content} disabled={review.status === 'confirmed'} onChange={e => setContent(e.target.value)} /></label>
-    {review.status === 'draft' && <Button disabled={confirm.isPending || !content.trim()} onClick={() => confirm.mutate()}>내용 확인 후 확정</Button>}
-    {confirm.error && <p role="alert" className="text-destructive">{errorMessage(confirm.error)}</p>}
-  </article>;
+  const decisionIds = review.evidence.decision_ids ?? [];
+  const outcomeCount = review.evidence.outcome_ids?.length ?? 0;
+  return (
+    <article className='flex flex-col gap-2 border-b py-4 last:border-b-0'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <h3 className='text-title font-semibold'>{periodTitle(review.period, review.start_on)} 회고</h3>
+        {review.status === 'confirmed' ? <Badge variant='success'>확정</Badge> : <Badge variant='warning'>초안</Badge>}
+      </div>
+      {(decisionIds.length > 0 || outcomeCount > 0) && (
+        <p className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground'>
+          근거:
+          {decisionIds.map(id => (
+            <Link key={id} href={recordHref('/reflect', id)} className='text-primary hover:underline'>
+              {decisions.get(id) ?? '결정 기록'}
+            </Link>
+          ))}
+          {outcomeCount > 0 && <span>결과 회고 {outcomeCount}건</span>}
+        </p>
+      )}
+      <Textarea
+        aria-label={`${periodTitle(review.period, review.start_on)} 회고 내용`}
+        className='min-h-32'
+        value={content}
+        readOnly={review.status === 'confirmed'}
+        onChange={e => setContent(e.target.value)}
+      />
+      {review.status === 'draft' && (
+        <div className='flex justify-end'>
+          <Button variant='primary' disabled={confirm.isPending || !content.trim()} onClick={() => confirm.mutate()}>
+            내용 확인 후 확정
+          </Button>
+        </div>
+      )}
+    </article>
+  );
 }
 
-function DecisionOutcomes({ decision }: { decision: Decision }) {
-  const cache = useQueryClient();
-  const [text, setText] = useState('');
-  const outcomes = useQuery({ queryKey: ['decision-outcomes', decision.id], queryFn: () => customInstance<Outcome[]>({ url: `/api/decisions/${decision.id}/reviews` }) });
-  const save = useMutation({
-    mutationFn: () => customInstance({ method: 'POST', url: `/api/decisions/${decision.id}/reviews`, data: { actual_outcome: text } }),
-    onSuccess: () => { setText(''); void cache.invalidateQueries({ queryKey: ['decision-outcomes', decision.id] }); },
-  });
-  return <article className="space-y-3 rounded-lg border p-4">
-    <h3 className="font-medium">{decision.title}</h3>
-    <p className="text-sm">기대 결과: {decision.expected_outcome || '미기록'}</p>
-    {outcomes.data?.map(item => <p className="border-l-2 pl-3 text-sm" key={item.id}>{item.reviewed_at?.slice(0, 10) ?? '회고 시점 미기록'} · {item.actual_outcome}<br />당시 기대: {item.expected_outcome || '미기록'}</p>)}
-    {outcomes.error && <p role="alert">{errorMessage(outcomes.error)}</p>}
-    <label className="block text-sm">새 결과 회고<Textarea value={text} onChange={e => setText(e.target.value)} /></label>
-    <Button disabled={!text.trim() || save.isPending} onClick={() => save.mutate()}>결과 추가</Button>
-    {save.error && <p role="alert">{errorMessage(save.error)}</p>}
-  </article>;
-}
-
+/** Draft a review of a finished month, quarter or year from recorded evidence, then confirm it. */
 export function ReviewsView() {
   const cache = useQueryClient();
-  const [period, setPeriod] = useState('month');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
-  const [schedule, setSchedule] = useState(false);
+  const today = todayKey();
+  const [period, setPeriod] = useState<ReviewPeriod>('month');
+  const [pick, setPick] = useState(() => previousPeriod('month', today));
+  const [background, setBackground] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [goalIds, setGoalIds] = useState<number[]>([]);
   const [projectIds, setProjectIds] = useState<number[]>([]);
   const goals = useQuery({ queryKey: ['review-goal-options'], queryFn: () => customInstance<LinkedItem[]>({ url: '/api/data/goals' }) });
   const projects = useQuery({ queryKey: ['review-project-options'], queryFn: () => customInstance<LinkedItem[]>({ url: '/api/career/records?kind=project' }) });
-  const reviews = useQuery({ queryKey: ['period-reviews'], queryFn: () => customInstance<Review[]>({ url: '/api/reviews' }), refetchInterval: 15000 });
-  const jobs = useQuery({ queryKey: ['background-jobs'], queryFn: () => customInstance<Job[]>({ url: '/api/jobs' }), refetchInterval: 15000 });
-  const decisions = useQuery({ queryKey: ['review-decisions'], queryFn: () => customInstance<Decision[]>({ url: '/api/decisions' }) });
+  const reviews = useQuery({ queryKey: reviewsKey, queryFn: () => customInstance<Review[]>({ url: '/api/reviews' }), refetchInterval: 15000 });
+  const decisions = useQuery({ queryKey: ['review-decisions'], queryFn: () => customInstance<LinkedItem[]>({ url: '/api/decisions' }) });
+  const decisionTitles = new Map((decisions.data ?? []).map(d => [d.id, d.title]));
+
+  // A changed request is a new request; an unchanged retry reuses its ID so it is not created twice.
+  const changed = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setRequestId(null);
+  };
+  const range = periodRange(period, pick.year, pick.index);
   const create = useMutation({
     mutationFn: () => {
       const stableId = requestId ?? crypto.randomUUID();
       setRequestId(stableId);
-      return customInstance({ method: 'POST', url: schedule ? '/api/jobs/period-review' : '/api/reviews', data: { request_id: stableId, period, start_on: start, end_on: end, goal_ids: goalIds, project_ids: projectIds, ...(schedule ? { enabled: true } : {}) } });
+      return customInstance({
+        method: 'POST',
+        url: background ? '/api/jobs/period-review' : '/api/reviews',
+        data: { request_id: stableId, period, ...range, goal_ids: goalIds, project_ids: projectIds, ...(background ? { enabled: true } : {}) },
+      });
     },
-    onSuccess: () => { setRequestId(null); void cache.invalidateQueries({ queryKey: ['period-reviews'] }); void cache.invalidateQueries({ queryKey: ['background-jobs'] }); },
+    onSuccess: async () => {
+      setRequestId(null);
+      await Promise.all([cache.invalidateQueries({ queryKey: reviewsKey }), cache.invalidateQueries({ queryKey: jobsKey })]);
+      notify.success(background ? '초안 작업을 예약했습니다. 진행 상황은 설정 › 자동 작업에서 볼 수 있습니다.' : '회고 초안을 만들었습니다');
+    },
   });
-  const retry = useMutation({ mutationFn: (id: number) => customInstance({ method: 'POST', url: `/api/jobs/${id}/retry` }), onSuccess: () => cache.invalidateQueries({ queryKey: ['background-jobs'] }) });
-  return <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-8">
-    <h1 className="text-2xl font-semibold">결정과 회고</h1>
-    <p className="text-sm text-muted-foreground">기대와 실제 결과를 누적해 확인합니다. 기간 초안은 경력·결정·보존된 월말 재무 근거를 모으고, 외부 모델을 호출하지 않습니다.</p>
-    <form className="space-y-3 rounded-lg border p-4" onSubmit={event => { event.preventDefault(); create.mutate(); }}>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm">회고 종류<select className="mt-1 block w-full rounded border p-2" value={period} onChange={e => { setPeriod(e.target.value); setRequestId(null); }}><option value="month">월간</option><option value="quarter">분기</option><option value="year">연간</option></select></label>
-        <label className="text-sm">시작일<Input required type="date" value={start} onChange={e => { setStart(e.target.value); setRequestId(null); }} /></label>
-        <label className="text-sm">종료일 (제외)<Input required type="date" value={end} onChange={e => { setEnd(e.target.value); setRequestId(null); }} /></label>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">연결할 목표 (복수 선택)<select multiple className="mt-1 block w-full rounded border p-2" value={goalIds.map(String)} onChange={e => { setGoalIds(Array.from(e.target.selectedOptions, option => Number(option.value))); setRequestId(null); }}>{goals.data?.map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}</select></label>
-        <label className="text-sm">연결할 프로젝트 (복수 선택)<select multiple className="mt-1 block w-full rounded border p-2" value={projectIds.map(String)} onChange={e => { setProjectIds(Array.from(e.target.selectedOptions, option => Number(option.value))); setRequestId(null); }}>{projects.data?.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
-      </div>
-      {(goals.error || projects.error) && <p role="alert">연결 대상 조회 실패: {errorMessage(goals.error || projects.error)}</p>}
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={schedule} onChange={e => { setSchedule(e.target.checked); setRequestId(null); }} />앱 잠금 중에도 이 초안 생성 작업 실행 허용 (1회)</label>
-      <Button type="submit" disabled={create.isPending}>초안 생성</Button>
-      {create.error && <p role="alert" className="text-destructive">{errorMessage(create.error)}</p>}
-    </form>
-    {reviews.isLoading && <p>회고를 불러오는 중입니다.</p>}
-    {reviews.error && <p role="alert">{errorMessage(reviews.error)}</p>}
-    {reviews.data?.length === 0 && <p className="text-muted-foreground">아직 기간 회고가 없습니다.</p>}
-    {reviews.data?.map(review => <ReviewCard key={review.id} review={review} />)}
-    <h2 className="text-xl font-medium">백그라운드 작업</h2>
-    {jobs.error && <p role="alert">{errorMessage(jobs.error)}</p>}
-    {jobs.data?.length === 0 && <p className="text-sm text-muted-foreground">등록한 작업이 없습니다.</p>}
-    {jobs.data?.map(job => <div key={job.id} className="flex flex-wrap items-center gap-3 rounded border p-3"><span>#{job.id} · {job.enabled ? labels[job.status] ?? job.status : '실행 미승인'} · 시도 {job.attempts}/{job.max_attempts}</span>{job.last_error && <span>처리 실패: {job.last_error}</span>}{job.status === 'failed' && <Button variant="default" disabled={retry.isPending} onClick={() => retry.mutate(job.id)}>재시도</Button>}</div>)}
-    {retry.error && <p role="alert">{errorMessage(retry.error)}</p>}
-    <h2 className="text-xl font-medium">결정별 결과</h2>
-    {decisions.error && <p role="alert">{errorMessage(decisions.error)}</p>}
-    {decisions.data?.length === 0 && <p className="text-sm text-muted-foreground">기억·의사결정 화면에서 먼저 결정을 기록하세요.</p>}
-    {decisions.data?.map(decision => <DecisionOutcomes key={decision.id} decision={decision} />)}
-  </div>;
+
+  const thisYear = Number(today.slice(0, 4));
+  const years = Array.from({ length: 10 }, (_, i) => thisYear - i);
+
+  return (
+    <div className='max-w-[860px]'>
+      <Section title='새 회고 초안' info={<p>선택한 기간의 경력·결정·보존된 월말 재무 기록을 모아 초안을 만듭니다. 외부 AI를 호출하지 않습니다. 확정하기 전까지는 초안입니다.</p>}>
+        <form
+          className='flex flex-col gap-4 py-2'
+          onSubmit={e => {
+            e.preventDefault();
+            create.mutate();
+          }}>
+          <div className='flex flex-wrap items-end gap-3'>
+            <div className='flex flex-col gap-1'>
+              <Label htmlFor='review-period'>종류</Label>
+              <NativeSelect
+                id='review-period'
+                value={period}
+                onChange={e => {
+                  const next = e.target.value as ReviewPeriod;
+                  setPeriod(next);
+                  setPick(previousPeriod(next, today));
+                  setRequestId(null);
+                }}>
+                {Object.entries(PERIOD_LABEL).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className='flex flex-col gap-1'>
+              <Label htmlFor='review-year'>연도</Label>
+              <NativeSelect id='review-year' value={pick.year} onChange={e => changed(setPick)({ ...pick, year: Number(e.target.value) })}>
+                {years.map(y => (
+                  <option key={y} value={y}>
+                    {y}년
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            {period !== 'year' && (
+              <div className='flex flex-col gap-1'>
+                <Label htmlFor='review-index'>{period === 'month' ? '월' : '분기'}</Label>
+                <NativeSelect id='review-index' value={pick.index} onChange={e => changed(setPick)({ ...pick, index: Number(e.target.value) })}>
+                  {Array.from({ length: period === 'month' ? 12 : 4 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>
+                      {period === 'month' ? `${n}월` : `${n}분기`}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            )}
+            <span className='pb-1.5 text-ui text-muted-foreground'>{periodTitle(period, range.start_on)}</span>
+          </div>
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-ui font-medium'>함께 돌아볼 목표</span>
+            <QueryStatus pending={goals.isPending} error={goals.error} retry={goals.refetch} label='목표' rows={1} />
+            {goals.data && <ChipToggle label='목표' items={goals.data} value={goalIds} onChange={changed(setGoalIds)} />}
+          </div>
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-ui font-medium'>함께 돌아볼 프로젝트</span>
+            <QueryStatus pending={projects.isPending} error={projects.error} retry={projects.refetch} label='프로젝트' rows={1} />
+            {projects.data && <ChipToggle label='프로젝트' items={projects.data} value={projectIds} onChange={changed(setProjectIds)} />}
+          </div>
+          <label className='flex items-center gap-2'>
+            <Checkbox checked={background} onCheckedChange={v => changed(setBackground)(v === true)} />
+            백그라운드에서 만들기 (앱이 잠겨 있어도 한 번 실행)
+          </label>
+          {create.error && <Alert variant='destructive'>{errorMessage(create.error)}</Alert>}
+          <div>
+            <Button type='submit' variant='primary' disabled={create.isPending}>
+              초안 만들기
+            </Button>
+          </div>
+        </form>
+      </Section>
+
+      <Section
+        title='기간 회고'
+        count={reviews.data?.length}
+        actions={
+          <Link href='/settings/jobs' className='text-ui text-primary hover:underline'>
+            자동 작업 보기
+          </Link>
+        }>
+        <QueryStatus pending={reviews.isPending} error={reviews.error} retry={reviews.refetch} label='기간 회고' />
+        {reviews.data?.length === 0 && (
+          <EmptyState icon={NotebookPen} title='아직 기간 회고가 없습니다'>
+            지난달부터 초안을 만들어 보세요.
+          </EmptyState>
+        )}
+        {reviews.data?.map(review => (
+          <ReviewCard key={`${review.id}-${review.status}`} review={review} decisions={decisionTitles} />
+        ))}
+      </Section>
+    </div>
+  );
 }

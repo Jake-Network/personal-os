@@ -53,6 +53,8 @@ const FLAG_TEXT: Record<string, string> = {
   investment_excluded_from_net_worth: '투자 영역이 공유 제외되어 순자산에서 증권이 빠졌습니다',
   net_worth_incomplete: '순자산 계산에서 빠진 항목이 있습니다',
   cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
+  recorded_flows_only: '기록한 수입·지출만 합산했습니다',
+  foreign_currency_excluded: '외화 기록은 원화 합계에서 제외했습니다',
   cashflow_mixed_sources: '수입·지출과 거래 기록 함께 사용',
   spendable_liquidity_unknown: '생활비 현금 미기록',
   monthly_expense_unknown: '월평균 지출 데이터가 없습니다',

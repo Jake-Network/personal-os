@@ -1,3 +1,4 @@
+import { recordHref } from '@/features/personal-data/hooks/use-record-param';
 import type { ConversationCreateDomain } from '@/api-client/model';
 
 export const DOMAINS: { key: NonNullable<ConversationCreateDomain>; label: string }[] = [
@@ -25,7 +26,24 @@ export const SUGGESTIONS: Record<string, string[]> = {
 };
 
 export const INSPECTOR_TITLE = {
-  preview: '보낼 데이터 미리보기',
-  answer: '이번 답변이 참조한 데이터',
-  snapshot: '선택한 답변의 근거 데이터',
+  preview: '이번 질문에 보낼 데이터',
+  answer: '최근 답변에 쓴 데이터',
+  snapshot: '답변 당시 데이터',
 } as const;
+
+/** Only tables whose destination understands this record ID may open an editor. */
+const RECORD_PATH: Record<string, string> = {
+  tasks: '/plan/tasks',
+  goals: '/plan/goals',
+  calendar_events: '/plan/events',
+  workout_logs: '/plan/workouts',
+  job_applications: '/career',
+  career_criteria: '/career/criteria',
+  accounts: '/finance/accounts',
+  cashflow_entries: '/finance/cashflow',
+};
+
+export function evidenceHref(table: string | undefined, id: number | undefined): string | null {
+  const path = table ? RECORD_PATH[table] : undefined;
+  return path && id !== undefined && Number.isSafeInteger(id) ? recordHref(path, id) : null;
+}

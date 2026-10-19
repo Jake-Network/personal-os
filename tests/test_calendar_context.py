@@ -126,3 +126,39 @@ def test_calendar_words_use_the_configured_local_day(session, monkeypatch):
     assert [e["title"] for e in result.data["events"]] == ["오늘 오후"]
     assert result.data["window"]["start"] == "2026-10-18T00:00:00+09:00"
     assert result.data["window"]["timezone"] == "Asia/Seoul"
+
+
+def test_all_day_events_reach_the_model_as_all_day(session, monkeypatch):
+    from dataclasses import replace
+    monkeypatch.setattr(context_tool_manager, "settings", replace(context_tool_manager.settings, timezone="Asia/Seoul"))
+    # 10-17 and 10-18 in Seoul, stored as the half-open local-midnight span.
+    session.add(CalendarEvent(title="연휴", all_day=True, starts_at=datetime(2026, 10, 16, 15, tzinfo=UTC),
+                              ends_at=datetime(2026, 10, 18, 15, tzinfo=UTC)))
+    session.add(CalendarEvent(title="회의", starts_at=datetime(2026, 10, 18, 5, tzinfo=UTC)))
+    session.flush()
+    morning_kst = datetime(2026, 10, 17, 23, tzinfo=UTC)
+    result = get_calendar_events(ToolContext(session, morning_kst, frozenset({Category.CALENDAR}), query="오늘 일정"))
+    by_title = {e["title"]: e for e in result.data["events"]}
+    assert by_title["연휴"]["all_day"] is True
+    assert by_title["회의"]["all_day"] is False
+    assert result.data["conflicts"] == []
+
+
+def test_calendar_conflicts_keep_timed_overlaps_and_half_open_boundaries(session, utc_calendar):
+    day = datetime(2026, 10, 18, tzinfo=UTC)
+    events = [
+        CalendarEvent(title="종일", all_day=True, starts_at=day, ends_at=day + timedelta(days=1)),
+        CalendarEvent(title="회의", starts_at=day + timedelta(hours=9), ends_at=day + timedelta(hours=10)),
+        CalendarEvent(title="중복 회의", starts_at=day + timedelta(hours=9, minutes=30),
+                      ends_at=day + timedelta(hours=10)),
+        CalendarEvent(title="다음 회의", starts_at=day + timedelta(hours=10), ends_at=day + timedelta(hours=11)),
+    ]
+    session.add_all(events)
+    session.flush()
+
+    result = get_calendar_events(ToolContext(session, NOW, frozenset({Category.CALENDAR}), query="오늘 일정"))
+
+    assert len(result.data["events"]) == 4
+    assert result.data["conflicts"] == [
+        {"a": f"calendar_events:{events[1].id}", "b": f"calendar_events:{events[2].id}"},
+    ]

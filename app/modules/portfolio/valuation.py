@@ -85,7 +85,7 @@ def _calculate(rows, coverage, end, verified, historical=False):
         elif (end - fx_date).days > 7:
             problems.append("Stale FX rate")
         native = parse_decimal(row.get("balance"))
-        gain = None
+        cost_basis = native_gain = return_pct = None
         if kind == "holding":
             quantity = parse_decimal(row.get("quantity"))
             price = parse_decimal(row.get("price"))
@@ -105,12 +105,17 @@ def _calculate(rows, coverage, end, verified, historical=False):
                 price = None
             native = quantity * price if quantity is not None and price is not None else None
             cost = parse_decimal(row.get("avg_cost"))
-            if native is not None and cost is not None and fx is not None:
-                gain = (native - quantity * cost) * fx
+            if quantity is not None and cost is not None:
+                cost_basis = quantity * cost
+                if native is not None:
+                    native_gain = native - cost_basis
+                    if cost_basis > 0:
+                        return_pct = native_gain / cost_basis * Decimal(100)
         if row.get("fx_source") == "googlefinance" and (historical or not verified):
             problems.append("GOOGLEFINANCE FX values have not been verified")
             fx = None
         value = native * fx if native is not None and fx is not None else None
+        gain = native_gain * fx if native_gain is not None and fx is not None else None
         if value is None:
             problems.append("Valuation unavailable")
         # Invalid identity/date evidence must never contribute a confirmed total.
@@ -125,6 +130,9 @@ def _calculate(rows, coverage, end, verified, historical=False):
                     asset_class = "unknown"
                 classes[asset_class] = classes.get(asset_class, Decimal(0)) + value
         line.update(value_krw=money_string(value), unrealized_gain_krw=money_string(gain),
+                    cost_basis_native=money_string(cost_basis),
+                    unrealized_gain_native=money_string(native_gain),
+                    unrealized_return_pct=money_string(return_pct),
                     fx_rate=format(fx, "f") if fx is not None else None,
                     fx_as_of=fx_date.isoformat() if fx_date else None, issues=problems)
         lines.append(line)

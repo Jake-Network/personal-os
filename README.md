@@ -74,19 +74,34 @@ and is reported as unavailable when the last three full months of expenses are n
 CI (`.github/workflows/ci.yml`, Linux) runs pytest on SQLite and PostgreSQL (plus Alembic
 upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), Vitest and build.
 
+## 화면 구성
+
+| 영역 | 경로 | 내용 |
+| --- | --- | --- |
+| 홈 | `/` | 확인 필요 항목(승인 대기, 확인 대기 기억, 지연된 할 일, 오늘 일정, 데이터 문제), 핵심 수치, 이번 주 |
+| 상담 | `/advisor` | 상담 목록 · 대화 · 근거 패널 |
+| 할 일·일정 | `/plan` | 통합 달력, 할 일, 일정, 목표, 운동 |
+| 자산 | `/finance` | 개요, 계좌·부채, 투자, 거래, 월별 기록 |
+| 커리어 | `/career` | 지원 현황, 경력 기록, 타임라인, 평가 기준 |
+| 기록·회고 | `/reflect` | 결정 기록, 기억, 기간 회고 |
+| 문서함 | `/documents` | 문서 업로드·버전·공유 |
+| 설정 | `/settings/*` | AI 연결, 데이터 공유, 시세 연결, 자동 작업, 보안·백업, 화면 |
+
+달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 상담에서는 종일 일정의 제목만 변경 제안할 수 있으며 날짜·시각 변경은 달력에서 직접 합니다. 종일 일정은 시간 일정의 충돌 계산에서 제외합니다. 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
+
 ## 지속되는 상담 워크스페이스
 
-`/advisor`에서 질문을 보내면 서버가 분석을 실행하고 채팅과 상담 패널에 저장된 상태를 표시합니다. 다른 화면으로 이동하거나 브라우저를 닫아도 **서버가 실행 중이면** 분석을 계속합니다. 다시 열면 완료된 답변 또는 같은 확인 질문을 불러옵니다. 앱 전체에서 한 번에 하나의 분석을 실행하며, 각 상담에는 확인 질문 대기·확인 필요 상태를 포함해 미종결 실행을 하나만 둡니다. 분석 중에도 다음 질문의 초안은 작성할 수 있습니다.
+`/advisor`에서 질문을 보내면 서버가 분석을 실행하고 대화와 오른쪽 근거 패널(`근거`·`비교`·`제안` 탭)에 저장된 상태를 표시합니다. 다른 화면으로 이동하거나 브라우저를 닫아도 **서버가 실행 중이면** 분석을 계속합니다. 다시 열면 완료된 답변 또는 같은 확인 질문을 불러옵니다. 앱 전체에서 한 번에 하나의 분석을 실행하며, 각 상담에는 확인 질문 대기·확인 필요 상태를 포함해 미종결 실행을 하나만 둡니다. 분석 중에도 다음 질문의 초안은 작성할 수 있습니다.
 
 - **자동 / 깊게 분석:** 모델 호출·도구 조회·재계획 한도는 각각 6회·12회·2회와 12회·24회·3회입니다. 요약·검증·구조화된 출력의 수정 요청도 모델 호출 한도에 포함합니다. 긴 대화의 요약은 원문 출처를 보존한 과거 맥락이며 현재 잔고·일정을 대신하지 않습니다. 한도나 근거 부족은 결과의 한계 또는 오류로 표시합니다.
 - **답변 필요:** 확인 질문의 선택지나 입력창으로 같은 분석에 답합니다. `아직 모름`은 미확인 조건을 한계로 남기고 조건부 답변으로 진행합니다. 확인 질문은 한 실행에서 최대 두 번만 요청합니다. 대기하는 동안 다른 상담의 분석은 실행할 수 있습니다.
-- **분석 중지 / 재시도:** 브라우저 연결 종료와 중지 요청은 별개입니다. `중지 요청 중`은 완료 확인 전 상태입니다. 실패·확인 필요 상태의 재시도는 명시적으로 요청하며 새 답변 버전을 만듭니다. 서버가 중단돼 모델 호출의 완료 여부가 불명확하면 자동 재호출하지 않고 확인 필요로 둡니다.
-- **상담 패널:** 목적·가정·제약과 저장된 대안을 확인합니다. `조건 바꿔 비교`는 원래 결과를 보존하는 새 버전의 분석이며, `이 대안으로 이어가기`는 관련 후속 상담의 기준을 선택합니다. 관계없는 새 질문에는 이전 대안을 자동 적용하지 않으며 `대안 선택 해제`로 기준을 지울 수 있습니다. 한 분석에서 생성하는 대안은 최대 3개입니다. 재무·시간 결과는 필요한 입력이 있는 경우 서버가 계산하며, 미확인 값은 그대로 표시합니다.
-- **근거·기억 / 실행:** 선택한 답변 당시의 근거와 승인 대기 행동을 확인합니다. 행동과 장기 기억은 사용자 확인 후 반영합니다. 제안 뒤 일정·목표가 바뀌면 승인은 충돌로 끝나며 새 제안이 필요합니다. 결정·회고는 기존 결정 기록에서 관리합니다.
+- **분석 중지 / 재시도:** 진행 상태는 답변 자리에 한 줄로 표시하며 완료되면 사라집니다. 브라우저 연결 종료와 중지 요청은 별개입니다. `중지 요청 중`은 완료 확인 전 상태입니다. 실패·확인 필요 상태의 재시도는 명시적으로 요청하며 새 답변을 만듭니다(이전 답변은 보존). 서버가 중단돼 모델 호출의 완료 여부가 불명확하면 자동 재호출하지 않고 확인 필요로 둡니다.
+- **비교 탭:** 목적·가정·제약과 저장된 대안을 확인합니다(대안이 있을 때만 표시). `조건 바꿔 비교`는 원래 결과를 보존하는 새 버전의 분석이며, `이 대안으로 이어가기`는 관련 후속 상담의 기준을 선택합니다. 관계없는 새 질문에는 이전 대안을 자동 적용하지 않으며 `대안 선택 해제`로 기준을 지울 수 있습니다. 한 분석에서 생성하는 대안은 최대 3개입니다. 재무·시간 결과는 필요한 입력이 있는 경우 서버가 계산하며, 미확인 값은 그대로 표시합니다.
+- **근거 / 제안 탭:** 입력 중에는 보낼 데이터를 미리 보여주고, 답변의 `근거`를 누르면 그 답변 당시 데이터와 인용한 레코드(해당 화면으로 이동)를 보여줍니다. `제안` 탭은 승인 대기 행동을 모읍니다. 행동과 장기 기억은 사용자 확인 후 반영합니다. 제안 뒤 일정·목표가 바뀌면 승인은 충돌로 끝나며 새 제안이 필요합니다. 결정·회고는 기존 결정 기록에서 관리합니다.
 
 답변은 근거·계산·출력 검증이 끝난 뒤 표시합니다. 처리 중에는 현재 단계를 보여주며, 검증 전 모델 출력은 확정된 답변으로 표시하지 않습니다.
 
-처음 상담할 때 AI 연결 설정을 확인하세요. 입력창의 `상담 옵션`에서 분석 깊이와 문서 검색 범위를 조절하며, 웹 검색은 별도로 허용하고 공개 검색어를 입력합니다. 과거 메시지 검색 결과에서도 질문을 보낼 수 있으며 새 답변을 확인하도록 최신 대화로 이동합니다. 전송 실패 후 설정을 바꾸면 이전 요청의 저장 여부를 먼저 확인하며, 이전 공유 범위의 본문을 다시 전송하지 않습니다. 입력한 질문 자체는 모델에 전달되므로 비밀번호나 인증정보를 입력하지 마세요.
+처음 상담할 때 AI 연결 설정을 확인하세요. 입력창 아래 도구 막대에서 공유 범위, 문서 선택, 과거 경험 범위, `깊게 분석`을 조절하며, 웹 검색은 별도로 켜고 공개 검색어를 입력합니다. 과거 메시지 검색 결과에서도 질문을 보낼 수 있으며 새 답변을 확인하도록 최신 대화로 이동합니다. 전송 실패 후 설정을 바꾸면 이전 요청의 저장 여부를 먼저 확인하며, 이전 공유 범위의 본문을 다시 전송하지 않습니다. 입력한 질문 자체는 모델에 전달되므로 비밀번호나 인증정보를 입력하지 마세요.
 
 LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 공유 검사를 사용합니다. 외부 추적 전송이나 외부 임베딩 자동 전환은 활성화하지 않습니다. 합성 데이터와 가짜 제공자 회귀 검증은 실제 제공자의 답변 품질·OAuth 연결 성공·실제 문서의 검색 품질 평가를 대신하지 않습니다.
 
@@ -94,11 +109,11 @@ LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 
 
 ## Portfolio and monthly history
 
-`/finance` evaluates local DB accounts, holdings, liabilities and FX. Google OAuth is optional and restricted to a newly created quote-only file using `drive.file`. Only tickers, currency pairs and quote formulas leave the machine; Google can retain the ticker list. Personal quantities and costs stay local. Existing Sheets imports have an explicit preview/import path; existing snapshots and corrections remain unchanged. See [Finance guide](docs/finance.md).
+The 자산 area (`/finance`: 개요, `/finance/accounts`, `/finance/investments`, `/finance/transactions`, `/finance/history`) evaluates local DB accounts, holdings, liabilities and FX; the quote connection lives in `/settings/market`. Google OAuth is optional and restricted to a newly created quote-only file using `drive.file`. Only tickers, currency pairs and quote formulas leave the machine; Google can retain the ticker list. Personal quantities and costs stay local. Existing Sheets imports have an explicit preview/import path; existing snapshots and corrections remain unchanged. See [Finance guide](docs/finance.md).
 
-`/career` links employment, roles, projects, contributions, achievements, evidence and feedback with date precision. Extracted records remain drafts until confirmed and sharing defaults to local-only. `/timeline` derives events from their original records. `/advisor` offers paged title/body/date search, source-linked local summary drafts, cross-conversation keyword/local embedding retrieval, and explicit company/project/decision links. `/memory` stores revisions and validity intervals. Live balances and schedules always come from domain records, while derived sources are rechecked before transmission.
+`/career` shows job applications and their interviews; `/career/records` links employment, roles, projects, contributions, achievements, evidence and feedback with date precision. Extracted records remain drafts until confirmed and sharing defaults to local-only. `/career/timeline` derives events from their original records. `/advisor` offers paged title/body/date search, source-linked local summary drafts, cross-conversation keyword/local embedding retrieval, and explicit company/project/decision links. `/reflect/memory` stores revisions and validity intervals. Live balances and schedules always come from domain records, while derived sources are rechecked before transmission.
 
-`/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM review is enabled implicitly.
+`/reflect` holds the decision journal and `/reflect/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/settings/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM review is enabled implicitly.
 
 ## Consultation latency and analysis depth
 
@@ -120,7 +135,7 @@ docker compose --env-file docker/.env -f docker/compose.production.yml up -d --b
 
 Only the nginx entry gateway publishes `127.0.0.1:5173`. Next.js, backend, PostgreSQL and embeddings stay on an internal Docker network; the gateway forwards to Next.js and OAuth callbacks pass through the web server. There are no development source mounts or reloads. An HTTPS destination allowlist proxy mediates external calls. The browser restricts external images, frames and connections. Embedding models must be provisioned locally: the embedding container has no direct internet access. Changing local DB/embedding endpoints to arbitrary external servers is rejected in production.
 
-Use `/settings/security` for read-only diagnostics. `unverified` does not prove encryption or firewall protection. In Windows/WSL, check BitLocker/device encryption and the actual WSL/Docker virtual disk location, plus DB/document/vector/temp/key storage. The app never changes OS security settings. Volumes and staging must reside on an OS-encrypted disk; Docker volumes alone do not supply this guarantee.
+Use `/settings/security` (설정 → 보안·백업) for read-only diagnostics. `unverified` does not prove encryption or firewall protection. In Windows/WSL, check BitLocker/device encryption and the actual WSL/Docker virtual disk location, plus DB/document/vector/temp/key storage. The app never changes OS security settings. Volumes and staging must reside on an OS-encrypted disk; Docker volumes alone do not supply this guarantee.
 
 Install restic separately. Stop the application and workers first, keep the password file outside the backup repository, and stage on encrypted local storage:
 
@@ -150,8 +165,8 @@ app/
 frontend/src/
   app/          routes; (main)/advisor/layout.tsx hosts the workspace so /advisor → /advisor/[id] keeps the stream
   api-client/   axios mutator, SSE client, error normalization; generated/ + model/ come from orval
-  features/     advisor, dashboard, personal-data, memory, approvals, settings (components, consts, utils)
-  components/   shared UI; ui/ holds the shadcn primitives
+  features/     advisor, dashboard, plan, finance, holdings, career, memory, reviews, documents, personal-data, approvals, settings
+  components/   shared UI (page header/sections, tabs, record states, calendar/); ui/ holds the shadcn primitives
   widgets/      providers, app shell, sidebar
   lib/          Korean labels, formatting, QueryClient
 ```
@@ -242,16 +257,3 @@ PDF·로그인·JavaScript 렌더링이 필요한 페이지와 압축 응답은 
 
 PDF·Markdown·TXT를 주제별로 올리고 기존 DB 정보와 함께 상담할 수 있습니다.
 문서함, 로컬 임베딩, pgvector 설정과 공유·삭제 동작은 [문서 상담 가이드](docs/documents.md)를 참고하세요.
-
-## 개발 에이전트 스킬
-
-프로젝트 전용 스킬은 `.agents/skills/`에 있으며 작업에 맞춰 선택하거나 이름으로 요청할 수 있습니다.
-
-- `$personal-os-tdd`: 실패 테스트 → 최소 구현 → 필요한 정리와 회귀 확인.
-- `$personal-os-diagnosing-bugs`: 재현·최소화 → 가설 검증 → 수정·원래 증상 재확인.
-- `$personal-os-code-review`: 요구 동작과 프로젝트 규칙을 구분해 PR·브랜치·미커밋 변경을 검토.
-
-예: “`$personal-os-diagnosing-bugs`로 상담 재개 시 답변이 중복되는 원인을 찾아 수정해줘.”
-일반 동작 변경·어려운 버그·구현 후 자체 검토의 선택 기준은 [AGENTS.md](AGENTS.md#작업-방식과-완료-기준)에 있습니다. 스킬이 목록에 보이지 않는 세션에서는 해당 `SKILL.md`를 직접 읽어 적용할 수 있습니다.
-
-[mattpocock/skills](https://github.com/mattpocock/skills/tree/49dd158d1076134a641b33efb035946536778336)의 세 스킬을 기준으로 조정했습니다. 각 스킬의 `metadata.upstream`에 원본을 고정하고 [MIT 라이선스](.agents/skills/LICENSE.mattpocock)를 보존합니다. 자동 업데이트 대신 필요한 원본 변경만 검토해 반영합니다. 테스트 경계는 기존 계약에 따라 자율 선택하며, 개인정보·영속성 검증과 미커밋 파일 리뷰를 포함합니다. 커밋·푸시·병합은 명시적으로 요청한 범위만 수행합니다.

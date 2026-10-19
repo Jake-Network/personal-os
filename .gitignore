@@ -9,3 +9,7 @@ node_modules
 dist/
 *.tsbuildinfo
 .idea/
+
+# Local coding-agent configuration
+/.agents/
+/.serena/

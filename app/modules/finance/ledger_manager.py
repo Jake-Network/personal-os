@@ -74,6 +74,15 @@ def record(session, body):
 
 
 def listing(session, year=None):
+    # Status must include reversals outside the filtered year and the listing limit.
+    reversed_ids = set(
+        session.scalars(
+            select(FinancialTransaction.reverses_id).where(
+                FinancialTransaction.kind == "reversal",
+                FinancialTransaction.reverses_id.is_not(None),
+            )
+        )
+    )
     query = select(FinancialTransaction).order_by(
         FinancialTransaction.occurred_at.desc(), FinancialTransaction.id.desc()
     )
@@ -84,7 +93,10 @@ def listing(session, year=None):
             FinancialTransaction.occurred_at
             < datetime(year + 1, 1, 1, tzinfo=ZoneInfo(settings.timezone)),
         )
-    return [transaction_dict(r) for r in session.scalars(query.limit(1000))]
+    return [
+        dict(transaction_dict(r), is_reversed=r.id in reversed_ids)
+        for r in session.scalars(query.limit(1000))
+    ]
 
 
 def trend(session, year):

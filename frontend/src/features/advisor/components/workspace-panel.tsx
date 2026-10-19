@@ -7,6 +7,8 @@ import { useListProposals } from '@/api-client/generated/proposals/proposals';
 import { getListDecisionsQueryKey, useCreateDecision } from '@/api-client/generated/memory/memory';
 import type { ScenarioView } from '@/api-client/model';
 import { Alert } from '@/components/ui/alert';
+import { X } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,7 +22,6 @@ import { useWorkspace, isUnfinished } from '../hooks/use-workspace';
 import type { InspectorData, InspectorMode } from '../types';
 import { ContextInspector } from './context-inspector';
 import { ProposalCard } from './proposal-card';
-import { RUN_LABEL } from './run-card';
 
 function Values({ value }: { value: Record<string, unknown> }) {
   return (
@@ -53,14 +54,12 @@ function ScenarioCard({
   const [editing, setEditing] = useState(false);
   const [condition, setCondition] = useState('');
   return (
-    <article className='grid gap-2 rounded border p-3'>
+    <article className='grid gap-2 rounded-lg border p-3'>
       <div className='flex flex-wrap items-center gap-1'>
         <h3 className='text-sm font-medium'>{scenario.title}</h3>
-        {selected && <Badge variant='accent'>후속 상담 기준</Badge>}
+        {selected && <Badge variant='accent'>이 대안으로 이어가는 중</Badge>}
       </div>
-      <p className='text-xs text-faint'>
-        버전 {scenario.revision} · {dateTime(scenario.created_at)}
-      </p>
+      <p className='text-xs text-faint'>{dateTime(scenario.created_at)} 분석</p>
       {!!Object.keys(scenario.assumptions).length && (
         <>
           <p className='text-xs font-medium'>가정</p>
@@ -75,33 +74,33 @@ function ScenarioCard({
       )}
       {!!Object.keys(scenario.results).length && (
         <>
-          <p className='text-xs font-medium'>서버 계산 결과</p>
+          <p className='text-xs font-medium'>계산 결과</p>
           <Values value={scenario.results} />
         </>
       )}
       {!!scenario.unknowns.length && <p className='text-xs text-warning'>확인 필요: {scenario.unknowns.map(String).join(', ')}</p>}
       {!!Object.keys(scenario.evidence).length && (
         <details className='text-xs'>
-          <summary>결과 당시 근거 기준</summary>
+          <summary className='cursor-pointer'>분석 당시 근거</summary>
           <Values value={scenario.evidence} />
         </details>
       )}
-      <div className='flex flex-wrap gap-2'>
+      <div className='flex flex-wrap gap-1.5'>
+        <Button size='sm' variant='primary' disabled={busy} onClick={onDecision}>
+          이걸로 결정
+        </Button>
         <Button size='sm' disabled={busy || selected} onClick={onSelect}>
           이 대안으로 이어가기
         </Button>
-        <Button size='sm' disabled={busy} onClick={() => setEditing(!editing)}>
-          조건 바꿔 비교
-        </Button>
-        <Button size='sm' disabled={busy} onClick={onDecision}>
-          결정으로 기록
+        <Button size='sm' variant='ghost' aria-expanded={editing} disabled={busy} onClick={() => setEditing(!editing)}>
+          조건 바꿔 보기
         </Button>
       </div>
       {editing && (
         <div className='grid gap-2'>
           <Textarea
             aria-label={`${scenario.title} 변경할 조건`}
-            placeholder='이번 비교에 적용할 조건을 입력하세요'
+            placeholder='예: 퇴사 시점을 3개월 늦추면?'
             value={condition}
             onChange={e => setCondition(e.target.value)}
           />
@@ -114,7 +113,7 @@ function ScenarioCard({
                 setCondition('');
               })
             }>
-            새 버전으로 분석
+            바꾼 조건으로 다시 분석
           </Button>
         </div>
       )}
@@ -127,16 +126,19 @@ export function WorkspacePanel({
   inspector,
   className,
   onClose,
+  onBack,
 }: {
   conversationId: number | null;
   inspector: { data: InspectorData | null; mode: InspectorMode; loading?: boolean };
   className?: string;
   onClose?: () => void;
+  /** Return from a saved answer's data to the current conversation's. */
+  onBack?: () => void;
 }) {
   const workspace = useWorkspace(conversationId, false);
   const queryClient = useQueryClient();
   const evidenceKey = inspector.mode === 'snapshot' ? (inspector.data?.context_snapshot_id ?? 'loading') : 'preview';
-  const [tabState, setTabState] = useState({ value: 'consultation', evidenceKey });
+  const [tabState, setTabState] = useState({ value: 'evidence', evidenceKey });
   if (tabState.evidenceKey !== evidenceKey) setTabState({ value: inspector.mode === 'snapshot' ? 'evidence' : tabState.value, evidenceKey });
   const tab = tabState.evidenceKey !== evidenceKey && inspector.mode === 'snapshot' ? 'evidence' : tabState.value;
   const proposals = useListProposals(
@@ -199,34 +201,42 @@ export function WorkspacePanel({
       onDecision={() => setDecision({ scenario, rationale: '', expected: '', reviewOn: '' })}
     />
   );
+  const hasScenarios = !!workspace.data?.scenarios?.length;
+  const pendingCount = proposals.data?.length ?? 0;
+  const activeTab = tab === 'consultation' && !hasScenarios && !decision ? 'evidence' : tab;
   return (
-    <aside className={cn('min-h-0 overflow-y-auto border-l bg-card', className)} aria-label='상담 패널'>
-      <div className='flex items-center justify-between border-b p-3'>
-        <h2 className='font-medium'>상담 워크스페이스</h2>
-        {onClose && (
-          <Button size='sm' variant='ghost' onClick={onClose}>
-            닫기
-          </Button>
-        )}
-      </div>
-      <Tabs value={tab} onValueChange={value => setTabState({ value, evidenceKey })} className='p-3'>
-        <TabsList className='w-full'>
-          <TabsTrigger value='consultation'>상담</TabsTrigger>
-          <TabsTrigger value='evidence'>근거·기억</TabsTrigger>
-          <TabsTrigger value='actions'>실행</TabsTrigger>
-        </TabsList>
-        <TabsContent value='consultation' className='grid gap-3'>
+    <aside className={cn('min-h-0 overflow-y-auto border-l bg-card', className)} aria-label='상담 근거와 제안'>
+      <Tabs value={activeTab} onValueChange={value => setTabState({ value, evidenceKey })}>
+        <div className='sticky top-0 z-10 flex items-center gap-1 border-b bg-card px-3 py-2'>
+          <TabsList className='flex-1'>
+            <TabsTrigger value='evidence' className='flex-1'>
+              근거
+            </TabsTrigger>
+            {hasScenarios && (
+              <TabsTrigger value='consultation' className='flex-1'>
+                비교
+              </TabsTrigger>
+            )}
+            <TabsTrigger value='actions' className='flex-1'>
+              제안{pendingCount > 0 ? ` ${pendingCount}` : ''}
+            </TabsTrigger>
+          </TabsList>
+          {onClose && (
+            <Button size='icon-sm' variant='ghost' aria-label='닫기' onClick={onClose}>
+              <X />
+            </Button>
+          )}
+        </div>
+        <TabsContent value='consultation' className='mt-0 grid gap-3 p-3'>
           {workspace.error && <Alert variant='destructive'>{errorMessage(workspace.error)}</Alert>}
           {mutation.error && <Alert variant='destructive'>{errorMessage(mutation.error)}</Alert>}
           {clearSelection.error && <Alert variant='destructive'>{errorMessage(clearSelection.error)}</Alert>}
           {workspace.data?.selected_scenario_id && (
-            <Button size='sm' disabled={busy} onClick={() => clearSelection.mutate()}>
-              대안 선택 해제 · 새 주제로 상담
+            <Button size='sm' variant='ghost' className='justify-self-start' disabled={busy} onClick={() => clearSelection.mutate()}>
+              대안 선택 해제하고 새 주제로
             </Button>
           )}
-          {run && <Badge>{RUN_LABEL[run.status]}</Badge>}
           {!!Object.keys(workspace.data?.problem ?? {}).length && <Values value={workspace.data?.problem ?? {}} />}
-          {!workspace.data?.scenarios?.length && <p className='text-xs text-faint'>상담에서 비교할 조건과 대안이 정리되면 여기에 표시합니다.</p>}
           {currentScenarios.length > 0 && (
             <>
               <h3 className='text-sm font-medium'>이번 비교</h3>
@@ -235,14 +245,13 @@ export function WorkspacePanel({
           )}
           {historicalScenarios.length > 0 && (
             <details className='grid gap-3'>
-              <summary className='mb-2 cursor-pointer text-sm'>과거 대안·조건 버전 ({historicalScenarios.length})</summary>
-              <p className='mb-2 text-xs text-faint'>당시 근거의 기록입니다. 현재 비교와 기준 데이터가 다를 수 있습니다.</p>
+              <summary className='mb-2 cursor-pointer text-sm'>이전에 비교한 대안 {historicalScenarios.length}개</summary>
               <div className='grid gap-3'>{historicalScenarios.map(renderScenario)}</div>
             </details>
           )}
           {decision && (
             <form
-              className='grid gap-2 rounded border p-3'
+              className='grid gap-2 rounded-lg border p-3'
               onSubmit={event => {
                 event.preventDefault();
                 recordDecision.mutate({
@@ -260,7 +269,7 @@ export function WorkspacePanel({
                   },
                 });
               }}>
-              <h3 className='text-sm font-medium'>결정 기록: {decision.scenario.title}</h3>
+              <h3 className='text-sm font-medium'>결정 기록 · {decision.scenario.title}</h3>
               <label className='grid gap-1 text-xs'>
                 선택한 이유
                 <Textarea required value={decision.rationale} onChange={e => setDecision({ ...decision, rationale: e.target.value })} />
@@ -285,20 +294,19 @@ export function WorkspacePanel({
             </form>
           )}
         </TabsContent>
-        <TabsContent value='evidence'>
-          <ContextInspector {...inspector} className='border-l-0' />
+        <TabsContent value='evidence' className='mt-0'>
+          <ContextInspector {...inspector} onBack={onBack} />
         </TabsContent>
-        <TabsContent value='actions' className='grid gap-3'>
+        <TabsContent value='actions' className='mt-0 grid gap-3 p-3'>
           {proposals.error ? (
             <Alert variant='destructive'>{errorMessage(proposals.error)}</Alert>
           ) : proposals.isPending && conversationId !== null ? (
-            <p className='text-xs text-faint'>제안을 불러오는 중…</p>
+            <p className='text-xs text-faint'>불러오는 중…</p>
           ) : proposals.data?.length ? (
             proposals.data.map(proposal => <ProposalCard key={proposal.id} proposal={proposal} />)
           ) : (
-            <p className='text-xs text-faint'>승인 대기 중인 행동 제안이 없습니다.</p>
+            <p className='text-ui text-muted-foreground'>이 상담에서 나온, 승인을 기다리는 제안이 없습니다.</p>
           )}
-          <p className='text-xs text-faint'>행동 제안은 승인 후에만 반영됩니다. 결정과 회고는 기존 결정 기록에서 관리합니다.</p>
         </TabsContent>
       </Tabs>
     </aside>

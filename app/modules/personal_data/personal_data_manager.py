@@ -60,6 +60,8 @@ class PersonalDataManager:
         return obj
 
     def create(self, session: Session, name: str, resource: Resource, body: BaseModel):
+        if name == "cashflow-entries" and body.currency != "KRW":
+            raise ValueError("새 가계부 기록은 원화로 입력하세요")
         data, trade_date = split_history_fields(name, body)
         obj = resource.handler.create(session, data)
         if tracks(name):

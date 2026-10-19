@@ -30,10 +30,18 @@ def _register(name: str, res: Resource) -> None:
     def list_items(session: Session = Depends(get_session)):
         return personal_data_manager.list(session, res)
 
+    if name == "cashflow-entries":
+        @router.get(f"/{name}/{{item_id}}", response_model=Item, operation_id=f"get_{name}")
+        def get_item(item_id: int, session: Session = Depends(get_session)):
+            return _get(session, item_id)
+
     @router.post(f"/{name}", response_model=Item, status_code=201, operation_id=f"create_{name}")
     def create_item(body: Create = Body(...), session: Session = Depends(get_session)):  # type: ignore[valid-type]
         _check_sheet_ownership(session, name)
-        return personal_data_manager.create(session, name, res, body)
+        try:
+            return personal_data_manager.create(session, name, res, body)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @router.put(f"/{name}/{{item_id}}", response_model=Item, operation_id=f"update_{name}")
     def update_item(item_id: int, body: Create = Body(...), session: Session = Depends(get_session)):  # type: ignore[valid-type]

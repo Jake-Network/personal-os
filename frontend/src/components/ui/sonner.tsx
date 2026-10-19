@@ -12,7 +12,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       theme={theme as ToasterProps['theme']}
       toastOptions={{
         classNames: {
-          toast: 'group border-border bg-card text-foreground shadow-lg',
+          toast: 'group border-border bg-card font-sans text-foreground shadow-lg',
           description: 'text-muted-foreground',
         },
       }}

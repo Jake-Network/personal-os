@@ -20,7 +20,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 상담은 질문·답변뿐 아니라 공유 범위, 사용한 데이터, 인용 근거와 승인할 제안을 함께 확인하는 작업 공간이다. 답변과 근거 패널의 연결을 유지한다.
 - 재무 화면은 통화·기준일·출처·기록 범위를 보여주고, 커리어·일정·목표 화면은 진행 상태와 다음 행동을 보여준다. 각 도메인의 의미를 무시한 범용 표만으로 모든 경험을 대체하지 않는다.
 - 기억·의사결정 기록은 사용자의 확인과 회고를 돕는다. 모델이 제안한 기억, 확정된 기억, 예상 결과와 실제 결과를 구별한다.
-- 한국어 UI와 기존 앱 셸을 기본으로 한다. 좁은 화면에서도 상담 목록, 입력창과 근거를 사용할 수 있게 한다. 키보드 탐색, 입력 라벨, 포커스, dialog/sheet 제목과 아이콘 버튼의 접근 가능한 이름을 챙긴다.
+- 한국어 UI와 기존 앱 셸을 기본으로 한다. 내비게이션은 영역(홈·상담·할 일·일정·자산·커리어·기록·회고·문서함·설정) 단위이며 영역 안의 화면은 라우트 탭(`AreaLayout`, `PageTabs`)으로 나눈다. DB 테이블을 그대로 메뉴로 노출하지 않는다. 좁은 화면에서는 하단 탭바와 더보기 메뉴를 쓰며, 상담 목록, 입력창과 근거를 사용할 수 있게 한다. 키보드 탐색, 입력 라벨, 포커스, dialog/sheet 제목과 아이콘 버튼의 접근 가능한 이름을 챙긴다.
 
 ## 구조와 책임
 
@@ -29,17 +29,27 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 위치 | 책임 |
 | --- | --- |
 | `src/app/` | App Router 페이지·레이아웃·메타데이터. 도메인 로직은 기능 모듈로 위임한다. |
-| `src/features/` | `advisor`, `dashboard`, `finance`, `holdings`, `documents`, `personal-data`, `memory`, `career`, `reviews`, `security`, `approvals`, `settings` 등 기능별 UI·상태·어댑터. |
+| `src/features/` | `advisor`, `dashboard`, `plan`(할 일·일정·목표·운동, 달력 소스), `finance`, `holdings`, `documents`, `personal-data`(스키마 폼, `RecordSheet`, `ResourceTable`, 리소스 hooks), `memory`, `career`, `reviews`, `security`, `approvals`, `settings` 등 기능별 UI·상태·어댑터. |
 | `src/api-client/generated/`, `src/api-client/model/` | 백엔드 OpenAPI에서 Orval로 생성하는 함수·Query hooks·타입. 직접 수정하지 않는다. |
 | `src/api-client/custom-client.ts` | 일반 HTTP 요청의 공용 axios mutator. |
 | `src/api-client/event-stream.ts`, `src/api-client/api-error.ts` | SSE 전송과 공통 오류 정규화. |
-| `src/components/`, `src/components/ui/` | 공용 UI, Markdown 렌더링, 알림과 shadcn/Radix 기반 기본 요소. |
-| `src/widgets/` | provider, 앱 셸, 사이드바와 내비게이션. |
-| `src/lib/` | QueryClient 설정, 한국어 라벨과 공용 포맷 유틸리티. |
+| `src/components/`, `src/components/ui/` | 공용 UI(`PageHeader`·`Section`, `AreaLayout`·`PageTabs`, `EmptyState`·`Skeleton`·`QueryStatus`, `StatusBadge`·`QualityBadge`, `InfoPopover`, `ConfirmDialog`, `calendar/`), Markdown 렌더링, 알림과 shadcn/Radix 기반 기본 요소. |
+| `src/widgets/` | provider(`TimezoneGate`, `ConfirmProvider` 포함), 앱 셸, 사이드바·하단 탭바와 내비게이션 항목. |
+| `src/lib/` | QueryClient 설정, 한국어 라벨, 공용 포맷(`utils/format.ts`)과 서버 시간대 날짜 계산(`utils/zoned.ts`). |
 
 - 기존 TypeScript 타입과 `@/` import, Tailwind·shadcn, React Hook Form/Zod 패턴을 따른다. 중복 UI, 병렬 상태 관리 체계나 의존성을 추가하기 전에 기존 구현을 찾는다.
 - 서버 상태는 TanStack Query로 관리하고 대화 입력·패널 열림 등 일시적인 UI 상태는 필요한 컴포넌트에 둔다. 브라우저 상태가 다른 대화나 새 상담에 섞이지 않게 한다.
 - 상호작용과 브라우저 API가 필요한 경계에 `'use client'`를 둔다. 루트 전체를 불필요하게 클라이언트로 바꾸지 않는다.
+
+## 화면 패턴과 문구
+
+- 페이지·탭 화면은 `PageHeader` 또는 `AreaLayout` 제목 하나와 최대 한 줄 설명을 둔다. 계산 방식·정책·보장 사항 설명은 상시 문단 대신 `InfoPopover`나 `docs/`에 둔다. 단, 문구를 줄여도 신호는 남긴다: 결측·부분 합계·오래됨·공유 제외·확인 필요는 해당 값 옆의 `QualityBadge`·배지·사유 문구로 표시한다.
+- 섹션은 `Section`(제목·개수·우측 액션·구분선)으로 평평하게 두고, `Card`는 누르거나 조작하는 단위에만 쓴다. 상태 값은 `StatusBadge`, 데이터 품질은 `QualityBadge`로 통일한다.
+- 개인 레코드의 추가·수정은 `RecordSheet`(우측 Sheet + 스키마 폼) 하나로 한다. 미리 채울 값은 `defaults`, 내부 필드는 `hidden`으로 다룬다. 삭제·되돌릴 수 없는 동작은 `useConfirm`으로 범위를 설명하고 `window.confirm()`을 쓰지 않는다.
+- 레코드 딥링크는 `?record=<id>`다. 서버 페이지가 `parseRecordParam`으로 읽어 넘기고 화면은 `useRecordParam`으로 Sheet를 연다. 홈·타임라인·상담 인용·달력이 이 링크를 쓴다.
+- 데이터 없음은 `EmptyState`에 다음 행동 버튼을 함께 두고, 로딩은 `QueryStatus`/`Skeleton`, 실패는 다시 시도와 함께 표시한다.
+- 달력은 `components/calendar/CalendarView`와 `features/plan/calendar-sources.ts`의 소스 어댑터, `features/plan/source-calendar.tsx`를 쓴다. 날짜 클릭·여러 날 드래그·주 보기 시간 드래그로 선택하면 해당 소스의 `RecordSheet`가 날짜를 채워 열린다. 날짜가 하나뿐인 레코드에 기간을 고르면 첫날만 쓰고 그 사실을 표시한다.
+- 화면 문구는 한국어만 쓴다. 레코드 ID(`#12`), revision 번호, 모델명, 내부 상태 코드, `UTC`, 환경 변수·CLI 명령, 영문 기술 용어를 화면에 노출하지 않는다(고급 설정의 접힌 영역은 예외). 용어: revision → 수정 기록, Context Snapshot → 답변 당시 데이터, 감사 이력 → 변경 기록, 관측 평가 → 오늘 기준 평가, AI Provider → AI 연결, Decision Journal → 결정 기록.
 
 ## API 계약과 캐시
 
@@ -53,11 +63,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 재무 표시와 입력
 
 - 금액·수량·환율의 API Decimal 문자열을 입력·저장까지 보존한다. 화면 좌표·포맷을 위한 변환과 재무 계산을 구분한다. 순자산·런웨이 등 업무 계산은 백엔드 결과를 사용한다.
-- `src/features/finance/presentation.ts`, `src/lib/utils/format.ts`, `src/lib/labels.ts`의 해당 화면용 규칙을 재사용한다. 원본 정밀도가 필요한 금액을 표시 편의상 반올림한 값으로 저장하지 않는다.
+- 금액 표시는 `src/lib/utils/format.ts`의 `money`(Decimal 문자열을 그대로 자릿수 구분, 결측 사유 라벨)·`moneyShort`를 쓰고, 재무 화면의 `src/features/finance/presentation.ts`(결측 = 확인 필요, 비율·차트 구간)와 `src/lib/labels.ts`를 재사용한다. 원본 정밀도가 필요한 금액을 표시 편의상 반올림한 값으로 저장하지 않는다.
 - `null`, 빈 값, 수집 실패를 `0`으로 바꾸지 않는다. 실제 0은 0으로 표시하고, 알 수 없는 값은 확인 필요·미기록 상태로 표시한다. 부분 합계와 오래된 값에는 관련 표시를 유지한다.
 - 월별 차트는 누락 월·알 수 없는 값 사이의 선을 끊는다. 누락 기간을 연속 추세나 수익률로 표현하지 않는다. 과거 기록 정정은 기존 revision과의 관계를 보여준다.
 - 로컬 DB를 재무 원본으로 사용한다. Google 시세 연결이 없어도 입력을 허용한다. Google 전송에는 티커·통화쌍·생성 시세 수식만 포함한다. 로컬 저장·시세 대기·시세 실패를 구분하며 안정적인 position/request ID와 `expected_version`을 유지한다.
-- 날짜만 있는 값과 시각이 있는 값을 구분하고 기존 포맷 함수를 사용한다. 브라우저 시간대가 백엔드의 `PERSONAL_OS_TIMEZONE`과 같다고 가정하지 않는다. 일정 기간과 기준 시각을 오해할 수 있으면 표시를 보완한다.
+- 날짜만 있는 값과 시각이 있는 값을 구분하고 기존 포맷 함수를 사용한다. 브라우저 시간대가 백엔드의 `PERSONAL_OS_TIMEZONE`과 같다고 가정하지 않는다. `TimezoneGate`가 `/api/locale`의 시간대를 `setDisplayTimeZone`으로 설정하며, 시각 표시(`format.ts`)·`datetime-local` 입력 변환(`form-values.ts`)·달력 날짜 경계(`zoned.ts`)는 이 시간대를 쓴다. 날짜만 있는 값은 시간대로 이동시키지 않는다. 종일 일정은 `[첫날 00:00, 마지막 날 다음 00:00)`으로 저장하고 폼에서는 날짜로 편집한다. raw ISO 문자열이나 `slice()`로 날짜를 표시하지 않는다.
 
 ## 상담·문서·승인 UI
 
@@ -86,7 +96,7 @@ corepack yarn test
 corepack yarn build
 ```
 
-- 최소 검증은 변경 영향에 맞춰 선택한다. SSE는 `src/api-client/event-stream.test.ts`, 실행 이벤트 재연결은 `src/features/advisor/run-events.test.ts`, 오류는 `src/api-client/api-error.test.ts`, 재무 표시는 `src/features/finance/presentation.test.ts`, Sheets 입력은 `src/features/holdings/api.test.ts`, 스키마 폼은 `src/features/personal-data/utils/schema-fields.test.ts`를 출발점으로 삼는다.
+- 최소 검증은 변경 영향에 맞춰 선택한다. 포맷·시간대는 `src/lib/utils/format.test.ts`·`zoned.test.ts`, 달력은 `src/components/calendar/calendar-utils.test.ts`·`src/features/plan/calendar-sources.test.ts`, 레코드 갱신 payload는 `src/features/personal-data/hooks/use-resource.test.ts`, SSE는 `src/api-client/event-stream.test.ts`, 실행 이벤트 재연결은 `src/features/advisor/run-events.test.ts`, 오류는 `src/api-client/api-error.test.ts`, 재무 표시는 `src/features/finance/presentation.test.ts`, Sheets 입력은 `src/features/holdings/api.test.ts`, 스키마 폼은 `src/features/personal-data/utils/schema-fields.test.ts`를 출발점으로 삼는다.
 - 화면을 변경했다면 가능한 환경에서 데스크톱·좁은 화면, 데이터 없음·로딩·실패, 긴 한국어 제목·큰 금액·중복 제출 등 관련 상태를 확인한다. 정적 검사와 단위 테스트 통과를 브라우저 검증으로 보고하지 않는다.
 - 실시간 LLM·OAuth·Google Sheets 검증과 모킹된 테스트를 구별한다. 문서만 수정한 경우에는 링크·경로·명령과 코드의 일치 및 diff를 확인한다.
 - 루트에는 공통 제품·보안·데이터 원칙을, 이 파일에는 프런트엔드 구조·화면 동작·실행 방법을 관리한다. 라우팅·공용 클라이언트·API 생성·주요 UX 변경 시 두 문서의 관련 항목을 함께 확인하고 오래된 지침을 수정한다.

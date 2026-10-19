@@ -85,6 +85,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - API 계약의 원본은 백엔드 OpenAPI다. `frontend/src/api-client/generated/`와 `model/`은 수작업 수정하지 않고 재생성한다. 공용 전송·오류·SSE 처리는 기존 클라이언트를 사용한다. 데이터 입력 폼의 스키마를 프런트엔드에 중복 정의하지 않는다.
 - 상담의 SSE 계약(`context`, `delta`, `done`, `error`), 취소·오류 표시와 대화 이동 중 스트림 수명을 보호한다. 기능 변경 시 관련 Query 캐시 무효화도 확인한다.
 - 상담 실행의 공개 진입점은 `app/modules/advisor/runtime/service.py`의 `ConversationRuntime`이다. 모델 호출은 `ContextAssembler`와 기존 Gateway를 거친다. HTTP 구독 해제로 서버 run을 취소하지 않는다. 앱 전체 1개 실행·대화당 미종결 1개, 질문 ID·revision 기반 재개, 명시적 중지·재시도와 답변 revision을 유지한다. lease·세대 검사와 checkpoint 쓰기 권한을 함께 보호하고 외부 호출 완료가 불명확한 복구는 자동 재호출하지 않는다. 체크포인터 DDL은 Alembic migration 경로에서만 실행한다.
+- 웹 조사는 `runtime/graph.py`의 `web_search` 노드와 `app/modules/web_search/`를 사용한다. 요청별 명시적 허용과 별도의 공개 검색어만 외부 전송하며 개인 데이터로 검색어를 확장하지 않는다. 실제 수집한 본문의 선택된 발췌를 `ContextAssembler`의 예산·스냅샷·출처 검증 경로에 합친다. IP 고정·리다이렉트 검증·크기·시간 한도와 운영 Docker의 수집 거부를 유지한다.
 - 한국어 UI를 기본으로 하고 기존 라벨·포맷 유틸리티를 재사용한다. 데이터 없음, 공유 제외, 연결 필요, 오래된 데이터, 부분 성공과 실패를 서로 다른 상태로 표시하고 다음 행동을 제공한다.
 - 문서 인덱싱 변경 시 버전 활성화, lease·heartbeat·작업 소유권·재시도 상한·중복 완료 방지를 함께 검토한다. 파생 데이터 처리 실패가 기존 검색 가능한 버전을 없애지 않게 한다.
 

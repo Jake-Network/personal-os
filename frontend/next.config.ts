@@ -41,6 +41,32 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Screens moved when the app was regrouped into areas; old bookmarks keep working.
+  async redirects() {
+    const moved: [string, string][] = [
+      ['/data/accounts', '/finance/accounts'],
+      ['/data/liabilities', '/finance/accounts'],
+      ['/data/other-assets', '/finance/accounts'],
+      ['/data/holdings', '/finance/investments'],
+      ['/data/fx-rates', '/finance/investments'],
+      ['/data/cashflow-entries', '/finance/cashflow'],
+      ['/data/planned-expenses', '/finance/transactions'],
+      ['/finance/records', '/finance/transactions'],
+      ['/data/job-applications', '/career'],
+      ['/data/interviews', '/career'],
+      ['/data/career-criteria', '/career/criteria'],
+      ['/data/calendar-events', '/plan/events'],
+      ['/data/tasks', '/plan/tasks'],
+      ['/data/goals', '/plan/goals'],
+      ['/data/workout-logs', '/plan/workouts'],
+      ['/timeline', '/career/timeline'],
+      ['/memory', '/reflect/memory'],
+      ['/reviews', '/reflect/reviews'],
+      ['/jobs', '/settings/jobs'],
+      ['/settings', '/settings/ai-provider'],
+    ];
+    return moved.map(([source, destination]) => ({ source, destination, permanent: false }));
+  },
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${serverDomain}/api/:path*` },

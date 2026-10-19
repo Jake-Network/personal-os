@@ -1,5 +1,9 @@
+import type { Metadata } from 'next';
+
 import { SecuritySettings } from '@/features/security/security-settings';
 
-export default function SecurityPage() {
+export const metadata: Metadata = { title: '보안·백업' };
+
+export default function Page() {
   return <SecuritySettings />;
 }

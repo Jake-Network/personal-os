@@ -3,115 +3,40 @@
 import { useState } from 'react';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MessagesSquare, Plus, Scale } from 'lucide-react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 
-import { EmptyState } from '@/components/empty-state';
-import { QueryStatus } from '@/components/query-status';
-import { notify } from '@/components/notify';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-
+import { customInstance } from '@/api-client/custom-client';
 import { errorMessage } from '@/api-client/api-error';
 import { getListDecisionsQueryKey, useCreateDecision, useListDecisions, useReviewDecision } from '@/api-client/generated/memory/memory';
 import type { DecisionItem } from '@/api-client/model';
+import { TabToolbar } from '@/components/area-layout';
+import { EmptyState } from '@/components/empty-state';
+import { notify } from '@/components/notify';
+import { QueryStatus } from '@/components/query-status';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import { dateOnly } from '@/lib/utils/format';
+import { zonedInstant } from '@/lib/utils/zoned';
+
+import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 
 import { type DecisionForm, EMPTY_DECISION, decisionSchema } from '../schema';
 
-export function DecisionJournal() {
-  const queryClient = useQueryClient();
-  const list = useListDecisions();
-  const [open, setOpen] = useState(false);
-  const form = useForm<DecisionForm>({ resolver: zodResolver(decisionSchema), defaultValues: EMPTY_DECISION });
-
-  const create = useCreateDecision({
-    mutation: {
-      onSuccess: () => {
-        form.reset(EMPTY_DECISION);
-        setOpen(false);
-        return queryClient.invalidateQueries({ queryKey: getListDecisionsQueryKey() });
-      },
-    },
-  });
-
-  const submit = form.handleSubmit(f =>
-    create.mutate({
-      data: {
-        title: f.title,
-        choice: f.choice,
-        rationale: f.rationale,
-        alternatives: f.alternatives
-          .split('\n')
-          .map(s => s.trim())
-          .filter(Boolean),
-        expected_outcome: f.expected_outcome || null,
-        review_on: f.review_on ? new Date(`${f.review_on}T09:00:00`).toISOString() : null,
-      },
-    }),
-  );
-  const errors = form.formState.errors;
-  const error = Object.values(errors)[0]?.message ?? (create.error ? errorMessage(create.error) : null);
-
-  return (
-    <div className='flex flex-col gap-3.5'>
-      <div className='flex justify-end'>
-        <Button variant='primary' onClick={() => setOpen(v => !v)}>
-          결정 기록하기
-        </Button>
-      </div>
-      {open && (
-        <Card>
-          <form className='flex flex-col gap-2.5 p-4' onSubmit={submit}>
-            <Field label='결정 *' id='d-title'>
-              <Input id='d-title' placeholder='예: A사 오퍼 수락 여부' {...form.register('title')} />
-            </Field>
-            <div className='grid grid-cols-1 gap-3.5 md:grid-cols-2'>
-              <Field label='선택한 안 *' id='d-choice'>
-                <Input id='d-choice' {...form.register('choice')} />
-              </Field>
-              <Field label='회고 예정일' id='d-review'>
-                <Input id='d-review' type='date' {...form.register('review_on')} />
-              </Field>
-            </div>
-            <Field label='고려한 대안 (줄마다 하나)' id='d-alt'>
-              <Textarea id='d-alt' {...form.register('alternatives')} />
-            </Field>
-            <Field label='선택 이유 *' id='d-why'>
-              <Textarea id='d-why' {...form.register('rationale')} />
-            </Field>
-            <Field label='예상 결과' id='d-expected'>
-              <Textarea id='d-expected' {...form.register('expected_outcome')} />
-            </Field>
-            {error && <Alert variant='destructive'>{error}</Alert>}
-            <div className='flex justify-end gap-2'>
-              <Button type='button' onClick={() => setOpen(false)}>
-                취소
-              </Button>
-              <Button type='submit' variant='primary' disabled={create.isPending}>
-                기록
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-      <QueryStatus pending={list.isPending} error={list.error} retry={list.refetch} label='의사결정 기록' />
-      {!list.error && list.data?.length === 0 && (
-        <Card>
-          <EmptyState>기록된 의사결정이 없습니다.</EmptyState>
-        </Card>
-      )}
-      {list.data?.map(d => (
-        <DecisionCard key={d.id} decision={d} />
-      ))}
-    </div>
-  );
+interface Outcome {
+  id: number;
+  actual_outcome: string;
+  lessons: string | null;
+  next_action: string | null;
+  expected_outcome: string | null;
+  reviewed_at: string | null;
 }
 
 function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
@@ -123,76 +48,230 @@ function Field({ label, id, children }: { label: string; id: string; children: R
   );
 }
 
-function DecisionCard({ decision: d }: { decision: DecisionItem }) {
+function reviewState(d: DecisionItem, now: number) {
+  if (d.reviewed_at) return <Badge variant='success'>회고 완료</Badge>;
+  if (d.review_on && new Date(d.review_on).getTime() < now) return <Badge variant='warning'>회고할 때</Badge>;
+  if (d.review_on) return <span className='text-xs text-faint'>회고 {dateOnly(d.review_on)}</span>;
+  return null;
+}
+
+function NewDecision({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [reviewing, setReviewing] = useState(false);
-  const [outcome, setOutcome] = useState('');
+  const form = useForm<DecisionForm>({ resolver: zodResolver(decisionSchema), defaultValues: EMPTY_DECISION });
+  const create = useCreateDecision({
+    mutation: {
+      onSuccess: async () => {
+        form.reset(EMPTY_DECISION);
+        await queryClient.invalidateQueries({ queryKey: getListDecisionsQueryKey() });
+        notify.success('결정을 기록했습니다');
+        onClose();
+      },
+    },
+  });
+  const submit = form.handleSubmit(f =>
+    create.mutate({
+      data: {
+        title: f.title,
+        choice: f.choice,
+        rationale: f.rationale,
+        alternatives: f.alternatives
+          .split('\n')
+          .map(s => s.trim())
+          .filter(Boolean),
+        expected_outcome: f.expected_outcome || null,
+        // 09:00 on the chosen day in the app's timezone.
+        review_on: f.review_on ? zonedInstant(f.review_on, 9 * 60) : null,
+      },
+    }),
+  );
+  const error = Object.values(form.formState.errors)[0]?.message ?? (create.error ? errorMessage(create.error) : null);
+
+  return (
+    <Sheet open={open} onOpenChange={o => !o && onClose()}>
+      <SheetContent side='right' className='w-[min(520px,100vw)] overflow-y-auto'>
+        <form className='flex flex-col gap-3 p-5' onSubmit={submit}>
+          <SheetTitle className='pr-8 text-title font-semibold'>결정 기록하기</SheetTitle>
+          <Field label='결정 *' id='d-title'>
+            <Input id='d-title' placeholder='예: A사 오퍼 수락 여부' {...form.register('title')} />
+          </Field>
+          <Field label='선택한 안 *' id='d-choice'>
+            <Input id='d-choice' {...form.register('choice')} />
+          </Field>
+          <Field label='고려한 대안 (줄마다 하나)' id='d-alt'>
+            <Textarea id='d-alt' {...form.register('alternatives')} />
+          </Field>
+          <Field label='선택 이유 *' id='d-why'>
+            <Textarea id='d-why' {...form.register('rationale')} />
+          </Field>
+          <Field label='예상 결과' id='d-expected'>
+            <Textarea id='d-expected' placeholder='나중에 실제 결과와 비교합니다' {...form.register('expected_outcome')} />
+          </Field>
+          <Field label='회고할 날' id='d-review'>
+            <Input id='d-review' type='date' {...form.register('review_on')} />
+          </Field>
+          {error && <Alert variant='destructive'>{error}</Alert>}
+          <div className='flex justify-end gap-2'>
+            <Button type='button' onClick={onClose}>
+              취소
+            </Button>
+            <Button type='submit' variant='primary' disabled={create.isPending}>
+              기록
+            </Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** The decision's first recorded outcome (on the decision itself) and later outcome reviews are kept apart. */
+function DecisionDetail({ decision: d, onClose }: { decision: DecisionItem; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [actual, setActual] = useState('');
+  const [more, setMore] = useState('');
   const review = useReviewDecision({
     mutation: {
       onSuccess: () => {
-        setReviewing(false);
+        setActual('');
         return queryClient.invalidateQueries({ queryKey: getListDecisionsQueryKey() });
       },
       onError: notify.error,
     },
   });
-  // Rendered on the client only (the page is a client tree fetched after mount), so `new Date()` is stable enough.
-  const reviewDue = !d.reviewed_at && d.review_on && new Date(d.review_on) < new Date();
+  const outcomesKey = ['decision-outcomes', d.id];
+  const outcomes = useQuery({ queryKey: outcomesKey, queryFn: () => customInstance<Outcome[]>({ url: `/api/decisions/${d.id}/reviews` }) });
+  const addOutcome = useMutation({
+    mutationFn: () => customInstance({ method: 'POST', url: `/api/decisions/${d.id}/reviews`, data: { actual_outcome: more } }),
+    onSuccess: () => {
+      setMore('');
+      return queryClient.invalidateQueries({ queryKey: outcomesKey });
+    },
+    onError: notify.error,
+  });
 
   return (
-    <Card className='flex flex-col gap-1.5 p-4'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <h2 className='flex-1 text-[15px]'>{d.title}</h2>
-        <span className='text-xs text-faint'>{dateOnly(d.decided_at)}</span>
-        {d.reviewed_at ? <Badge variant='success'>회고 완료</Badge> : reviewDue ? <Badge variant='warning'>회고 시점 지남</Badge> : null}
-      </div>
-      <div>
-        <span className='text-muted-foreground'>선택:</span> {d.choice}
-      </div>
-      {d.alternatives.length > 0 && (
-        <div className='text-xs'>
-          <span className='text-muted-foreground'>대안:</span> {d.alternatives.join(' · ')}
-        </div>
-      )}
-      <div className='text-xs'>
-        <span className='text-muted-foreground'>이유:</span> {d.rationale}
-      </div>
-      <div className='mt-1.5 grid grid-cols-1 gap-3.5 md:grid-cols-2'>
-        <div className='rounded-md bg-muted p-4'>
-          <div className='text-xs text-faint'>예상 결과</div>
-          {d.expected_outcome ?? '—'}
-        </div>
-        <div className='rounded-md bg-muted p-4'>
-          <div className='text-xs text-faint'>실제 결과</div>
-          {d.actual_outcome ??
-            (reviewing ? (
-              <div className='mt-1 flex flex-col gap-2.5'>
-                <Textarea value={outcome} onChange={e => setOutcome(e.target.value)} />
-                <div className='flex gap-2'>
+    <Sheet open onOpenChange={o => !o && onClose()}>
+      <SheetContent side='right' className='w-[min(560px,100vw)] overflow-y-auto'>
+        <div className='flex flex-col gap-4 p-5'>
+          <div>
+            <SheetTitle className='pr-8 text-title font-semibold'>{d.title}</SheetTitle>
+            <p className='mt-1 text-xs text-muted-foreground'>{dateOnly(d.decided_at)}에 결정</p>
+          </div>
+          <dl className='grid gap-2 text-ui'>
+            <div>
+              <dt className='text-xs text-faint'>선택</dt>
+              <dd>{d.choice}</dd>
+            </div>
+            {d.alternatives.length > 0 && (
+              <div>
+                <dt className='text-xs text-faint'>대안</dt>
+                <dd>{d.alternatives.join(' · ')}</dd>
+              </div>
+            )}
+            <div>
+              <dt className='text-xs text-faint'>이유</dt>
+              <dd className='whitespace-pre-wrap'>{d.rationale}</dd>
+            </div>
+          </dl>
+          {d.conversation_id && (
+            <Link href={`/advisor/${d.conversation_id}`} className='inline-flex items-center gap-1.5 text-ui text-primary hover:underline'>
+              <MessagesSquare className='size-3.5' aria-hidden /> 결정한 상담 열기
+            </Link>
+          )}
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+            <div className='rounded-md bg-muted p-3'>
+              <div className='mb-1 text-xs text-faint'>예상했던 결과</div>
+              <p className='whitespace-pre-wrap'>{d.expected_outcome ?? '기록하지 않음'}</p>
+            </div>
+            <div className='rounded-md bg-muted p-3'>
+              <div className='mb-1 text-xs text-faint'>실제 결과</div>
+              {d.actual_outcome ? (
+                <p className='whitespace-pre-wrap'>{d.actual_outcome}</p>
+              ) : (
+                <div className='flex flex-col gap-2'>
+                  <Textarea aria-label='실제 결과' value={actual} onChange={e => setActual(e.target.value)} />
                   <Button
                     size='sm'
                     variant='primary'
-                    disabled={!outcome.trim() || review.isPending}
-                    onClick={() => review.mutate({ entryId: d.id, data: { actual_outcome: outcome } })}>
+                    className='self-start'
+                    disabled={!actual.trim() || review.isPending}
+                    onClick={() => review.mutate({ entryId: d.id, data: { actual_outcome: actual } })}>
                     저장
                   </Button>
-                  <Button size='sm' onClick={() => setReviewing(false)}>
-                    취소
-                  </Button>
                 </div>
-              </div>
-            ) : (
-              <Button size='sm' className='mt-1' onClick={() => setReviewing(true)}>
-                결과 기록
-              </Button>
-            ))}
+              )}
+            </div>
+          </div>
+
+          <section className='flex flex-col gap-2'>
+            <h3 className='border-b pb-1 text-ui font-semibold'>이후 결과 회고</h3>
+            <QueryStatus pending={outcomes.isPending} error={outcomes.error} retry={outcomes.refetch} label='결과 회고' rows={2} />
+            {outcomes.data?.length === 0 && <p className='text-xs text-faint'>시간이 지나 다시 돌아본 결과를 쌓아 두세요.</p>}
+            <ul className='flex flex-col gap-2'>
+              {outcomes.data?.map(o => (
+                <li key={o.id} className='border-l-2 pl-3 text-ui'>
+                  <div className='text-xs text-faint'>{o.reviewed_at ? dateOnly(o.reviewed_at) : '날짜 미기록'}</div>
+                  <p className='whitespace-pre-wrap'>{o.actual_outcome}</p>
+                  {o.lessons && <p className='text-xs text-muted-foreground'>배운 점: {o.lessons}</p>}
+                  {o.next_action && <p className='text-xs text-muted-foreground'>다음 행동: {o.next_action}</p>}
+                </li>
+              ))}
+            </ul>
+            <Textarea aria-label='새 결과 회고' placeholder='지금 돌아보면 어떻게 됐나요?' value={more} onChange={e => setMore(e.target.value)} />
+            <Button size='sm' className='self-start' disabled={!more.trim() || addOutcome.isPending} onClick={() => addOutcome.mutate()}>
+              결과 회고 추가
+            </Button>
+          </section>
         </div>
-      </div>
-      {d.conversation_id && (
-        <Link href={`/advisor/${d.conversation_id}`} className='text-xs text-primary hover:underline'>
-          관련 상담 보기
-        </Link>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** Decisions with what was expected, so they can be compared with what happened. */
+export function DecisionJournal({ recordId }: { recordId: number | null }) {
+  const list = useListDecisions();
+  const [selected, setSelected] = useRecordParam(recordId);
+  const [creating, setCreating] = useState(false);
+  const [now] = useState(() => Date.now());
+  const open = selected !== null ? list.data?.find(d => d.id === selected) : undefined;
+
+  return (
+    <div className='max-w-[860px]'>
+      <TabToolbar>
+        <Button variant='primary' onClick={() => setCreating(true)}>
+          <Plus /> 결정 기록하기
+        </Button>
+      </TabToolbar>
+      <QueryStatus pending={list.isPending} error={list.error} retry={list.refetch} label='결정 기록' />
+      {list.data?.length === 0 && (
+        <EmptyState
+          icon={Scale}
+          title='기록된 결정이 없습니다'
+          action={
+            <Button variant='primary' onClick={() => setCreating(true)}>
+              <Plus /> 결정 기록하기
+            </Button>
+          }>
+          선택과 이유, 예상한 결과를 남겨 두면 나중에 실제 결과와 비교할 수 있습니다.
+        </EmptyState>
       )}
-    </Card>
+      <ul className='divide-y'>
+        {list.data?.map(d => (
+          <li key={d.id}>
+            <button type='button' onClick={() => setSelected(d.id)} className='flex w-full flex-col gap-0.5 py-3 text-left hover:bg-muted/40'>
+              <span className='flex flex-wrap items-center gap-2'>
+                <span className='font-medium'>{d.title}</span>
+                {reviewState(d, now)}
+                <span className='ml-auto text-xs tabular-nums text-faint'>{dateOnly(d.decided_at)}</span>
+              </span>
+              <span className='text-ui text-muted-foreground'>선택: {d.choice}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <NewDecision open={creating} onClose={() => setCreating(false)} />
+      {open && <DecisionDetail key={open.id} decision={open} onClose={() => setSelected(null)} />}
+    </div>
   );
 }

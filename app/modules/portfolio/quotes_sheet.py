@@ -5,7 +5,7 @@ import re
 from app.modules.auth.google_checks import WRITE_SCOPE
 from app.modules.auth.google_oauth_manager import google_oauth_manager
 
-EXCHANGES = {"NASDAQ", "NYSE", "NYSEARCA", "AMEX", "KRX", "KOSDAQ"}
+EXCHANGES = {"NASDAQ", "NYSE", "NYSEARCA", "NYSEAMERICAN", "AMEX", "KRX", "KOSDAQ"}
 
 
 def quote_rows(symbols):

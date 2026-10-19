@@ -28,10 +28,12 @@ def legacy_at(tmp_path, revision: str) -> str:
 def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_path):
     url = url_for(tmp_path)
     engine = create_engine(url)
-    Base.metadata.create_all(engine)  # what native startup produces: no triggers, no version
+    Base.metadata.create_all(engine)  # what historical native startup produced: no triggers, no version
+    with engine.begin() as c:  # create_all installations predate the calendar all_day column
+        c.execute(text("ALTER TABLE calendar_events DROP COLUMN all_day"))
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0013_goal_values_as_text"
+    assert plan.head == "0014_calendar_all_day"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())
@@ -115,3 +117,18 @@ def test_app_startup_never_migrates_an_existing_database(tmp_path, monkeypatch):
     assert "alembic_version" not in inspect(engine).get_table_names()
     after = mm.schema_of(engine)
     assert {t: after[t] for t in before} == before  # existing tables exactly as they were
+
+
+def test_calendar_all_day_upgrade_keeps_existing_events_timed(tmp_path):
+    url = url_for(tmp_path, "calendar.db")
+    command.upgrade(mm.alembic_config(url), "0013_goal_values_as_text")
+    engine = create_engine(url)
+    with engine.begin() as c:
+        c.execute(text("""INSERT INTO calendar_events (id, title, kind, starts_at, created_at, updated_at)
+            VALUES (3, '면접', 'interview', '2026-10-20 01:00:00', '2026-10-01', '2026-10-01')"""))
+    command.upgrade(mm.alembic_config(url), "head")
+    with engine.begin() as c:
+        row = c.execute(text("SELECT title, starts_at, all_day FROM calendar_events WHERE id=3")).one()
+    assert (row.title, row.all_day) == ("면접", 0)
+    assert str(row.starts_at).startswith("2026-10-20 01:00:00")
+    engine.dispose()

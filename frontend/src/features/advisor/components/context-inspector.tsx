@@ -2,18 +2,19 @@
 
 import { useState } from 'react';
 
-import { X } from 'lucide-react';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 import { useCompareSnapshot } from '@/api-client/generated/advisor/advisor';
 import type { Category } from '@/api-client/model';
-import { ALL_CATEGORIES, CATEGORY_LABEL, ROUTE_REASON, TABLE_LABEL, TOOL_LABEL, flagDetail, flagText } from '@/lib/labels';
+import { ListSkeleton } from '@/components/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ALL_CATEGORIES, CATEGORY_LABEL, TABLE_LABEL, TOOL_LABEL, flagDetail, flagText } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-import { dateTime, relative } from '@/lib/utils/format';
+import { dateOnly, dateTime, relative } from '@/lib/utils/format';
 
-import { INSPECTOR_TITLE } from '../consts';
+import { INSPECTOR_TITLE, evidenceHref } from '../consts';
 import type { InspectorData, InspectorMode } from '../types';
 import { groupBy, publicWebUrl } from '../utils';
 
@@ -22,43 +23,47 @@ interface Props {
   mode: InspectorMode;
   loading?: boolean;
   className?: string;
-  onClose?: () => void;
+  /** Leave a saved answer's data and show the current conversation's again. */
+  onBack?: () => void;
 }
 
-function Section({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <section className={cn('border-b px-4 py-3.5', className)}>{children}</section>;
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className='mb-2 text-xs text-muted-foreground'>{children}</h3>;
-}
-
-/** [참조 중인 데이터] panel (PRD §4.2): which personal data goes (or went) to the model. */
-export function ContextInspector({ data, mode, loading, className, onClose }: Props) {
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <aside className={cn('min-h-0 overflow-y-auto border-l bg-card', className)} aria-label='참조 중인 데이터'>
-      <Section className='flex items-center'>
-        <h2 className='flex-1 text-[15px]'>참조 중인 데이터</h2>
-        {onClose && (
-          <Button size='icon' variant='ghost' onClick={onClose} aria-label='닫기'>
-            <X />
+    <section className='border-b px-4 py-3 last:border-b-0'>
+      <h3 className='mb-2 text-xs font-medium text-muted-foreground'>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** Which personal data goes (or went) to the model for this conversation. */
+export function ContextInspector({ data, mode, loading, className, onBack }: Props) {
+  return (
+    <div className={cn('min-h-0', className)} aria-label={INSPECTOR_TITLE[mode]}>
+      <div className='flex items-center gap-1 border-b px-4 py-2.5'>
+        {mode === 'snapshot' && onBack && (
+          <Button size='icon-sm' variant='ghost' aria-label='현재 상담 근거로 돌아가기' onClick={onBack}>
+            <ArrowLeft />
           </Button>
         )}
-      </Section>
+        <h3 className='flex-1 text-ui font-semibold'>{INSPECTOR_TITLE[mode]}</h3>
+      </div>
       {!data ? (
-        <Section className='text-xs text-faint'>
-          {loading ? '불러오는 중…' : '질문을 입력하면 어떤 개인 데이터가 AI로 전송되는지 여기에서 먼저 확인할 수 있습니다.'}
-        </Section>
+        loading ? (
+          <ListSkeleton rows={3} className='px-4' />
+        ) : (
+          <p className='px-4 py-3 text-ui text-muted-foreground'>질문을 쓰면 보낼 기록을 먼저 보여드립니다.</p>
+        )
       ) : (
         <InspectorBody data={data} mode={mode} />
       )}
-    </aside>
+    </div>
   );
 }
 
 function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMode }) {
-  const used = new Set(data.categories);
-  const excluded = new Set(data.excluded_categories);
+  const used = ALL_CATEGORIES.filter(c => data.categories.includes(c));
+  const excluded = ALL_CATEGORIES.filter(c => data.excluded_categories.includes(c));
   const refsByTool = groupBy(
     data.record_references.filter(r => r.tool),
     r => r.tool,
@@ -67,84 +72,77 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
 
   return (
     <>
-      <Section>
-        <SectionTitle>{INSPECTOR_TITLE[mode]}</SectionTitle>
-        {data.route && (
-          <div className='mb-2 text-xs text-faint'>
-            {ROUTE_REASON[data.route.reason]}
-            {data.route.matched_terms.length > 0 && ` · ${data.route.matched_terms.slice(0, 4).join(', ')}`}
+      <Block title='쓰는 기록'>
+        {used.length === 0 && <p className='text-ui text-muted-foreground'>개인 기록을 쓰지 않습니다.</p>}
+        {used.map((c: Category) => (
+          <div className='flex items-center gap-2 py-0.5 text-ui' key={c}>
+            <span className='size-2 flex-none rounded-full bg-primary' aria-hidden />
+            <span className='flex-1'>{CATEGORY_LABEL[c]}</span>
+            <span className='text-xs text-faint'>{relative(data.source_updated_at[c], '수정 기록 없음')}</span>
           </div>
+        ))}
+        {excluded.length > 0 && (
+          <p className='mt-1.5 text-xs text-faint'>
+            공유 제외: {excluded.map(c => CATEGORY_LABEL[c]).join(', ')}
+          </p>
         )}
-        {ALL_CATEGORIES.map((c: Category) => {
-          const state = used.has(c) ? 'on' : excluded.has(c) ? 'off' : '';
-          return (
-            <div className='flex items-center gap-2 py-1 text-[13px]' key={c}>
-              <span className={cn('size-2 flex-none rounded-full bg-input', state === 'on' && 'bg-primary', state === 'off' && 'bg-destructive')} />
-              <span className={cn('flex-1', !state && 'text-faint')}>{CATEGORY_LABEL[c]}</span>
-              {state === 'on' && <span className='text-xs text-faint'>{relative(data.source_updated_at[c])}</span>}
-              {state === 'off' && <Badge variant='destructive'>공유 제외</Badge>}
-              {!state && <span className='text-xs text-faint'>사용 안 함</span>}
-            </div>
-          );
-        })}
         {!!data.history_withheld_messages && (
-          <div className='mt-2 text-xs text-faint'>
-            이전 대화 {data.history_withheld_messages}개 메시지는 공유 제외된 영역(
-            {(data.history_withheld_categories ?? []).map(c => CATEGORY_LABEL[c as Category] ?? c).join(', ')})의 정보를 담고 있을 수 있어 AI에
-            전달하지 않습니다.
-          </div>
+          <p className='mt-1.5 text-xs text-faint'>
+            공유 제외한 기록이 담겼을 수 있는 이전 메시지 {data.history_withheld_messages}개는 보내지 않습니다.
+          </p>
         )}
-      </Section>
+      </Block>
 
       {flags.length > 0 && (
-        <Section>
-          <SectionTitle>데이터 품질 · 한계</SectionTitle>
-          <div className='flex flex-col gap-1.5'>
+        <Block title='확인할 점'>
+          <ul className='flex flex-col gap-1.5'>
             {flags.map((f, n) => (
-              <div key={n} className='text-xs'>
-                <Badge variant='warning'>{f.category === 'documents' ? '문서' : (CATEGORY_LABEL[f.category as Category] ?? f.category)}</Badge>{' '}
-                {flagText(f.code)}
+              <li key={n} className='text-xs'>
+                <Badge variant='warning'>{f.category === 'documents' ? '문서' : (CATEGORY_LABEL[f.category as Category] ?? '기타')}</Badge> {flagText(f.code)}
                 {flagDetail(f.code, f.detail) && <div className='text-faint'>{flagDetail(f.code, f.detail)}</div>}
-              </div>
+              </li>
             ))}
-          </div>
-        </Section>
+          </ul>
+        </Block>
       )}
 
-      <Section>
-        <SectionTitle>문서 근거</SectionTitle>
-        {!data.document_citations?.length && <p className='text-xs text-faint'>사용한 문서 발췌문이 없습니다.</p>}
-        {data.document_citations?.map(c => (
-          <details key={c.ref} className='mb-2 text-xs'>
-            <summary className='cursor-pointer'>
-              {c.title} · 버전 #{c.version_id}
-              {c.page ? ` · p.${c.page}` : ''}
-              {c.historical ? ' · 이전 상담 근거' : ''}
-            </summary>
-            <p className='mt-1 text-faint'>
-              {c.filename}
-              {c.section ? ` · ${c.section}` : ''}
-              {c.as_of ? ` · 기준일 ${c.as_of}` : ''}
-            </p>
-            <p className='mt-2 whitespace-pre-wrap'>{c.text}</p>
-          </details>
-        ))}
-      </Section>
+      {!!data.document_citations?.length && (
+        <Block title='문서 근거'>
+          {data.document_citations.map(c => (
+            <details key={c.ref} className='mb-2 text-xs'>
+              <summary className='cursor-pointer'>
+                {c.title}
+                {c.page ? ` · ${c.page}쪽` : ''}
+                {c.historical ? ' · 이전 상담 근거' : ''}
+              </summary>
+              <p className='mt-1 text-faint'>
+                {c.filename}
+                {c.section ? ` · ${c.section}` : ''}
+                {c.as_of ? ` · 기준일 ${dateOnly(c.as_of)}` : ''}
+              </p>
+              <p className='mt-2 whitespace-pre-wrap'>{c.text}</p>
+            </details>
+          ))}
+        </Block>
+      )}
+
       {!!data.web_sources?.length && (
-        <Section>
-          <SectionTitle>웹 근거</SectionTitle>
+        <Block title='웹 근거'>
           {data.web_sources.map(source => {
             const url = publicWebUrl(source.url);
             return (
               <details key={source.ref} className='mb-2 text-xs'>
-                <summary className='cursor-pointer'>{source.title}{source.historical ? ' · 과거 근거' : ''}</summary>
+                <summary className='cursor-pointer'>
+                  {source.title}
+                  {source.historical ? ' · 이전 근거' : ''}
+                </summary>
                 {url && (
-                  <a className='mt-1 block break-all underline' href={url} target='_blank' rel='noopener noreferrer'>
+                  <a className='mt-1 block break-all text-primary underline' href={url} target='_blank' rel='noopener noreferrer'>
                     {source.url}
                   </a>
                 )}
                 <p className='mt-1 text-faint'>
-                  {source.published_at ? `발행일 ${source.published_at} · ` : ''}조회 {dateTime(source.retrieved_at)}
+                  {source.published_at ? `발행 ${dateOnly(source.published_at)} · ` : ''}수집 {dateTime(source.retrieved_at)}
                 </p>
                 {source.excerpts.map((excerpt, index) => (
                   <p key={index} className='mt-2 whitespace-pre-wrap'>
@@ -154,69 +152,77 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
               </details>
             );
           })}
-        </Section>
+        </Block>
       )}
-      <Section>
-        <SectionTitle>조회한 레코드</SectionTitle>
-        {Object.keys(refsByTool).length === 0 && <div className='text-xs text-faint'>조회된 레코드가 없습니다.</div>}
-        {Object.entries(refsByTool).map(([tool, refs]) => (
-          <div key={tool} className='mb-2.5'>
-            <div className='text-xs font-semibold'>{TOOL_LABEL[tool] ?? tool}</div>
-            <div className='mt-1 flex flex-wrap gap-1'>
-              {refs.map((r, n) =>
-                r.count !== undefined ? (
-                  <Badge key={n}>
-                    {TABLE_LABEL[r.table ?? ''] ?? r.table} {r.count}건
-                  </Badge>
-                ) : (
-                  <Badge key={n} variant='ref' title={r.updated_at ? `수정 ${dateTime(r.updated_at)}` : undefined}>
-                    {TABLE_LABEL[r.table ?? ''] ?? r.table} #{r.id}
-                  </Badge>
-                ),
-              )}
-            </div>
-          </div>
-        ))}
-      </Section>
 
-      {mode !== 'preview' && data.context_snapshot_id && <SnapshotSection snapshotId={data.context_snapshot_id} reused={data.context_reused} />}
+      {Object.keys(refsByTool).length > 0 && (
+        <Block title='살펴본 기록'>
+          {Object.entries(refsByTool).map(([tool, refs]) => (
+            <div key={tool} className='mb-2'>
+              <div className='text-xs font-medium'>{TOOL_LABEL[tool] ?? '기타'}</div>
+              <div className='mt-1 flex flex-wrap gap-1'>
+                {refs.map((r, n) => {
+                  const label = TABLE_LABEL[r.table ?? ''] ?? '기록';
+                  if (r.count !== undefined) return <Badge key={n}>{`${label} ${r.count}건`}</Badge>;
+                  const href = evidenceHref(r.table, r.id);
+                  const text = refs.length > 1 ? `${label} ${n + 1}` : label;
+                  return href ? (
+                    <Link key={n} href={href} className='rounded-sm border bg-muted px-1.5 text-2xs leading-5 text-primary hover:bg-accent' title='기록 열기'>
+                      {text}
+                    </Link>
+                  ) : (
+                    <Badge key={n} variant='ref'>
+                      {text}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </Block>
+      )}
+
+      {mode !== 'preview' && data.context_snapshot_id && <SnapshotBlock snapshotId={data.context_snapshot_id} reused={data.context_reused} model={data.model} />}
     </>
   );
 }
 
-function SnapshotSection({ snapshotId, reused }: { snapshotId: string; reused: boolean }) {
+function SnapshotBlock({ snapshotId, reused, model }: { snapshotId: string; reused: boolean; model?: string | null }) {
   const [requested, setRequested] = useState(false);
   const compare = useCompareSnapshot(snapshotId, { query: { enabled: requested, staleTime: 0 } });
   const result = requested ? compare.data : undefined;
 
   return (
-    <Section>
-      <SectionTitle>Context Snapshot</SectionTitle>
-      <div className='break-all font-mono text-xs text-faint'>{snapshotId}</div>
-      {reused && <div className='text-xs text-faint'>직전 질문과 데이터가 같아 기존 스냅샷을 재사용했습니다.</div>}
-      <Button size='sm' className='mt-2' disabled={compare.isFetching} onClick={() => (requested ? compare.refetch() : setRequested(true))}>
-        현재 개인 데이터와 비교
+    <Block title='지금 기록과 비교'>
+      <Button size='sm' disabled={compare.isFetching} onClick={() => (requested ? compare.refetch() : setRequested(true))}>
+        지금 기록과 비교
       </Button>
-      <p className='mt-1 text-xs text-faint'>웹 근거는 답변 당시 자료이며 이 비교에서 재조회하지 않습니다.</p>
       {result && (
         <div className='mt-2 text-xs'>
           {result.changed_sections.length === 0 ? (
-            <Badge variant='success'>개인 데이터 변경 없음</Badge>
+            <Badge variant='success'>답변 이후 바뀐 기록 없음</Badge>
           ) : (
             <>
-              <div>상담 이후 바뀐 데이터:</div>
+              <div>답변 이후 바뀐 기록</div>
               <div className='mt-1 flex flex-wrap gap-1'>
                 {result.changed_sections.map(s => (
                   <Badge key={s} variant='warning'>
-                    {TOOL_LABEL[s] ?? s}
+                    {TOOL_LABEL[s] ?? '기타'}
                   </Badge>
                 ))}
               </div>
-              <div className='mt-1 text-faint'>답변은 {dateTime(result.snapshot_generated_at)} 기준 데이터로 작성되었습니다.</div>
+              <div className='mt-1 text-faint'>이 답변은 {dateTime(result.snapshot_generated_at)} 기록으로 작성했습니다.</div>
             </>
           )}
         </div>
       )}
-    </Section>
+      <p className='mt-1.5 text-2xs text-faint'>웹 근거는 다시 조회하지 않습니다.</p>
+      <details className='mt-2 text-2xs text-faint'>
+        <summary className='cursor-pointer'>자세히</summary>
+        {model && <p className='mt-1'>응답 모델 {model}</p>}
+        {reused && <p className='mt-1'>직전 질문과 기록이 같아 같은 근거를 다시 썼습니다.</p>}
+        <p className='mt-1 break-all font-mono'>{snapshotId}</p>
+      </details>
+    </Block>
   );
 }

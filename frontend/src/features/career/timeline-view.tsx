@@ -1,19 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { History } from 'lucide-react';
 import Link from 'next/link';
 
-import { errorMessage } from '@/api-client/api-error';
-import { Alert } from '@/components/ui/alert';
+import { TabToolbar } from '@/components/area-layout';
+import { EmptyState } from '@/components/empty-state';
+import { QueryStatus } from '@/components/query-status';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
+import { dateOnly } from '@/lib/utils/format';
+import { todayKey } from '@/lib/utils/zoned';
+
 import { careerApi } from './api';
 
-const NAMES: Record<string, string> = {
+const KIND_LABEL: Record<string, string> = {
   employment: '재직',
   role: '역할',
   project: '프로젝트',
@@ -22,148 +27,123 @@ const NAMES: Record<string, string> = {
   feedback: '피드백',
   evidence: '근거',
   decision: '결정',
-  goal: '목표 기한',
-  financial_change: '재무 값 기록',
+  goal: '목표일',
+  financial_change: '재무 값 변경',
   monthly_snapshot: '월말 기록',
 };
+const DOMAINS = [
+  ['', '전체'],
+  ['career', '커리어'],
+  ['decisions', '결정'],
+  ['goals', '목표'],
+  ['finance', '재무'],
+] as const;
+const PAGE = 50;
+const MAX = 500; // the API's page limit
 
+/** Dates keep the precision they were recorded with: a year, a month, or a day. */
+export function periodText(value: string | null | undefined): string {
+  if (!value) return '시점 미기록';
+  if (/^\d{4}$/.test(value)) return `${value}년`;
+  const m = /^(\d{4})-(\d{2})$/.exec(value);
+  if (m) return `${m[1]}년 ${Number(m[2])}월`;
+  return dateOnly(value);
+}
+
+/** Career, decisions, goals and finance changes in one chronological list. */
 export function TimelineView() {
+  const thisYear = Number(todayKey().slice(0, 4));
   const [year, setYear] = useState('');
-  const [month, setMonth] = useState('');
-  const [project, setProject] = useState('');
-  const projects = useQuery({ queryKey: ['career-records'], queryFn: careerApi.list });
-  const [company, setCompany] = useState('');
   const [domain, setDomain] = useState('');
-  const [offset, setOffset] = useState(0);
-  const validYear = /^[0-9]{4}$/.test(year) && Number(year) > 0 && Number(year) < 9999;
-  const selectedMonth = month ? Number(month) : 1;
-  const nextYear = month && selectedMonth < 12 ? Number(year) : Number(year) + 1;
-  const nextMonth = month && selectedMonth < 12 ? selectedMonth + 1 : 1;
+  const [limit, setLimit] = useState(PAGE);
   const params = {
-    start: validYear ? `${year}-${String(selectedMonth).padStart(2, '0')}-01` : undefined,
-    end: validYear ? `${nextYear}-${String(nextMonth).padStart(2, '0')}-01` : undefined,
+    start: year ? `${year}-01-01` : undefined,
+    end: year ? `${Number(year) + 1}-01-01` : undefined,
     domain: domain || undefined,
-    company: company || undefined,
-    project_id: project ? Number(project) : undefined,
-    offset,
-    limit: 100,
+    offset: 0,
+    limit,
   };
-  const timeline = useQuery({ queryKey: ['timeline', params], queryFn: () => careerApi.timeline(params) });
+  const timeline = useQuery({ queryKey: ['/api/timeline', params], queryFn: () => careerApi.timeline(params), placeholderData: keepPreviousData });
+  const items = timeline.data?.items ?? [];
+
   return (
-    <div className='flex flex-col gap-4 p-4'>
-      <div className='flex justify-between'>
-        <h1 className='text-xl font-semibold'>인생 기록</h1>
-        <Link href='/career'>커리어 기록하기</Link>
-      </div>
-      <p className='text-sm text-muted-foreground'>
-        원본 커리어·결정·목표·재무 변경 기록을 모아 보여줍니다. 월·연도만 알려진 시점은 정밀도를 유지합니다. 목표는 목표 기한에 표시합니다.
-      </p>
-      <div className='grid gap-3 sm:grid-cols-3'>
-        <div>
-          <Label htmlFor='timeline-year'>연도 (전체는 비움)</Label>
-          <Input
+    <>
+      <TabToolbar className='items-end'>
+        <div className='flex flex-col gap-1'>
+          <Label htmlFor='timeline-year'>기간</Label>
+          <NativeSelect
             id='timeline-year'
-            inputMode='numeric'
-            maxLength={4}
             value={year}
             onChange={e => {
               setYear(e.target.value);
-              setOffset(0);
-            }}
-          />
-        </div>
-        <div>
-          <Label htmlFor='timeline-month'>월 (연도 선택 후)</Label>
-          <NativeSelect
-            id='timeline-month'
-            disabled={!validYear}
-            value={month}
-            onChange={e => {
-              setMonth(e.target.value);
-              setOffset(0);
+              setLimit(PAGE);
             }}>
-            <option value=''>전체</option>
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {i + 1}월
+            <option value=''>전체 기간</option>
+            {Array.from({ length: 30 }, (_, i) => thisYear + 1 - i).map(y => (
+              <option key={y} value={y}>
+                {y}년
               </option>
             ))}
           </NativeSelect>
         </div>
-        <div>
-          <Label htmlFor='timeline-project'>프로젝트</Label>
-          <NativeSelect
-            id='timeline-project'
-            value={project}
-            onChange={e => {
-              setProject(e.target.value);
-              setOffset(0);
-            }}>
-            <option value=''>전체</option>
-            {projects.data
-              ?.filter(r => r.kind === 'project')
-              .map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.title}
-                </option>
-              ))}
-          </NativeSelect>
-        </div>
-        <div>
-          <Label htmlFor='timeline-company'>회사 (정확한 이름)</Label>
-          <Input
-            id='timeline-company'
-            value={company}
-            onChange={e => {
-              setCompany(e.target.value);
-              setOffset(0);
-            }}
-          />
-        </div>
-        <div>
-          <Label htmlFor='timeline-domain'>분야</Label>
+        <div className='flex flex-col gap-1'>
+          <Label htmlFor='timeline-domain'>종류</Label>
           <NativeSelect
             id='timeline-domain'
             value={domain}
             onChange={e => {
               setDomain(e.target.value);
-              setOffset(0);
+              setLimit(PAGE);
             }}>
-            <option value=''>전체</option>
-            <option value='career'>커리어</option>
-            <option value='decisions'>결정</option>
-            <option value='goals'>목표</option>
-            <option value='finance'>재무 변경</option>
+            {DOMAINS.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
           </NativeSelect>
         </div>
-      </div>
-      {timeline.isPending && <p>기록을 불러오는 중입니다.</p>}
-      {timeline.error && <Alert variant='destructive'>{errorMessage(timeline.error)}</Alert>}
-      {timeline.data && <p>총 {timeline.data.total}개 기록</p>}
-      {timeline.data?.items.map(item => (
-        <Card key={`${item.source_kind}-${item.source_id}`} className='p-4'>
-          <p className='text-sm text-muted-foreground'>
-            {item.occurred_on ?? '발생 시점 미기록'}
-            {item.ended_on ? ` ~ ${item.ended_on}` : ''} · {NAMES[item.source_kind] ?? item.source_kind} {item.company}
-          </p>
-          <Link href={item.href} className='font-semibold underline'>
-            {item.title}
-          </Link>
-          <p className='text-xs text-muted-foreground'>
-            기록 시각 {item.recorded_at}
-            {item.status === 'draft' ? ' · 확인 전 초안' : ''}
-          </p>
-        </Card>
-      ))}
-      {timeline.data?.total === 0 && <p>해당 기간의 기록이 없습니다.</p>}
-      <div className='flex gap-2'>
-        <Button disabled={offset === 0} onClick={() => setOffset(v => Math.max(0, v - 100))}>
-          이전
-        </Button>
-        <Button disabled={!timeline.data || offset + 100 >= timeline.data.total} onClick={() => setOffset(v => v + 100)}>
-          다음
-        </Button>
-      </div>
-    </div>
+        {timeline.data && <span className='ml-auto pb-1.5 text-ui text-muted-foreground'>{timeline.data.total}개 기록</span>}
+      </TabToolbar>
+
+      <QueryStatus pending={timeline.isPending} error={timeline.error} retry={timeline.refetch} label='타임라인' />
+      {timeline.data?.total === 0 && (
+        <EmptyState icon={History} title='이 기간의 기록이 없습니다'>
+          경력·결정·목표·재무 기록을 남기면 여기에 시간순으로 모입니다.
+        </EmptyState>
+      )}
+      <ol className='flex flex-col'>
+        {items.map((item, i) => {
+          const y = item.occurred_on?.slice(0, 4) ?? '';
+          const header = i === 0 || y !== (items[i - 1].occurred_on?.slice(0, 4) ?? '');
+          return (
+            <li key={`${item.source_kind}-${item.source_id}`}>
+              {header && <h2 className='mt-5 border-b pb-1 text-title font-semibold first:mt-0'>{y ? `${y}년` : '시점 미기록'}</h2>}
+              <div className='flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b py-2'>
+                <span className='w-32 shrink-0 text-ui tabular-nums text-muted-foreground'>
+                  {periodText(item.occurred_on)}
+                  {item.ended_on ? ` – ${periodText(item.ended_on)}` : ''}
+                </span>
+                <span className='text-xs text-faint'>{KIND_LABEL[item.source_kind] ?? '기록'}</span>
+                <Link href={item.href} className='font-medium hover:underline'>
+                  {item.title}
+                </Link>
+                {item.company && <span className='text-xs text-muted-foreground'>{item.company}</span>}
+                {item.status === 'draft' && <Badge variant='warning'>확인 전 초안</Badge>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {timeline.data && items.length < timeline.data.total && limit >= MAX && (
+        <p className='mt-4 text-center text-ui text-muted-foreground'>최근 {MAX}개까지 보여 줍니다. 기간이나 종류를 좁혀 보세요.</p>
+      )}
+      {timeline.data && items.length < timeline.data.total && limit < MAX && (
+        <div className='mt-4 flex justify-center'>
+          <Button disabled={timeline.isFetching} onClick={() => setLimit(l => Math.min(MAX, l + PAGE))}>
+            {timeline.isFetching ? '불러오는 중…' : '더 보기'}
+          </Button>
+        </div>
+      )}
+    </>
   );
 }

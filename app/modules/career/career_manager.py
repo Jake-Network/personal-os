@@ -105,17 +105,17 @@ class CareerManager:
             for r in self.list(session, company=company, project_id=project_id):
                 items.append(TimelineItem(source_kind=r.kind, source_id=r.id, title=r.title, occurred_on=r.started_on,
                     ended_on=r.ended_on, recorded_at=r.recorded_at, company=self.company(session, r), parent_id=r.parent_id,
-                    status=r.status, href=f"/career#record-{r.id}"))
+                    status=r.status, href=f"/career/records?record={r.id}"))
         if company is None and project_id is None:
             if domain in (None, "decisions"):
                 for r in session.scalars(select(DecisionJournalEntry)):
                     items.append(TimelineItem(source_kind="decision", source_id=r.id, title=r.title,
-                        occurred_on=r.decided_at.astimezone(ZoneInfo(settings.timezone)).date().isoformat(), recorded_at=r.decided_at, href="/memory"))
+                        occurred_on=r.decided_at.astimezone(ZoneInfo(settings.timezone)).date().isoformat(), recorded_at=r.decided_at, href=f"/reflect?record={r.id}"))
             if domain in (None, "goals"):
                 for r in session.scalars(select(Goal)):
                     items.append(TimelineItem(source_kind="goal", source_id=r.id, title=r.title,
                         occurred_on=r.target_date.isoformat() if r.target_date else None, recorded_at=r.created_at,
-                        status=r.status, href="/data/goals"))
+                        status=r.status, href=f"/plan/goals?record={r.id}"))
             if domain in (None, "finance"):
                 for r in session.scalars(select(MonthlySnapshot)):
                     items.append(TimelineItem(source_kind="monthly_snapshot", source_id=r.id,

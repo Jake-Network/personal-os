@@ -23,6 +23,7 @@ dependencies = [
     "langgraph==1.0.7",
     "langgraph-checkpoint-sqlite==3.0.3",
     "langgraph-checkpoint-postgres==3.0.4",
+    "pysocks>=1.7.1",
 ]
 
 [dependency-groups]

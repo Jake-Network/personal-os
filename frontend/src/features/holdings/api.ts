@@ -47,6 +47,8 @@ export type HoldingsState = {
   can_write: boolean;
   initialized: boolean;
   warning: string | null;
+  refresh_state?: 'cooldown' | 'waiting' | 'updated' | 'partial' | 'failed' | 'not_connected';
+  refresh_after_seconds?: number | null;
 };
 export const holdingsApi = {
   list: () => customInstance<HoldingsState>({ url: '/api/finance/holdings' }),

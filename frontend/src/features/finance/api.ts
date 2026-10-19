@@ -42,11 +42,18 @@ export type FinanceLine = {
   ticker: string | null;
   price: string | null;
   price_as_of: string | null;
+  /** The day the balance or quantity was recorded for. */
+  as_of?: string | null;
   fx_rate: string | null;
   fx_as_of: string | null;
   value_krw: string | null;
   unrealized_gain_krw: string | null;
+  /** Quote-currency purchase cost and price return; excludes fees, dividends and FX. */
+  cost_basis_native?: string | null;
+  unrealized_gain_native?: string | null;
+  unrealized_return_pct?: string | null;
   issues: string[];
+  spendable?: boolean;
 };
 
 export type Portfolio = {

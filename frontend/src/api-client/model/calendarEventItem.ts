@@ -14,6 +14,7 @@ export interface CalendarEventItem {
   kind?: CalendarEventItemKind;
   starts_at: string;
   ends_at?: CalendarEventItemEndsAt;
+  all_day?: boolean;
   location?: CalendarEventItemLocation;
   notes?: CalendarEventItemNotes;
   id: number;

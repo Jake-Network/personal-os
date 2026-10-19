@@ -85,3 +85,12 @@ def test_openapi_operation_ids_are_unique():
         spec = app.openapi()
     ids = [op["operationId"] for path in spec["paths"].values() for op in path.values()]
     assert len(ids) == len(set(ids))
+
+
+def test_all_day_calendar_event_round_trips_and_needs_an_end(client):
+    body = {"title": "연휴", "all_day": True, "starts_at": "2026-10-16T15:00:00Z", "ends_at": "2026-10-18T15:00:00Z"}
+    created = client.post("/api/data/calendar-events", json=body)
+    assert created.status_code == 201
+    assert created.json()["all_day"] is True
+    assert client.post("/api/data/calendar-events", json={**body, "ends_at": None}).status_code == 422
+    assert client.post("/api/data/calendar-events", json={"title": "회의", "starts_at": "2026-10-18T05:00:00Z"}).json()["all_day"] is False

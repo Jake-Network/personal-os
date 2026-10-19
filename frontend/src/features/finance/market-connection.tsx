@@ -1,13 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { customInstance } from '@/api-client/custom-client';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { notify } from '@/components/notify';
 
-type MarketStatus = {
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { customInstance } from '@/api-client/custom-client';
+import { notify } from '@/components/notify';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { relative } from '@/lib/utils/format';
+
+export type MarketStatus = {
   configured: boolean;
   account_matches: boolean;
   current_account_key: string;
@@ -21,97 +26,140 @@ type ImportPreview = {
   preserved_history: boolean;
 };
 
-export function MarketConnection() {
+export function useMarketStatus() {
+  return useQuery({ queryKey: ['market-data'], queryFn: () => customInstance<MarketStatus>({ url: '/api/market-data/status' }) });
+}
+
+function useMarketInvalidate() {
   const client = useQueryClient();
+  return () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: ['market-data'] }),
+      client.invalidateQueries({ queryKey: ['finance'] }),
+      client.invalidateQueries({ queryKey: ['/api/finance/holdings'] }),
+    ]);
+}
+
+/** The quote-only Google file: create it, reconnect it to the current account, refresh quotes. */
+export function MarketConnection() {
+  const state = useMarketStatus();
+  const invalidate = useMarketInvalidate();
+  const action = useMutation({
+    mutationFn: (operation: 'initialize' | 'replace' | 'refresh') =>
+      customInstance<{ warning?: string }>({
+        url: `/api/market-data/${operation}`,
+        method: 'POST',
+        data:
+          operation === 'replace'
+            ? {
+                expected_spreadsheet_id: state.data?.spreadsheet_id,
+                expected_account_key: state.data?.current_account_key,
+              }
+            : undefined,
+      }),
+    onSuccess: invalidate,
+    onError: notify.error,
+  });
+  const data = state.data;
+  return (
+    <div className='flex flex-col gap-3'>
+      <p className='text-ui'>
+        {state.isPending
+          ? '시세 파일 상태를 확인하는 중…'
+          : !data?.configured
+            ? '시세 파일이 아직 없습니다.'
+            : `시세 파일 연결됨 · 최근 갱신 ${relative(data.last_success_at, '없음')}`}
+      </p>
+      <div className='flex flex-wrap gap-2'>
+        {!data?.configured ? (
+          <Button variant='primary' disabled={action.isPending || state.isPending} onClick={() => action.mutate('initialize')}>
+            시세 파일 만들기
+          </Button>
+        ) : (
+          <>
+            <Button disabled={action.isPending || !data.account_matches} onClick={() => action.mutate('refresh')}>
+              시세 갱신
+            </Button>
+            <Button variant='ghost' disabled={action.isPending || state.isFetching} onClick={() => action.mutate('replace')}>
+              현재 계정으로 새 시세 파일 연결
+            </Button>
+          </>
+        )}
+      </div>
+      {data?.configured && !data.account_matches && (
+        <Alert variant='warning'>연결된 Google 계정이 기존 시세 파일과 다릅니다. 현재 계정으로 새 시세 파일을 연결하세요.</Alert>
+      )}
+      {data?.last_error && <Alert variant='warning'>{data.last_error}</Alert>}
+      {state.error && <Alert variant='destructive'>{state.error.message}</Alert>}
+      {action.data?.warning && <Alert variant='warning'>{action.data.warning}</Alert>}
+    </div>
+  );
+}
+
+/** Bring holdings preserved from the old Sheets setup into local records, after a preview. */
+export function LegacySheetsImport() {
+  const invalidate = useMarketInvalidate();
   const [importId, setImportId] = useState('');
-  const state = useQuery({ queryKey: ['market-data'], queryFn: () => customInstance<MarketStatus>({ url: '/api/market-data/status' }) });
   const preview = useMutation({
     mutationFn: () => customInstance<ImportPreview>({ url: `/api/market-data/imports/${Number(importId)}/preview` }),
     onError: notify.error,
   });
-  const action = useMutation({
-    mutationFn: (operation: 'initialize' | 'replace' | 'refresh' | 'import') =>
-      customInstance<{ warning?: string }>({
-        url: operation === 'import' ? `/api/market-data/imports/${Number(importId)}` : `/api/market-data/${operation}`,
-        method: 'POST',
-        data: operation === 'replace' ? {
-          expected_spreadsheet_id: state.data?.spreadsheet_id,
-          expected_account_key: state.data?.current_account_key,
-        } : undefined,
-      }),
-    onSuccess: () =>
-      Promise.all([
-        client.invalidateQueries({ queryKey: ['market-data'] }),
-        client.invalidateQueries({ queryKey: ['finance'] }),
-        client.invalidateQueries({ queryKey: ['/api/finance/holdings'] }),
-      ]),
+  const commit = useMutation({
+    mutationFn: () => customInstance({ url: `/api/market-data/imports/${Number(importId)}`, method: 'POST' }),
+    onSuccess: () => {
+      notify.success('로컬 기록으로 옮겼습니다');
+      preview.reset();
+      return invalidate();
+    },
     onError: notify.error,
   });
   return (
-    <div className='space-y-3'>
-      <div className='flex flex-wrap gap-2'>
-        <Button disabled={action.isPending || state.isPending || !!state.data?.configured} onClick={() => action.mutate('initialize')}>
-          시세 전용 파일 새로 만들기
-        </Button>
-        {state.data?.configured && (
-          <Button disabled={action.isPending || state.isFetching} onClick={() => action.mutate('replace')}>
-            현재 Google 계정으로 시세 파일 새로 연결
-          </Button>
-        )}
-        <Button disabled={action.isPending || !state.data?.configured || !state.data.account_matches} onClick={() => action.mutate('refresh')}>
-          시세 갱신
-        </Button>
-      </div>
-      <p className='text-xs text-faint'>
-        갱신은 5분 제한을 공통 적용합니다. 이전의 광범위한 Google 승인은 Google 계정에서 해제한 뒤 다시 연결하세요.
-      </p>
-      {state.data?.configured && !state.data.account_matches && (
-        <Alert variant='warning'>Google 계정이 기존 시세 파일과 다릅니다. 현재 Google 계정으로 새 시세 파일을 연결하세요.</Alert>
-      )}
-      {state.data?.configured && <p className='text-xs text-faint'>새로 연결하면 현재 계정에 새 파일을 만들고 시세 연결을 교체합니다. 기존 Google 파일과 로컬 기록은 보존합니다.</p>}
-      {state.data?.last_error && <Alert variant='warning'>{state.data.last_error}</Alert>}
-      {state.error && <Alert variant='destructive'>{state.error.message}</Alert>}
-      {action.data?.warning && <Alert variant='warning'>{action.data.warning}</Alert>}
-      <details>
-        <summary>기존 Sheets 저장 자료를 로컬로 편입</summary>
-        <p className='my-2 text-sm'>이미 보존된 import ID를 입력하세요. 원격 파일은 변경하지 않습니다. 같은 티커의 다른 계좌 행을 합치지 않습니다.</p>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            preview.mutate();
-          }}
-          className='flex gap-2'>
-          <input
-            aria-label='기존 import ID'
+    <div className='flex flex-col gap-3'>
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          preview.mutate();
+        }}
+        className='flex flex-wrap items-end gap-2'>
+        <div className='flex flex-col gap-1'>
+          <Label htmlFor='legacy-import'>가져오기 번호</Label>
+          <Input
+            id='legacy-import'
             type='number'
             min='1'
+            className='w-40'
             value={importId}
             onChange={e => {
               setImportId(e.target.value);
               preview.reset();
             }}
-            className='rounded border p-2'
           />
-          <Button disabled={!importId || preview.isPending} type='submit'>
-            이전 미리보기
-          </Button>
-        </form>
-        {preview.data && (
-          <>
-            <ul className='my-3'>
-              {preview.data.rows.map((r, i) => (
-                <li key={i} className='border-b py-2'>
-                  {String(r.row.label ?? r.row.id ?? i)} · {String(r.row.ticker ?? '')} · 수량 {String(r.row.quantity ?? '미확인')} ·{' '}
-                  {r.existing_position_id ? '이미 편입됨' : '새 항목'} {r.issues.join(' · ')}
-                </li>
-              ))}
-            </ul>
-            <Button disabled={action.isPending || preview.data.rows.some(r => r.issues.length > 0)} onClick={() => action.mutate('import')}>
-              미리보기 확인 · 로컬 편입
+        </div>
+        <Button disabled={!importId || preview.isPending} type='submit'>
+          미리보기
+        </Button>
+      </form>
+      {preview.data && (
+        <>
+          <ul className='divide-y rounded-lg border'>
+            {preview.data.rows.map((r, i) => (
+              <li key={i} className='flex flex-wrap items-baseline gap-x-2 px-3 py-2 text-ui'>
+                <span className='font-medium'>{String(r.row.label ?? r.row.ticker ?? `항목 ${i + 1}`)}</span>
+                <span className='text-xs text-faint'>
+                  {String(r.row.ticker ?? '')} · 수량 {String(r.row.quantity ?? '미확인')}
+                </span>
+                <span className='ml-auto text-xs'>{r.existing_position_id ? '이미 옮김' : '새 항목'}</span>
+                {r.issues.length > 0 && <span className='basis-full text-xs text-destructive'>{r.issues.join(' · ')}</span>}
+              </li>
+            ))}
+          </ul>
+          <div>
+            <Button variant='primary' disabled={commit.isPending || preview.data.rows.some(r => r.issues.length > 0)} onClick={() => commit.mutate()}>
+              확인하고 로컬로 옮기기
             </Button>
-          </>
-        )}
-      </details>
+          </div>
+        </>
+      )}
     </div>
   );
 }

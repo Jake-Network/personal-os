@@ -8,11 +8,13 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
-import { PageContainer, PageHeader } from '@/components/page-container';
+import { useConfirm } from '@/components/confirm-dialog';
+import { Section } from '@/components/page-container';
+import { QueryStatus } from '@/components/query-status';
+import { ListSkeleton } from '@/components/skeleton';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -32,7 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
 
-import { CALLBACK_ERROR, OUTCOME, PROVIDERS } from '../consts';
+import { CALLBACK_ERROR, OUTCOME, PROVIDER_LABEL, PROVIDERS } from '../consts';
 import { TransferPolicySettings } from './transfer-policy-settings';
 
 type Notice = { tone: 'success' | 'destructive' | 'warning'; text: string };
@@ -56,6 +58,7 @@ function callbackNotice({ chatgpt, plan_usage, code = '' }: OAuthCallbackResult)
 
 export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult }) {
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
   const router = useRouter();
   const pathname = usePathname();
   const [notice, setNotice] = useState<Notice | null>(() => callbackNotice(callback));
@@ -91,105 +94,111 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
   const startLogin = (forceConsent = false) => login.mutate({ params: forceConsent ? { force_consent: true } : undefined });
   const busy = login.isPending || login.isSuccess; // stays busy while the browser leaves for ChatGPT
 
-  return (
-    <PageContainer className='max-w-[860px]'>
-      <PageHeader title='AI Provider' description='ChatGPT 로그인은 모델 사용을 위한 인증 수단입니다. ChatGPT의 대화나 메모리는 읽지 않습니다.' />
+  const askDisconnect = async () => {
+    const ok = await confirmDialog({
+      title: 'ChatGPT 연결을 해제할까요?',
+      description: '저장된 로그인 정보를 지우고 철회합니다. 다시 연결하기 전까지 상담을 할 수 없습니다.',
+      confirmLabel: '연결 해제',
+      destructive: true,
+    });
+    if (ok) disconnect.mutate();
+  };
+  const chooseProvider = async (provider: string) => {
+    if (provider === 'openai_api_key') {
+      const ok = await confirmDialog({
+        title: 'OpenAI API 키로 바꿀까요?',
+        description: '이후 상담은 OpenAI API 계정에 요금이 청구됩니다. 자동으로 다시 바뀌지 않습니다.',
+        confirmLabel: '바꾸기',
+      });
+      if (!ok) return;
+    }
+    select.mutate({ data: { provider, model: null } });
+  };
 
+  return (
+    <div className='max-w-[860px]'>
       {notice && (
-        <Alert variant={notice.tone} className='mb-3.5'>
+        <Alert variant={notice.tone} className='mb-4'>
           {notice.text}
         </Alert>
       )}
       {status.error && (
-        <Alert variant='destructive' className='mb-3.5'>
+        <Alert variant='destructive' className='mb-4'>
           {status.error.message}
         </Alert>
       )}
 
-      <TransferPolicySettings provider={s?.provider} />
-      <Card className='mb-3.5'>
-        <CardHeader>
-          <CardTitle>ChatGPT 계정</CardTitle>
-          {s &&
-            (s.connected ? (
-              usable ? (
-                <Badge variant='success'>연결됨 · 구독 사용 가능</Badge>
-              ) : (
-                <Badge variant='warning'>구독 사용 권한 없음</Badge>
-              )
-            ) : s.status === 'needs_reauth' ? (
-              <Badge variant='destructive'>재인증 필요</Badge>
+      <Section
+        title='ChatGPT 계정'
+        info={<p>ChatGPT 로그인은 모델을 쓰기 위한 인증입니다. ChatGPT의 대화나 메모리는 읽지 않으며, 로그인 정보는 서버에만 암호화해 저장합니다.</p>}
+        actions={
+          s &&
+          (s.connected ? (
+            usable ? (
+              <Badge variant='success'>연결됨</Badge>
             ) : (
-              <Badge>연결 안 됨</Badge>
-            ))}
-        </CardHeader>
-        <CardContent className='flex flex-col gap-2.5'>
-          {!s ? (
-            <div className='text-xs text-faint'>불러오는 중…</div>
-          ) : s.connected || s.status === 'needs_reauth' ? (
-            <>
-              <div className='grid grid-cols-1 gap-3.5 md:grid-cols-2'>
-                <Info label='계정' value={s.display_name ? `${s.display_name} (${s.email ?? ''})` : (s.email ?? '—')} />
-                <Info label='토큰 만료' value={s.access_expires_at ? `${dateTime(s.access_expires_at)} (자동 갱신)` : '—'} />
-                <Info label='승인된 권한' value={s.scopes?.join(' ') || '—'} mono />
-                <Info label='최근 오류' value={s.last_error_code ?? '없음'} mono />
-              </div>
-              {s.status === 'needs_reauth' && <Alert variant='destructive'>인증이 만료되었거나 철회되었습니다. 다시 로그인하세요.</Alert>}
-              {s.connected && !s.plan_usage_enabled && (
-                <Alert variant='warning'>
-                  구독 사용 권한(chatgpt.tokens.use.direct)이 없어 상담을 할 수 없습니다. 유료 API로 자동 전환하지 않습니다.
-                </Alert>
-              )}
-              <div className='flex flex-wrap items-center gap-2'>
-                <Button disabled={busy} onClick={() => startLogin(!s.plan_usage_enabled)}>
-                  {s.plan_usage_enabled ? '재인증' : '권한 포함해 다시 연결'}
-                </Button>
-                <Button asChild>
-                  <a href={s.usage_url} target='_blank' rel='noreferrer'>
-                    사용량 확인 <ExternalLink />
-                  </a>
-                </Button>
-                <span className='flex-1' />
-                <Button
-                  variant='destructive'
-                  disabled={disconnect.isPending}
-                  onClick={() => confirm('ChatGPT 연결을 해제할까요? 저장된 토큰이 삭제되고 철회됩니다.') && disconnect.mutate()}>
-                  연결 해제
-                </Button>
-              </div>
-            </>
+              <Badge variant='warning'>구독 사용 권한 없음</Badge>
+            )
+          ) : s.status === 'needs_reauth' ? (
+            <Badge variant='destructive'>다시 로그인 필요</Badge>
           ) : (
-            <>
-              <div className='text-muted-foreground'>
-                ChatGPT Plus/Pro 구독 사용량으로 AI 상담을 이용합니다. 토큰은 서버에만 암호화해 저장되고 브라우저에는 노출되지 않습니다.
+            <Badge>연결 안 됨</Badge>
+          ))
+        }>
+        {!s ? (
+          <ListSkeleton rows={2} />
+        ) : s.connected || s.status === 'needs_reauth' ? (
+          <div className='flex flex-col gap-3 py-2'>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <Info label='계정' value={s.display_name ? `${s.display_name}${s.email ? ` (${s.email})` : ''}` : (s.email ?? '—')} />
+              <Info label='로그인 유지' value={s.access_expires_at ? `${dateTime(s.access_expires_at)}까지 · 자동 갱신` : '—'} />
+            </div>
+            {s.status === 'needs_reauth' && <Alert variant='destructive'>로그인이 만료되었거나 철회되었습니다. 다시 로그인하세요.</Alert>}
+            {s.connected && !s.plan_usage_enabled && (
+              <Alert variant='warning'>구독 사용 권한이 없어 상담할 수 없습니다. 권한을 포함해 다시 연결하세요. 유료 API로 자동 전환하지 않습니다.</Alert>
+            )}
+            <div className='flex flex-wrap items-center gap-2'>
+              <Button disabled={busy} onClick={() => startLogin(!s.plan_usage_enabled)}>
+                {s.plan_usage_enabled ? '다시 로그인' : '권한 포함해 다시 연결'}
+              </Button>
+              <Button asChild>
+                <a href={s.usage_url} target='_blank' rel='noreferrer'>
+                  사용량 확인 <ExternalLink />
+                </a>
+              </Button>
+              <Button variant='destructive' className='ml-auto' disabled={disconnect.isPending} onClick={() => void askDisconnect()}>
+                연결 해제
+              </Button>
+            </div>
+            <details className='text-ui'>
+              <summary className='cursor-pointer text-muted-foreground'>고급</summary>
+              <div className='mt-2 grid grid-cols-1 gap-3 md:grid-cols-2'>
+                <Info label='승인된 권한' value={s.scopes?.join(' ') || '—'} mono />
+                <Info label='최근 오류 코드' value={s.last_error_code ?? '없음'} mono />
               </div>
-              <div>
-                <Button variant='primary' disabled={busy} onClick={() => startLogin()}>
-                  Continue with ChatGPT
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </details>
+          </div>
+        ) : (
+          <div className='flex flex-col items-start gap-3 py-2'>
+            <p className='text-muted-foreground'>ChatGPT Plus·Pro 구독 사용량으로 상담합니다.</p>
+            <Button variant='primary' disabled={busy} onClick={() => startLogin()}>
+              ChatGPT로 로그인
+            </Button>
+          </div>
+        )}
+      </Section>
 
-      <Card className='mb-3.5'>
-        <CardHeader>
-          <CardTitle>Inference Provider · 모델</CardTitle>
-        </CardHeader>
-        <CardContent className='flex flex-col gap-3'>
-          <RadioGroup
-            value={s?.provider ?? ''}
-            onValueChange={provider => {
-              if (provider === 'openai_api_key' && !confirm('API Key provider는 OpenAI API 계정에 과금됩니다. 전환할까요?')) return;
-              select.mutate({ data: { provider, model: null } });
-            }}>
+      <TransferPolicySettings provider={s?.provider} />
+
+      <Section title='AI 제공자와 모델'>
+        <div className='flex flex-col gap-4 py-2'>
+          <RadioGroup value={s?.provider ?? ''} onValueChange={p => void chooseProvider(p)} aria-label='AI 제공자'>
             {PROVIDERS.map(p => (
               <label key={p.key} className='flex cursor-pointer items-start gap-2'>
                 <RadioGroupItem value={p.key} disabled={p.key === 'codex_app_server'} className='mt-0.5' />
                 <span>
-                  <strong>{p.label}</strong>
-                  <div className='text-xs text-faint'>{p.note}</div>
+                  <span className='font-medium'>{p.label}</span>
+                  <span className='block text-xs text-muted-foreground'>{p.note}</span>
                 </span>
               </label>
             ))}
@@ -208,51 +217,51 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
                 </option>
               ))}
             </NativeSelect>
-            {!models.data && !models.error && <span className='text-xs text-faint'>계정을 연결하면 사용 가능한 모델 목록이 표시됩니다.</span>}
+            {!models.data && !models.error && <span className='text-xs text-faint'>계정을 연결하면 쓸 수 있는 모델이 나옵니다.</span>}
             {models.error && <span className='text-xs text-destructive'>{models.error.message}</span>}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </Section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>최근 모델 호출</CardTitle>
-          <span className='text-xs text-faint'>토큰 원문은 기록하지 않습니다</span>
-        </CardHeader>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>시각</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>모델</TableHead>
-              <TableHead>결과</TableHead>
-              <TableHead className='text-right'>입력/출력 토큰</TableHead>
-              <TableHead className='text-right'>지연</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {usage.data?.map(u => (
-              <TableRow key={u.id}>
-                <TableCell>{dateTime(u.created_at)}</TableCell>
-                <TableCell>{u.provider}</TableCell>
-                <TableCell>{u.model ?? '—'}</TableCell>
-                <TableCell>
-                  <Badge variant={u.outcome === 'completed' ? 'success' : u.outcome === 'quota_exceeded' ? 'warning' : 'destructive'}>
-                    {OUTCOME[u.outcome] ?? u.outcome}
-                  </Badge>
-                  {u.error_code && <span className='font-mono text-xs text-faint'> {u.error_code}</span>}
-                </TableCell>
-                <TableCell className='text-right tabular-nums'>
-                  {u.input_tokens ?? '—'} / {u.output_tokens ?? '—'}
-                </TableCell>
-                <TableCell className='text-right tabular-nums'>{u.latency_ms != null ? `${(u.latency_ms / 1000).toFixed(1)}s` : '—'}</TableCell>
+      <Section title='최근 모델 호출' info={<p>호출 결과와 사용량만 기록합니다. 질문·답변 원문과 로그인 정보는 기록하지 않습니다.</p>}>
+        <QueryStatus pending={usage.isPending} error={usage.error} retry={usage.refetch} label='호출 기록' rows={3} />
+        {usage.data && usage.data.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>시각</TableHead>
+                <TableHead>제공자</TableHead>
+                <TableHead>모델</TableHead>
+                <TableHead>결과</TableHead>
+                <TableHead className='text-right'>입력/출력 토큰</TableHead>
+                <TableHead className='text-right'>걸린 시간</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {usage.data.map(u => (
+                <TableRow key={u.id}>
+                  <TableCell>{dateTime(u.created_at)}</TableCell>
+                  <TableCell>{PROVIDER_LABEL[u.provider] ?? u.provider}</TableCell>
+                  <TableCell>{u.model ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={u.outcome === 'completed' ? 'success' : u.outcome === 'quota_exceeded' ? 'warning' : 'destructive'}
+                      title={u.error_code ?? undefined}>
+                      {OUTCOME[u.outcome] ?? u.outcome}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className='text-right tabular-nums'>
+                    {u.input_tokens ?? '—'} / {u.output_tokens ?? '—'}
+                  </TableCell>
+                  <TableCell className='text-right tabular-nums'>{u.latency_ms != null ? `${(u.latency_ms / 1000).toFixed(1)}초` : '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
         {usage.data?.length === 0 && <EmptyState>호출 기록이 없습니다.</EmptyState>}
-      </Card>
-    </PageContainer>
+      </Section>
+    </div>
   );
 }
 

@@ -11,9 +11,11 @@ from app.modules.database.model import (
     LocalPosition,
     OtherAsset,
 )
+from app.modules.database.model.base import utcnow
 from app.modules.finance.clock import local_today
 from app.modules.finance.formatting import quantity_text
-from app.modules.portfolio.valuation import enrich_rows, value_positions
+from app.modules.finance.liquidity_policy import account_spendable
+from app.modules.portfolio.valuation import enrich_rows, parse_decimal, value_positions
 
 
 def confirm_coverage(session, kinds):
@@ -67,8 +69,22 @@ def rows(session, kinds=None):
                     currency=obj.currency,
                     balance=str(getattr(obj, amount)),
                     as_of=getattr(obj, when).isoformat(),
+                    **(
+                        {"spendable": account_spendable(obj.kind, obj.is_liquid)}
+                        if kind == "cash" else {}
+                    ),
                 )
             )
+    # Select by timestamp before reducing to dates: intraday updates are not conflicts.
+    latest_rates = {}
+    for rate in session.scalars(
+        select(FxRate)
+        .where(FxRate.quote == "KRW", FxRate.as_of <= utcnow())
+        .order_by(FxRate.as_of.desc(), FxRate.id.desc())
+    ):
+        amount = parse_decimal(rate.rate)
+        if amount is not None and amount > 0:
+            latest_rates.setdefault(rate.base, rate)
     rates = [
         dict(
             currency=r.base,
@@ -76,7 +92,7 @@ def rows(session, kinds=None):
             as_of=r.as_of.date().isoformat(),
             source="local",
         )
-        for r in session.scalars(select(FxRate).where(FxRate.quote == "KRW"))
+        for r in latest_rates.values()
     ]
     return enrich_rows(result, {"FX": rates}, local_today(), False)
 

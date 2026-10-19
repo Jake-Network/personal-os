@@ -3,19 +3,22 @@
 import { useRef, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
+import { Info, ListTree, MessagesSquare, MoreHorizontal, PanelRight, Trash2 } from 'lucide-react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 
+import { getListConversationsQueryKey, useDeleteConversation, useGetConversation } from '@/api-client/generated/advisor/advisor';
+import { useConfirm } from '@/components/confirm-dialog';
 import { notify } from '@/components/notify';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
-
-import { getListConversationsQueryKey, useDeleteConversation, useGetConversation } from '@/api-client/generated/advisor/advisor';
 
 import { DOMAINS, parseDomain } from '../consts';
 import type { InspectorData, InspectorMode } from '../types';
 import { AdvisorChat } from './advisor-chat';
-import { WorkspacePanel } from './workspace-panel';
+import { ConversationInfoDialog } from './conversation-info-dialog';
 import { ConversationList } from './conversation-list';
+import { WorkspacePanel } from './workspace-panel';
 
 const WIDE = '(min-width: 1280px)';
 
@@ -28,6 +31,7 @@ export function AdvisorWorkspace() {
   const search = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const conversationId = params.id?.[0] ? Number(params.id[0]) : null;
   const newDomain = parseDomain(search.get('domain'));
 
@@ -39,6 +43,7 @@ export function AdvisorWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const latestInspector = useRef<typeof inspector | null>(null);
   const [listOpen, setListOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   // Reset the panel when the conversation (or new-conversation domain) changes.
   const viewKey = `${conversationId}:${newDomain}:${conversationId === null ? search.get('document') : ''}`;
@@ -57,11 +62,27 @@ export function AdvisorWorkspace() {
     },
   });
 
+  const askRemove = async () => {
+    if (!conversationId) return;
+    const ok = await confirm({
+      title: '이 상담을 삭제할까요?',
+      description: '질문과 답변, 답변에 쓴 당시 기록 사본이 함께 지워지고 진행 중인 분석은 중지됩니다. 원래 기록과 문서, 이미 승인해 반영한 내용은 그대로 남습니다.',
+      confirmLabel: '삭제',
+      destructive: true,
+    });
+    if (ok) remove.mutate({ conversationId });
+  };
+
+  const backToCurrent = () => {
+    const latest = latestInspector.current;
+    setInspector(latest?.key === viewKey ? latest : { data: null, mode: 'preview', key: viewKey });
+  };
+
   const title = current?.title ?? (domain ? `새 ${DOMAINS.find(d => d.key === domain)?.label ?? ''} 상담` : '새 상담');
   const inspectorProps = { data: inspectorState.data, mode: inspectorState.mode, loading: inspectorState.loading };
 
   return (
-    <div className='grid h-full grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[248px_minmax(0,1fr)_320px]'>
+    <div className='grid h-full grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[248px_minmax(0,1fr)_340px]'>
       <aside className='hidden min-h-0 flex-col border-r bg-card md:flex'>
         <ConversationList activeId={conversationId} />
       </aside>
@@ -76,6 +97,7 @@ export function AdvisorWorkspace() {
         key={`chat:${conversationId ?? viewKey}`}
         conversationId={conversationId}
         domain={domain}
+        evidenceActive={inspectorState.mode === 'snapshot'}
         onConversationCreated={id => router.replace(`/advisor/${id}`)}
         onInspector={(data, mode, loading) => {
           if (mode !== 'snapshot') latestInspector.current = { data, mode, loading, key: viewKey };
@@ -85,50 +107,54 @@ export function AdvisorWorkspace() {
           if (mode === 'snapshot' && !window.matchMedia(WIDE).matches) setInspectorOpen(true);
         }}
         header={
-          <div className='flex flex-wrap items-center gap-2 border-b bg-card px-[18px] py-3'>
-            <h2 className='flex-1 truncate text-[15px]'>{title}</h2>
-            {inspectorState.mode === 'snapshot' && (
-              <Button
-                size='sm'
-                onClick={() => {
-                  const latest = latestInspector.current;
-                  setInspector(latest?.key === viewKey ? latest : { data: null, mode: 'preview', key: viewKey });
-                }}>
-                현재 상담 근거로 돌아가기
-              </Button>
-            )}
-            <Button size='sm' className='md:hidden' onClick={() => setListOpen(true)}>
-              상담 목록
+          <div className='flex items-center gap-1 border-b bg-card px-3 py-2 md:px-4'>
+            <Button size='icon-sm' variant='ghost' className='md:hidden' aria-label='상담 목록' onClick={() => setListOpen(true)}>
+              <MessagesSquare />
             </Button>
-            <Button size='sm' className='xl:hidden' onClick={() => setInspectorOpen(true)}>
-              상담 패널
+            <h2 className='min-w-0 flex-1 truncate text-title font-semibold'>{title}</h2>
+            <Button size='icon-sm' variant='ghost' className='xl:hidden' aria-label='근거와 제안 보기' onClick={() => setInspectorOpen(true)}>
+              <PanelRight />
             </Button>
             {conversationId && (
-              <Button
-                size='sm'
-                variant='destructive'
-                disabled={remove.isPending}
-                onClick={() => confirm('이 상담과 상담에 사용된 Context Snapshot을 삭제할까요?') && remove.mutate({ conversationId })}>
-                삭제
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size='icon-sm' variant='ghost' aria-label='상담 메뉴'>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onSelect={() => setInfoOpen(true)}>
+                    <Info /> 대화 정보
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setInspectorOpen(true)} className='xl:hidden'>
+                    <ListTree /> 근거와 제안
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem destructive disabled={remove.isPending} onSelect={() => void askRemove()}>
+                    <Trash2 /> 상담 삭제
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         }
       />
 
-      <WorkspacePanel key={`panel:${viewKey}`} conversationId={conversationId} inspector={inspectorProps} className='hidden xl:block' />
+      <WorkspacePanel key={`panel:${viewKey}`} conversationId={conversationId} inspector={inspectorProps} onBack={backToCurrent} className='hidden xl:block' />
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-        <SheetContent side='right' className='xl:hidden'>
-          <SheetTitle className='sr-only'>상담 패널</SheetTitle>
+        <SheetContent side='right' className='w-[min(380px,100vw)] xl:hidden'>
+          <SheetTitle className='sr-only'>근거와 제안</SheetTitle>
           <WorkspacePanel
             key={viewKey}
             conversationId={conversationId}
             inspector={inspectorProps}
+            onBack={backToCurrent}
             className='h-full border-l-0'
             onClose={() => setInspectorOpen(false)}
           />
         </SheetContent>
       </Sheet>
+      {conversationId && <ConversationInfoDialog conversationId={conversationId} open={infoOpen} onOpenChange={setInfoOpen} />}
     </div>
   );
 }
