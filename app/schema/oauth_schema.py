@@ -6,6 +6,7 @@ class LoginStartResponse(BaseModel):
 
 
 class AIProviderStatus(BaseModel):
+    configuration_complete: bool = False
     connected: bool
     status: str | None = None
     email: str | None = None

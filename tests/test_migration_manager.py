@@ -31,9 +31,17 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_p
     Base.metadata.create_all(engine)  # what historical native startup produced: no triggers, no version
     with engine.begin() as c:  # create_all installations predate the calendar all_day column
         c.execute(text("ALTER TABLE calendar_events DROP COLUMN all_day"))
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        with Operations.context(MigrationContext.configure(c)):
+            from alembic import op
+            with op.batch_alter_table("decision_journal", naming_convention={
+                "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s"}) as batch:
+                batch.drop_constraint("fk_decision_journal_source_message_id_advisor_messages", type_="foreignkey")
+                batch.drop_column("source_message_id")
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0014_calendar_all_day"
+    assert plan.head == "0015_decision_source_message"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())

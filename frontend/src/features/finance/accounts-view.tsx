@@ -5,6 +5,9 @@ import { type ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 
+import { toApiError } from '@/api-client/api-error';
+import { todayKey } from '@/lib/utils/zoned';
+import { getSummaryQueryKey } from '@/api-client/generated/dashboard/dashboard';
 import { customInstance } from '@/api-client/custom-client';
 import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -19,7 +22,7 @@ import { cn } from '@/lib/utils';
 import type { Row } from '@/features/personal-data/api/resource-api';
 import { RecordSheet } from '@/features/personal-data/components/record-sheet';
 import { enumLabel } from '@/features/personal-data/consts/resources';
-import { useResourceRows } from '@/features/personal-data/hooks/use-resource';
+import { useResourceRows, useInvalidateResource } from '@/features/personal-data/hooks/use-resource';
 import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 
 import { type FinanceLine, financeApi } from './api';
@@ -64,7 +67,14 @@ const LISTS: ListConfig[] = [
     empty: '대출이나 카드 잔액을 기록하세요. 부채가 없다면 아래에서 입력 완료를 확인하세요.',
     amountField: 'balance',
     asOfField: 'balance_as_of',
-    detail: row => [enumLabel(row.kind), row.interest_rate ? `금리 ${row.interest_rate}%` : null, row.monthly_payment ? `월 ${money(row.monthly_payment as string, (row.currency as string) ?? 'KRW')}` : null].filter(Boolean).join(' · '),
+    detail: row =>
+      [
+        enumLabel(row.kind),
+        row.interest_rate ? `금리 ${row.interest_rate}%` : null,
+        row.monthly_payment ? `월 ${money(row.monthly_payment as string, (row.currency as string) ?? 'KRW')}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
   },
   {
     resource: 'other-assets',
@@ -79,8 +89,29 @@ const LISTS: ListConfig[] = [
   },
 ];
 
-function RecordList({ config, lines, pending, failed, selected, onSelect }: { config: ListConfig; lines: FinanceLine[]; pending: boolean; failed: boolean; selected: number | null; onSelect: (id: number | null) => void }) {
+export function RecordList({
+  config,
+  lines,
+  pending,
+  failed,
+  selected,
+  onSelect,
+}: {
+  config: ListConfig;
+  lines: FinanceLine[];
+  pending: boolean;
+  failed: boolean;
+  selected: number | null;
+  onSelect: (id: number | null) => void;
+}) {
   const rows = useResourceRows(config.resource);
+  const invalidate = useInvalidateResource();
+  const confirmValue = useMutation({
+    mutationFn: (row: Row) => financeApi.confirmValue(config.resource, row.id, String(row.version)),
+    onSuccess: () => notify.success('오늘 기준으로 확인했습니다'),
+    onError: error => notify.error(toApiError(error).status === 409 ? '다른 화면에서 값이 변경됐습니다. 최신 값을 다시 확인하세요.' : error),
+    onSettled: () => invalidate(config.resource),
+  });
   const [creating, setCreating] = useState(false);
   const editing = selected === null ? null : (rows.data?.find(r => r.id === selected) ?? null);
   const lineOf = (row: Row) => lines.find(l => l.kind === config.kind && l.id === String(row.id));
@@ -96,7 +127,12 @@ function RecordList({ config, lines, pending, failed, selected, onSelect }: { co
         </Button>
       }>
       <QueryStatus pending={rows.isPending} error={rows.error} retry={rows.refetch} label={config.title} rows={2} />
-      {rows.data?.length === 0 && <EmptyState className='py-5'>{config.empty}</EmptyState>}
+      {rows.data?.length === 0 && (
+        <>
+          <EmptyState className='py-5'>{config.empty}</EmptyState>
+          {config.resource === 'liabilities' && <CoverageConfirm onlyDebt />}
+        </>
+      )}
       {rows.data && rows.data.length > 0 && (
         <Table>
           <TableHeader>
@@ -136,6 +172,11 @@ function RecordList({ config, lines, pending, failed, selected, onSelect }: { co
                   {config.extra && <TableCell className='hidden md:table-cell'>{config.extra.cell(pending || failed ? undefined : line)}</TableCell>}
                   <TableCell onClick={e => e.stopPropagation()}>
                     <AccountValuationStatus line={line} pending={pending} failed={failed} />
+                    {typeof row.version === 'string' && asOf !== todayKey() && row[config.amountField] != null && (
+                      <Button size='sm' disabled={confirmValue.isPending} onClick={() => confirmValue.mutate(row)}>
+                        잔고 그대로 맞음
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -157,36 +198,50 @@ function RecordList({ config, lines, pending, failed, selected, onSelect }: { co
 }
 
 /** "Nothing else to record" is a statement the user makes; without it, a category with no rows stays unknown, not zero. */
-function CoverageConfirm() {
+export function CoverageConfirm({ onlyDebt = false }: { onlyDebt?: boolean }) {
   const client = useQueryClient();
   const confirm = useConfirm();
+  const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
   const coverage = useMutation({
-    mutationFn: () => customInstance({ url: '/api/finance/coverage', method: 'PUT', data: { kinds: ['cash', 'holding', 'liability', 'other'] } }),
+    mutationFn: () =>
+      customInstance({
+        url: '/api/finance/coverage',
+        method: 'PUT',
+        data: { kinds: onlyDebt ? [...new Set([...(portfolio.data?.coverage ?? []), 'liability'])] : ['cash', 'holding', 'liability', 'other'] },
+      }),
     onSuccess: () => {
       notify.success('입력 완료로 확인했습니다');
-      return client.invalidateQueries({ queryKey: ['finance'] });
+      return Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: getSummaryQueryKey() })]);
     },
     onError: notify.error,
   });
   const ask = async () => {
     const ok = await confirm({
-      title: '모든 자산과 부채를 기록했나요?',
-      description: '현금·투자·부채·기타 자산을 빠짐없이 기록했고, 기록이 없는 분류는 실제로 없다는 뜻이라면 확인하세요. 그 뒤로는 빈 분류를 0으로 보고 합계를 확정합니다.',
+      title: onlyDebt ? '부채가 없음을 확인하나요?' : '모든 자산과 부채를 기록했나요?',
+      description: onlyDebt
+        ? '기록할 부채가 없음을 확인합니다. 다른 자산의 입력 완료 여부는 유지됩니다.'
+        : '현금·투자·부채·기타 자산을 빠짐없이 기록했고, 기록이 없는 분류는 실제로 없다는 뜻이라면 확인하세요. 그 뒤로는 빈 분류를 0으로 보고 합계를 확정합니다.',
       confirmLabel: '입력 완료',
     });
     if (ok) coverage.mutate();
   };
   return (
     <div className='flex flex-wrap items-center gap-3 rounded-lg border border-dashed p-4 text-ui'>
-      <p className='flex-1 text-muted-foreground'>빠짐없이 기록했다면 입력 완료를 확인해야 합계가 확정됩니다.</p>
-      <Button size='sm' disabled={coverage.isPending} onClick={() => void ask()}>
-        입력 완료 확인
+      <p className='flex-1 text-muted-foreground'>
+        {onlyDebt
+          ? portfolio.data?.coverage?.includes('liability')
+            ? '부채 없음 확인 완료'
+            : '부채가 없다면 확인하세요.'
+          : '빠짐없이 기록했다면 입력 완료를 확인해야 합계가 확정됩니다.'}
+      </p>
+      <Button size='sm' disabled={coverage.isPending || portfolio.isPending || portfolio.isError} onClick={() => void ask()}>
+        {onlyDebt ? '부채 없음 확인' : '입력 완료 확인'}
       </Button>
     </div>
   );
 }
 
-export function AccountsView({ recordId }: { recordId: number | null }) {
+export function AccountsView({ recordId, showCoverage = true }: { recordId: number | null; showCoverage?: boolean }) {
   // Deep links (/finance/accounts?record=) point at accounts, the primary list here.
   const [accountId, setAccountId] = useRecordParam(recordId);
   const [liabilityId, setLiabilityId] = useState<number | null>(null);
@@ -203,9 +258,17 @@ export function AccountsView({ recordId }: { recordId: number | null }) {
     <>
       <QueryStatus pending={portfolio.isPending} error={portfolio.error} retry={portfolio.refetch} label='자산 검증' rows={1} />
       {LISTS.map((config, i) => (
-        <RecordList key={config.resource} config={config} lines={lines} pending={portfolio.isFetching} failed={portfolio.isError} selected={selection[i][0]} onSelect={selection[i][1]} />
+        <RecordList
+          key={config.resource}
+          config={config}
+          lines={lines}
+          pending={portfolio.isFetching}
+          failed={portfolio.isError}
+          selected={selection[i][0]}
+          onSelect={selection[i][1]}
+        />
       ))}
-      <CoverageConfirm />
+      {showCoverage && <CoverageConfirm />}
     </>
   );
 }

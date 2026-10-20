@@ -102,6 +102,7 @@ class AdvisorRecommendation(Base):
 
 class DecisionJournalEntry(Base):
     __tablename__ = "decision_journal"
+    source_message_id: Mapped[int | None] = mapped_column(ForeignKey("advisor_messages.id", ondelete="SET NULL"))
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     decided_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

@@ -18,4 +18,5 @@ export interface OtherAssetItem {
   value_as_of: string;
   is_liquid?: boolean;
   id: number;
+  version: string;
 }

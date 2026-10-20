@@ -29,6 +29,10 @@ const response: CashflowResponse = {
 };
 
 describe('household ledger view', () => {
+  it('offers all transaction filters and preserved entry points', () => {
+    const html = render(response);
+    for (const label of ['매수', '매도', '상환', '예정 지출', '거래 추가', '오늘 평가액 기록', 'CSV 붙여넣기']) expect(html).toContain(label);
+  });
   it('labels totals, categories, trends and excluded records in the response currency', () => {
     const html = render({
       ...response,
@@ -41,9 +45,9 @@ describe('household ledger view', () => {
     expect(html).not.toContain('12.5원');
     expect(html).toContain('다른 통화 기록 1건은 USD 합계에서 제외했습니다.');
   });
-  it('shows a duplicate-entry warning when both sources contribute', () => {
+  it('identifies the selected six-month scope of duplicate-entry warnings', () => {
     expect(render({ ...response, data_quality_flags: ['cashflow_mixed_sources'] })).toContain(
-      '가계부와 거래 기록을 함께 합산했습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.',
+      '선택한 조건의 최근 6개월에 가계부와 거래 기록이 함께 있습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.',
     );
   });
   it('uses backend totals beyond the current page and distinguishes missing values from zero', () => {
@@ -58,6 +62,54 @@ describe('household ledger view', () => {
     expect(html).toContain('미기록');
     expect(html).toContain('외화 기록 1건은 원화 합계에서 제외했습니다.');
     expect(html).toContain('1 / 24');
+  });
+
+  it('shows quantity-only rights changes without inventing a monetary amount', () => {
+    const html = render({
+      ...response,
+      total: 1,
+      items: [
+        {
+          source: 'financial_transactions',
+          id: 8,
+          occurred_on: '2026-10-01',
+          kind: 'split',
+          original_kind: 'split',
+          amount: null,
+          quantity: '0.125',
+          currency: null,
+          category: '미분류',
+          description: '권리변동',
+          is_reversed: false,
+        },
+      ],
+    });
+    expect(html).toContain('수량 0.125');
+    expect(html).not.toContain('0원');
+  });
+
+  it('never labels a legacy amount without currency as won', () => {
+    const html = render({
+      ...response,
+      total: 1,
+      data_quality_flags: ['missing_transaction_currency'],
+      items: [
+        {
+          source: 'financial_transactions',
+          id: 8,
+          occurred_on: '2026-10-01',
+          kind: 'expense',
+          original_kind: 'expense',
+          amount: '123.4567',
+          currency: null,
+          category: '미분류',
+          description: '통화 누락',
+          is_reversed: false,
+        },
+      ],
+    });
+    expect(html).toContain('123.4567 · 통화 미기록');
+    expect(html).not.toContain('123.4567원');
   });
 
   it('offers edit for ordinary records and cancellation for ledger records sharing the same id', () => {

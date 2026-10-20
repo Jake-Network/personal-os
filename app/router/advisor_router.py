@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import AwareDatetime
 
 from app.modules.advisor.advisor_manager import advisor_manager
+from app.modules.advisor.answer_actions import final_answer_ids, message_items, latest_feedback
 from app.modules.context.context_builder_manager import context_builder_manager
 from app.modules.crud import (
     audit_log_handler,
@@ -22,7 +23,7 @@ from app.schema.advisor_schema import (
     ConversationDetail,
     ConversationItem,
     MessageItem,
-    RecommendationFeedback,
+    RecommendationFeedback, RecommendationItem,
     SummaryCreate, SummaryItem, ConversationLinkCreate, ConversationLinkItem,
 )
 from app.schema.context_schema import SnapshotCompareResponse, SnapshotResponse
@@ -57,7 +58,7 @@ def get_conversation(conversation_id: int, limit: int = Query(100, ge=1, le=200)
     conv = _conversation(session, conversation_id)
     return ConversationDetail(
         **ConversationItem.model_validate(conv).model_dump(),
-        messages=[MessageItem.model_validate(m) for m in message_handler.page(session, conv.id, limit, before_id)],
+        messages=message_items(session, message_handler.page(session, conv.id, limit, before_id)),
     )
 
 
@@ -73,7 +74,7 @@ def delete_conversation(conversation_id: int, session: Session = Depends(get_ses
 def search_messages(q: str = Query(min_length=1, max_length=200), limit: int = Query(50, ge=1, le=200),
                     offset: int = Query(0, ge=0), since: AwareDatetime | None = None, until: AwareDatetime | None = None,
                     conversation_id: int | None = None, session: Session = Depends(get_session)):
-    return message_handler.search(session, q, limit, offset, since, until, conversation_id)
+    return message_items(session, message_handler.search(session, q, limit, offset, since, until, conversation_id))
 
 
 @router.post("/conversations/{conversation_id}/messages")
@@ -154,9 +155,15 @@ def delete_snapshot(snapshot_id: str, session: Session = Depends(get_session)):
 
 @router.post("/recommendations", status_code=201)
 def rate_recommendation(body: RecommendationFeedback, session: Session = Depends(get_session)):
-    if message_handler.get(session, body.message_id) is None:
+    message = message_handler.get(session, body.message_id)
+    if message is None:
         raise HTTPException(404, "message not found")
-    rec = recommendation_handler.create(session, body)
+    if message.id not in final_answer_ids(session, [message]):
+        raise HTTPException(422, "저장된 최종 답변만 평가할 수 있습니다.")
+    rec = recommendation_handler.create(session, {
+        "message_id": message.id, "summary": message.content.splitlines()[0][:200],
+        "user_rating": body.user_rating, "user_feedback": body.user_feedback,
+    })
     session.commit()
     return {"id": rec.id}
 
@@ -165,7 +172,7 @@ def rate_recommendation(body: RecommendationFeedback, session: Session = Depends
 def message_page(conversation_id: int, limit: int = Query(100, ge=1, le=200),
                  before_id: int | None = None, session: Session = Depends(get_session)):
     _conversation(session, conversation_id)
-    return message_handler.page(session, conversation_id, limit, before_id)
+    return message_items(session, message_handler.page(session, conversation_id, limit, before_id))
 
 
 @router.get("/conversations/{conversation_id}/summaries", response_model=list[SummaryItem])
@@ -239,3 +246,9 @@ def unlink_conversation(conversation_id: int, link_id: int, session: Session = D
         raise HTTPException(404, "link not found")
     session.delete(link)
     session.commit()
+
+
+@router.get("/conversations/{conversation_id}/recommendations", response_model=list[RecommendationItem])
+def list_recommendations(conversation_id: int, session: Session = Depends(get_session)):
+    _conversation(session, conversation_id)
+    return latest_feedback(session, conversation_id)

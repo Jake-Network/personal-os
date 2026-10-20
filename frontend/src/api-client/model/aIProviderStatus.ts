@@ -12,6 +12,7 @@ import type { AIProviderStatusLastErrorCode } from './aIProviderStatusLastErrorC
 import type { AIProviderStatusModel } from './aIProviderStatusModel';
 
 export interface AIProviderStatus {
+  configuration_complete?: boolean;
   connected: boolean;
   status?: AIProviderStatusStatus;
   email?: AIProviderStatusEmail;

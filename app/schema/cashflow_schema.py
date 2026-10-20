@@ -9,10 +9,11 @@ class CashflowRow(BaseModel):
     source: Literal["cashflow_entries", "financial_transactions"]
     id: int
     occurred_on: date
-    kind: Literal["income", "expense"]
+    kind: str
     original_kind: str
-    amount: str
-    currency: str
+    amount: str | None
+    quantity: str | None = None
+    currency: str | None
     category: str
     description: str | None
     is_reversed: bool
@@ -37,6 +38,7 @@ class CashflowCategory(BaseModel):
 
 
 class CashflowResponse(BaseModel):
+    scope: Literal["household", "all"] = "household"
     month: str
     currency: str
     items: list[CashflowRow]

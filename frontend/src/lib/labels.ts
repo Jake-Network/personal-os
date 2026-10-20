@@ -1,4 +1,5 @@
 import type { Category } from '@/api-client/model';
+import { issueText } from '@/features/finance/presentation';
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   financial: '재무',
@@ -31,6 +32,12 @@ export const ROUTE_REASON: Record<string, string> = {
 };
 
 const FLAG_TEXT: Record<string, string> = {
+  monthly_history_withheld: '월별 자산 이력은 이번 상담에 공유하지 않았습니다',
+  history_embedding_index_required: '지난 상담의 의미 검색 준비가 필요합니다',
+  history_embedding_unavailable: '지난 상담의 의미 검색을 사용할 수 없습니다',
+  history_keyword_retrieval_only: '지난 상담은 단어가 일치하는 내용만 찾았습니다',
+  history_search_results_omitted: '지난 상담 검색 결과 일부를 전송 길이에 맞춰 생략했습니다',
+  valuation_base_unavailable: '선택한 통화로 전체 자산 평가를 제공할 수 없습니다',
   web_page_blocked: '공개 웹 주소가 아닌 페이지 수집 차단',
   web_page_encoding: '압축 응답으로 본문 수집 불가',
   web_page_too_large: '본문 수집 크기 한도 초과',
@@ -55,6 +62,8 @@ const FLAG_TEXT: Record<string, string> = {
   cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
   recorded_flows_only: '기록한 수입·지출만 합산했습니다',
   foreign_currency_excluded: '외화 기록은 원화 합계에서 제외했습니다',
+  missing_transaction_currency: '통화가 없는 기록이 있어 합계 불완전',
+  missing_transaction_amount: '금액이 없는 기록이 있어 합계 불완전',
   cashflow_mixed_sources: '수입·지출과 거래 기록 함께 사용',
   spendable_liquidity_unknown: '생활비 현금 미기록',
   monthly_expense_unknown: '월평균 지출 데이터가 없습니다',
@@ -83,6 +92,18 @@ const FLAG_TEXT: Record<string, string> = {
 const MODEL_ONLY_DETAIL = new Set(['monthly_expense_unknown', 'investment_excluded_from_net_worth', 'no_liabilities_recorded', 'no_career_criteria']);
 
 export function flagDetail(code: string, detail?: string): string | undefined {
+  if (code === 'monthly_history_withheld') return '월별 전체 자산 이력을 사용하려면 재무와 투자 공유를 모두 허용해야 합니다. 공유 범위를 확인하세요.';
+  if (code === 'history_embedding_index_required') return '현재는 단어 검색만 가능해 표현이 다른 관련 경험을 놓칠 수 있습니다.';
+  if (code === 'history_embedding_unavailable') return '검색 연결을 확인하세요. 현재는 단어가 일치하는 과거 상담만 참고합니다.';
+  if (code === 'valuation_base_unavailable') return '전체 자산 평가는 원화 기준으로 기록되어 있습니다. 기준 통화 설정을 확인하세요.';
+  if (code === 'net_worth_incomplete' && detail)
+    return detail
+      .replaceAll('Stale price; latest valid market close unconfirmed', '시세가 오래됨')
+      .split('; ')
+      .map(issueText)
+      .join('; ')
+      .replace(/missing_fx_([A-Z]+)_([A-Z]+)/g, '$1 → $2 환율 없음')
+      .replace(/\bno_value\b/g, '금액 미기록');
   return detail && !MODEL_ONLY_DETAIL.has(code) ? detail : undefined;
 }
 

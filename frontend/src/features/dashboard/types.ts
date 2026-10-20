@@ -1,8 +1,11 @@
+import type { DashboardChecklist, DashboardSignal } from '@/api-client/model';
 import type { DataFlag } from '@/features/advisor/types';
 
-/** GET /api/dashboard/summary: the advisor tools' outputs keyed by tool name (untyped in OpenAPI). */
+/** Typed dashboard envelope with the existing advisor tool output adapter. */
 export interface DashboardSummary {
   generated_at: string;
+  signals: DashboardSignal[];
+  checklist: DashboardChecklist;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: Record<string, any>;
   data_quality_flags: DataFlag[];

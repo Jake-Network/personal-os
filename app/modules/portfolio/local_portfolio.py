@@ -113,4 +113,5 @@ def portfolio(session, kinds=None):
         stale=bool(result["issues"]),
         import_id=None,
         source="local",
+        coverage=confirmed,
     )

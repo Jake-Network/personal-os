@@ -89,7 +89,7 @@ def test_cashflow_input_validation_and_month_end(client, session):
     ledger(session, "expense", datetime(2026, 10, 1, tzinfo=ZoneInfo(settings.timezone)), "10")
     session.commit()
     assert client.get("/api/finance/cashflow", params={"month": "2026-09"}).json()["total"] == 0
-    for params in ({"month": "2026-13"}, {"month": "0001-01"}, {"page": 0}, {"kind": "transfer"}):
+    for params in ({"month": "2026-13"}, {"month": "0001-01"}, {"page": 0}, {"kind": "invalid"}):
         assert client.get("/api/finance/cashflow", params=params).status_code == 422
 
 
@@ -126,3 +126,132 @@ def test_cashflow_uses_advisor_base_currency_for_all_aggregates(client, session)
     assert Decimal(body["categories"][0]["share"]) == Decimal("100")
     assert Decimal(body["trend"][-1]["expense"]) == Decimal("12.50")
     assert "foreign_currency_excluded" in body["data_quality_flags"]
+
+
+def test_all_ledger_scope_keeps_transfers_and_quantity_separate(client, session):
+    session.add(CashflowEntry(occurred_on=date(2026, 9, 1), kind='expense', amount=Decimal('5')))
+    ledger(session, 'transfer', datetime(2026, 9, 2, tzinfo=UTC), '900')
+    ledger(session, 'split', datetime(2026, 9, 3, tzinfo=UTC), None, quantity=3)
+    expense = ledger(session, 'expense', datetime(2026, 9, 3, tzinfo=UTC), '10')
+    ledger(session, 'reversal', datetime(2026, 10, 3, tzinfo=UTC), None, reverses_id=expense.id)
+    session.commit()
+    result = client.get('/api/finance/cashflow', params={'month': '2026-09', 'scope': 'all', 'page_size': 1}).json()
+    assert result['total'] == 4
+    assert result['summary']['expense'] == '5.0000'
+    split = client.get('/api/finance/cashflow', params={'month': '2026-09', 'scope': 'all', 'kind': 'split'}).json()
+    assert split['total'] == 1
+    assert split['items'][0]['amount'] is None
+    assert split['items'][0]['quantity'] == '3'
+    assert split['summary']['net'] is None
+
+
+def test_quality_flags_follow_view_filters(client, session):
+    session.add(CashflowEntry(occurred_on=date(2026, 9, 1), kind='expense', amount=Decimal('5'), currency='USD'))
+    ledger(session, 'expense', datetime(2026, 9, 2, tzinfo=UTC))
+    session.commit()
+    result = client.get('/api/finance/cashflow', params={'month': '2026-09', 'kind': 'income'}).json()
+    assert result['total'] == 0
+    assert 'cashflow_mixed_sources' not in result['data_quality_flags']
+    assert 'foreign_currency_excluded' not in result['data_quality_flags']
+
+
+def test_missing_legacy_amount_is_incomplete_not_zero(client, session):
+    ledger(session, 'expense', datetime(2026, 9, 2, tzinfo=UTC), None)
+    session.commit()
+    result = client.get('/api/finance/cashflow', params={'month': '2026-09', 'scope': 'all'}).json()
+    assert result['summary']['expense'] is None
+    assert result['summary']['net'] is None
+    assert 'missing_transaction_amount' in result['data_quality_flags']
+
+
+def test_transaction_deep_link_preserves_all_time_reversal_status(client, session):
+    original = ledger(session, 'expense', datetime(2024, 9, 2, tzinfo=UTC))
+    ledger(session, 'reversal', datetime(2026, 9, 2, tzinfo=UTC), None, reverses_id=original.id)
+    session.commit()
+    result = client.get(f'/api/finance/transactions/{original.id}')
+    assert result.status_code == 200
+    assert result.json()['is_reversed'] is True
+    assert result.json()['kind'] == 'expense'
+    assert client.get('/api/finance/transactions/999999').status_code == 404
+
+
+def test_missing_legacy_amount_reaches_context_as_incomplete(session):
+    from app.enums.context_category import Category
+    from app.modules.context.context_tool_manager import get_cashflow_summary
+    from app.modules.context.types import ToolContext
+    for month in (6, 7, 8, 9):
+        ledger(session, 'expense', datetime(2026, month, 2, tzinfo=UTC), '10')
+    missing = ledger(session, 'expense', datetime(2026, 8, 3, tzinfo=UTC), None)
+    session.commit()
+    result = get_cashflow_summary(ToolContext(session, datetime(2026, 9, 20, tzinfo=UTC), frozenset({Category.FINANCIAL})))
+    assert result.data['expense_comparison_complete'] is False
+    assert result.data['monthly_expense']['available'] is False
+    assert 'missing_transaction_amount' in {f['code'] for f in result.flags}
+    assert any(r['table'] == 'financial_transactions' and r['id'] == missing.id for r in result.refs)
+    from app.modules.dashboard.dashboard_manager import dashboard_manager
+    dashboard = dashboard_manager.summary(session, datetime(2026, 9, 20, tzinfo=UTC))
+    assert 'expenses' not in {signal['kind'] for signal in dashboard['signals']}
+    assert 'missing_transaction_amount' in {flag['code'] for flag in dashboard['data_quality_flags']}
+
+
+def test_quality_flags_follow_selected_six_month_rows_before_pagination(client, session):
+    session.add(CashflowEntry(occurred_on=date(2026, 8, 1), kind='expense', amount=Decimal('5'), category='식비', description='선택', currency='USD'))
+    ledger(session, 'expense', datetime(2026, 9, 2, tzinfo=UTC), category='식비', description='선택')
+    ledger(session, 'income', datetime(2026, 9, 3, tzinfo=UTC), category='급여', description='다른 기록')
+    ledger(session, 'expense', datetime(2026, 9, 4, tzinfo=UTC), None, category='기타', description='다른 기록')
+    session.commit()
+    selected = client.get('/api/finance/cashflow', params={'month': '2026-09', 'category': '식비', 'page_size': 1, 'page': 2}).json()
+    assert selected['items'] == []
+    assert {'cashflow_mixed_sources', 'foreign_currency_excluded'} <= set(selected['data_quality_flags'])
+    assert 'missing_transaction_amount' not in selected['data_quality_flags']
+    for filters in ({'kind': 'income'}, {'category': '급여'}, {'search': '없는 검색'}, {'transaction_kind': 'income'}):
+        result = client.get('/api/finance/cashflow', params={'month': '2026-09', **filters}).json()
+        assert result['data_quality_flags'] == ['recorded_flows_only']
+
+
+def test_missing_amount_removes_partial_month_estimate(session):
+    from app.enums.context_category import Category
+    from app.modules.context.context_tool_manager import get_cashflow_summary
+    from app.modules.context.types import ToolContext
+    ledger(session, 'expense', datetime(2026, 8, 2, tzinfo=UTC), '100')
+    ledger(session, 'expense', datetime(2026, 8, 3, tzinfo=UTC), None)
+    session.commit()
+    result = get_cashflow_summary(ToolContext(session, datetime(2026, 9, 20, tzinfo=UTC), frozenset({Category.FINANCIAL})))
+    assert result.data['monthly_expense']['available'] is False
+    assert result.data['monthly_expense']['reason'] == 'missing_amount'
+    assert 'estimate' not in result.data['monthly_expense']
+    assert result.data['monthly_expense']['months_with_data'] == 1
+    assert 'missing_transaction_amount' in {flag['code'] for flag in result.flags}
+
+
+def test_missing_currency_is_not_reported_as_foreign(client, session):
+    from app.enums.context_category import Category
+    from app.modules.context.context_tool_manager import get_cashflow_summary
+    from app.modules.context.types import ToolContext
+    ledger(session, 'expense', datetime(2026, 9, 2, tzinfo=UTC), '100', currency=None)
+    ledger(session, 'expense', datetime(2026, 9, 3, tzinfo=UTC), '100', currency='')
+    ledger(session, 'expense', datetime(2026, 8, 3, tzinfo=UTC), '100', currency=None)
+    ledger(session, 'expense', datetime(2026, 7, 3, tzinfo=UTC), '100')
+    session.commit()
+    body = client.get('/api/finance/cashflow', params={'month': '2026-09'}).json()
+    assert body['summary']['foreign_count'] == 0
+    assert body['summary']['net'] is None
+    assert 'missing_transaction_currency' in body['data_quality_flags']
+    assert 'foreign_currency_excluded' not in body['data_quality_flags']
+    result = get_cashflow_summary(ToolContext(session, datetime(2026, 9, 20, tzinfo=UTC), frozenset({Category.FINANCIAL})))
+    codes = {flag['code'] for flag in result.flags}
+    assert 'missing_transaction_currency' in codes
+    assert 'cashflow_foreign_currency_ignored' not in codes
+    assert result.data['has_recent_expense'] is False
+    assert result.data['expense_comparison_complete'] is False
+    assert result.data['monthly_expense']['reason'] == 'missing_currency'
+    assert 'estimate' not in result.data['monthly_expense']
+
+
+def test_non_household_missing_values_do_not_warn_about_household_totals(client, session):
+    ledger(session, 'transfer', datetime(2026, 9, 2, tzinfo=UTC), None, currency=None)
+    session.commit()
+    result = client.get('/api/finance/cashflow', params={'month': '2026-09', 'scope': 'all'}).json()
+    assert result['total'] == 1
+    assert result['summary']['record_count'] == 0
+    assert result['data_quality_flags'] == ['recorded_flows_only']

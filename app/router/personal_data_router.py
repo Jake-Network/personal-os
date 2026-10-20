@@ -49,6 +49,16 @@ def _register(name: str, res: Resource) -> None:
         _get(session, item_id)
         return personal_data_manager.update(session, name, res, item_id, body)
 
+    if name in {"accounts", "liabilities", "other-assets"}:
+        @router.post(f"/{name}/{{item_id}}/confirm-value", response_model=Item,
+                     operation_id=f"confirm_value_{name}")
+        def confirm_value(item_id: int, body: s.ConfirmValueInput, session: Session = Depends(get_session)):
+            _get(session, item_id)
+            try:
+                return personal_data_manager.confirm_value(session, name, res, item_id, body.expected_version)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
     if tracks(name):
         @router.get(f"/{name}/{{item_id}}/history", response_model=list[s.ValueChangeItem],
                     operation_id=f"history_{name}")

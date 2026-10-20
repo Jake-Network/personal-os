@@ -78,6 +78,8 @@ export interface ChatMessage {
   model: string | null;
   created_at?: string;
   streaming?: boolean;
+  is_final_answer?: boolean;
+  source_question?: string | null;
   error?: { code: string; message: string };
   proposals?: ProposalItem[];
   memoryProposals?: MemoryProposal[];

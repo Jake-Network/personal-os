@@ -1,5 +1,7 @@
 'use client';
 
+import { getSummaryQueryKey } from '@/api-client/generated/dashboard/dashboard';
+
 import { useEffect, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -78,6 +80,7 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
     Promise.all([
       queryClient.invalidateQueries({ queryKey: getGetStatusQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getListModelsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getSummaryQueryKey() }),
     ]);
 
   const login = useStartLogin({

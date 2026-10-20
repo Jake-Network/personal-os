@@ -43,6 +43,16 @@ class LLMGatewayManager:
     def provider(self, session: Session) -> LLMProvider:
         return self.providers[self.provider_name(session)]
 
+    def configuration_complete(self, session: Session) -> bool:
+        """Local setup only: never probes inference or switches providers."""
+        name = self.provider_name(session)
+        if name == "chatgpt_plan":
+            status = oauth_manager.status(session)
+            return bool(status.get("connected") and status.get("plan_usage_enabled"))
+        if name == "openai_api_key":
+            return bool(os.environ.get("OPENAI_API_KEY", "").strip())
+        return False  # Codex app server remains an unwired provider.
+
     async def list_models(self, session: Session) -> list[str]:
         return await self.provider(session).list_models(session)
 

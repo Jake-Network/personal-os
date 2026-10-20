@@ -4,10 +4,14 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { HouseholdCashflowScope } from './householdCashflowScope';
 
 export type HouseholdCashflowParams = {
   month?: string | null;
-  kind?: 'income' | 'expense' | null;
+  kind?: 'income' | 'expense' | 'transfer' | 'buy' | 'sell' | 'dividend' | 'interest' | 'fee' | 'tax' | 'repayment' | 'split' | 'reversal' | null;
+  scope?: HouseholdCashflowScope;
+  transaction_kind?:
+    'income' | 'expense' | 'transfer' | 'buy' | 'sell' | 'dividend' | 'interest' | 'fee' | 'tax' | 'repayment' | 'split' | 'reversal' | null;
   category?: string | null;
   search?: string | null;
   /**

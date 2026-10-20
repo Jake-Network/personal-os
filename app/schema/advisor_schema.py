@@ -34,6 +34,8 @@ class MessageItem(BaseModel):
     content: str
     status: str
     context_snapshot_id: str | None
+    is_final_answer: bool = False
+    source_question: str | None = None
     model: str | None
     created_at: datetime
 
@@ -114,7 +116,8 @@ class MemoryItem(BaseModel):
 
 
 class DecisionCreate(BaseModel):
-    title: str
+    source_message_id: int | None = None
+    title: str = Field(max_length=200)
     choice: str
     rationale: str
     alternatives: list[str] = []
@@ -131,6 +134,7 @@ class DecisionReview(BaseModel):
 class DecisionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    source_message_id: int | None
     id: int
     title: str
     decided_at: datetime
@@ -147,9 +151,20 @@ class DecisionItem(BaseModel):
 
 class RecommendationFeedback(BaseModel):
     message_id: int
-    summary: str
+    summary: str | None = None
     user_rating: Literal[-1, 0, 1] | None = None
-    user_feedback: str | None = None
+    user_feedback: str | None = Field(default=None, max_length=1000)
+
+
+class RecommendationItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    message_id: int
+    summary: str
+    user_rating: int | None
+    user_feedback: str | None
+    created_at: datetime
 
 
 class MemoryRevisionCreate(MemoryCreate):

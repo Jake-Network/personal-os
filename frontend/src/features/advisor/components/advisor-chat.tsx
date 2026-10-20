@@ -23,6 +23,7 @@ import { useAdvisorSend } from '../hooks/use-advisor-send';
 import { useWorkspace } from '../hooks/use-workspace';
 import type { ChatMessage, InspectorData, InspectorMode, MemoryProposal } from '../types';
 import { snapshotToInspector } from '../utils';
+import { answerQuestion, briefingDraft } from '../utils/answer-actions';
 import { AdvisorEmptyState } from './advisor-empty-state';
 import { Composer } from './composer';
 import { MessageItem, useDocumentSource } from './message-list';
@@ -119,6 +120,15 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     onSaved: showCurrentMessages,
   });
 
+  const briefing = searchParams.get('briefing');
+  const setInput = send.setInput;
+  const appliedBriefing = useRef<string | null>(null);
+  useEffect(() => {
+    if (!briefing || appliedBriefing.current === briefing) return;
+    appliedBriefing.current = briefing;
+    setInput(current => briefingDraft(briefing, current));
+  }, [briefing, setInput]);
+
   useEffect(() => {
     const target =
       targetMessage && !showLatest && messageAnchor.current !== targetMessage ? document.getElementById(`message-${targetMessage}`) : null;
@@ -203,13 +213,20 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
         )}
         {history.error && <Alert variant='destructive'>{errorMessage(history.error)}</Alert>}
         {messages.length === 0 && !send.loadError && (conversationId === null || history.isSuccess) && (
-          <AdvisorEmptyState suggestions={suggestions} excluded={privacyBlocked} disabled={send.busy || providerNeedsSetup} onPick={text => void send.send(text)} />
+          <AdvisorEmptyState
+            suggestions={suggestions}
+            excluded={privacyBlocked}
+            disabled={send.busy || providerNeedsSetup}
+            onPick={text => void send.send(text)}
+          />
         )}
         {messages.map(m => (
           <MessageItem
             key={m.key}
             message={m}
             compact={compact}
+            conversationId={conversationId}
+            question={m.source_question ?? (m.id ? answerQuestion(messages, m.id) : '')}
             highlighted={evidenceActive && evidenceFor === m.key}
             onEvidence={message => void showEvidence(message)}
             onDocument={(message, ref) => void documentSource.show(message, ref)}

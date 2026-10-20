@@ -98,7 +98,7 @@ export const SOURCES: Record<SourceId, CalendarSource> = {
     id: 'planned-expenses',
     label: '예정 지출',
     tone: 'expense',
-    path: '/finance/transactions',
+    path: '/finance/cashflow?source=planned_expenses',
     timed: false,
     toItems: (rows, { today }) =>
       rows.flatMap(r =>

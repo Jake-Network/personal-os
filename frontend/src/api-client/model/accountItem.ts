@@ -20,4 +20,6 @@ export interface AccountItem {
   balance_as_of: string;
   is_liquid?: boolean;
   id: number;
+  version: string;
+  readonly balance_stale: boolean;
 }

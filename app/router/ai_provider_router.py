@@ -20,7 +20,8 @@ router = APIRouter(prefix="/api/settings/ai-provider", tags=["ai-provider"])
 def get_status(session: Session = Depends(get_session)):
     status = oauth_manager.status(session)
     model = (app_setting_handler.get_value(session, MODEL_KEY) or {}).get("name")
-    return AIProviderStatus(**status, provider=llm_gateway_manager.provider_name(session), model=model)
+    return AIProviderStatus(**status, provider=llm_gateway_manager.provider_name(session), model=model,
+                            configuration_complete=llm_gateway_manager.configuration_complete(session))
 
 
 @router.post("/chatgpt/login", response_model=LoginStartResponse)

@@ -19,7 +19,7 @@ def ask(session, conversation, message, provider, options=None):
     async def collect():
         return [event async for event in advisor_manager.ask(session, conversation, message, options)]
     events = asyncio.run(collect())
-    assert events[-1]["type"] == "done"
+    assert events[-1]["type"] == "done", events
     developer = next(item for item in provider.requests[-1].input if item["role"] == "developer"
                      and item["content"].startswith("Context Package"))
     return json.loads(developer["content"].split("\n", 1)[1])

@@ -5,7 +5,12 @@ channel is proposal_manager, which cannot touch financial tables (AC-18).
 """
 
 from pydantic import BaseModel
+from sqlalchemy import update
 from sqlalchemy.orm import Session
+
+from app.modules.database.model.base import utcnow
+from app.modules.finance.clock import local_today
+from app.modules.finance.value_history import TRACKED
 
 from app.modules.crud import (
     account_handler,
@@ -78,6 +83,27 @@ class PersonalDataManager:
         if before is not None:
             value_history_manager.record(session, name, obj, before, "update", trade_date=trade_date)
         self._audit(session, name, resource, "update", obj.id)
+        session.commit()
+        return obj
+
+    def confirm_value(self, session: Session, name: str, resource: Resource, item_id: int, expected_version):
+        obj = self.get(session, resource, item_id)
+        before = capture(name, obj)
+        model = resource.handler.model
+        _, as_of, _ = TRACKED[name]
+        today = local_today()
+        # A conditional SQL write protects against updates from another tab, including
+        # repeated confirmations on the same day. Never resend or assign the amount.
+        result = session.execute(update(model).where(
+            model.id == item_id, model.updated_at == expected_version,
+        ).values({as_of: today, "updated_at": utcnow()}),
+            execution_options={"synchronize_session": False})
+        if result.rowcount != 1:
+            session.rollback()
+            raise ValueError("값이 변경되었습니다. 최신 값을 확인한 뒤 다시 확인하세요")
+        session.refresh(obj)
+        value_history_manager.record(session, name, obj, before, "update", today=today)
+        self._audit(session, name, resource, "confirm_value", item_id)
         session.commit()
         return obj
 

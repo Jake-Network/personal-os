@@ -63,7 +63,36 @@ class DecisionJournalManager:
         return decision_journal_handler.get_all(session)
 
     def create(self, session: Session, body: DecisionCreate) -> DecisionJournalEntry:
-        entry = decision_journal_handler.create(session, body.model_dump())
+        from app.modules.advisor.answer_actions import final_answer_ids
+        from app.modules.database.model import AdvisorMessage, ContextSnapshot, AdvisorConversation
+        values = body.model_dump()
+        if body.source_message_id is not None:
+            message = session.get(AdvisorMessage, body.source_message_id)
+            if message is None:
+                raise LookupError("source message not found")
+            if message.id not in final_answer_ids(session, [message]):
+                raise ValueError("저장된 최종 답변만 결정으로 기록할 수 있습니다.")
+            if message.context_purged or not message.context_snapshot_id:
+                raise ValueError("원래 답변의 근거가 없어 결정에 연결할 수 없습니다.")
+            if body.conversation_id not in (None, message.conversation_id) or body.context_snapshot_id not in (None, message.context_snapshot_id):
+                raise ValueError("답변과 결정의 근거가 일치하지 않습니다.")
+            values.update(conversation_id=message.conversation_id, context_snapshot_id=message.context_snapshot_id)
+        if values["conversation_id"] is not None and session.get(AdvisorConversation, values["conversation_id"]) is None:
+            raise LookupError("conversation not found")
+        if values["context_snapshot_id"] is not None:
+            snapshot = session.get(ContextSnapshot, values["context_snapshot_id"])
+            if snapshot is None or snapshot.payload.get("source_purged"):
+                raise ValueError("결정의 근거가 삭제되었습니다.")
+            if values["conversation_id"] not in (None, snapshot.conversation_id):
+                raise ValueError("대화와 결정의 근거가 일치하지 않습니다.")
+            values["conversation_id"] = snapshot.conversation_id
+        if body.review_on is not None:
+            from zoneinfo import ZoneInfo
+            from app.config import settings
+            zone = ZoneInfo(settings.timezone)
+            local = body.review_on.astimezone(zone) if body.review_on.tzinfo else body.review_on.replace(tzinfo=zone)
+            values["review_on"] = local.replace(hour=9, minute=0, second=0, microsecond=0).astimezone(UTC)
+        entry = decision_journal_handler.create(session, values)
         audit_log_handler.record(session, "user", "decision.create", f"decision_journal:{entry.id}")
         session.commit()
         return entry

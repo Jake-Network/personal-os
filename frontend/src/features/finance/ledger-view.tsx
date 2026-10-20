@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { getSummaryQueryKey } from '@/api-client/generated/dashboard/dashboard';
 import { customInstance } from '@/api-client/custom-client';
 import { notify } from '@/components/notify';
 import { ListSkeleton } from '@/components/skeleton';
@@ -68,7 +69,7 @@ export function LedgerEntrySheet({
       notify.success('거래를 기록했습니다. 잔액과 수량은 따로 갱신하세요');
       onClose();
     },
-    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: ['/api/dashboard'] })]),
+    onSettled: () => Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: getSummaryQueryKey() })]),
   });
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>

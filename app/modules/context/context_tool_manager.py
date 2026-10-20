@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -33,8 +34,9 @@ from app.modules.crud import (
     task_handler,
     workout_log_handler,
 )
-from app.modules.database.model import FxRate, Holding, LocalFinanceCoverage
+from app.modules.database.model import FxRate, Holding, LocalFinanceCoverage, WorkoutLog
 from app.modules.finance.financial_calculator import financial_calculator
+from app.modules.finance import clock as finance_clock
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
 from app.modules.context.derived import calendar_conflicts, fx_table_from_rates
 from app.modules.context.records import as_aware, clip_text, iso_or_none, latest_of, quality_flag, record_ref
@@ -45,7 +47,6 @@ from app.modules.context.portfolio_tools import (
 )
 
 STALE_PRICE_DAYS = 3
-STALE_BALANCE_DAYS = 45
 
 
 def base_currency(session: Session) -> str:
@@ -88,10 +89,12 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
     flags: list[dict] = []
     if not accounts:
         flags.append(quality_flag("no_accounts", Category.FINANCIAL))
-    if not liabilities:
+    coverage = s.get(LocalFinanceCoverage, 1)
+    if not liabilities and (coverage is None or "liability" not in coverage.kinds):
         flags.append(quality_flag("no_liabilities_recorded", Category.FINANCIAL, "debt may be zero or simply not entered"))
+    today = as_aware(ctx.now).astimezone(ZoneInfo(settings.timezone)).date()
     for a in accounts:
-        if (ctx.today - a.balance_as_of).days > STALE_BALANCE_DAYS:
+        if (today - a.balance_as_of).days > finance_clock.STALE_BALANCE_DAYS:
             flags.append(quality_flag("stale_balance", Category.FINANCIAL, f"{a.name} as of {a.balance_as_of}"))
 
     assets = [Position(f"accounts:{a.id}", a.name, a.balance, a.currency, account_bucket(a.kind),
@@ -113,7 +116,6 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
                            ", ".join(f"{e['label']}({e['reason']})" for e in worth.excluded)))
 
     worth_data = worth.as_dict()
-    coverage = s.get(LocalFinanceCoverage, 1)
     # No accounts is an unknown scope until the user explicitly confirms cash coverage.
     if not any(account_bucket(a.kind) == "cash" for a in accounts) and (coverage is None or "cash" not in coverage.kinds):
         worth_data.update(spendable_liquidity=None, spendable_liquidity_complete=False,
@@ -173,16 +175,22 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
     zone = ZoneInfo(settings.timezone)
     today = as_aware(ctx.now).astimezone(zone).date()
     since = date(today.year - 1, today.month, 1)
-    from app.modules.finance.cashflow import load_flows
+    from app.modules.finance.cashflow import load_flows, month_offset
     rows, entries, transactions, reversals = load_flows(s, since, ctx.now)
     flows = [(date.fromisoformat(r["occurred_on"]), Decimal(r["amount"]), r["currency"],
               r["kind"], "uncategorized" if r["category"] == "미분류" else r["category"])
-             for r in rows if not r["is_reversed"]]
+             for r in rows if not r["is_reversed"] and r["amount"] is not None]
+    missing = [r for r in rows if not r["is_reversed"] and r["amount"] is None]
+    missing_currency = [r for r in rows if not r["is_reversed"] and not r["currency"]]
     planned = planned_expense_handler.get_upcoming(s, today)
     base = base_currency(s)
-    foreign = [e for e in flows if e[2] != base]
+    foreign = [e for e in flows if e[2] and e[2] != base]
     usable = [e for e in flows if e[2] == base]
     flags = []
+    if missing:
+        flags.append(quality_flag("missing_transaction_amount", Category.FINANCIAL, f"{len(missing)} entries"))
+    if missing_currency:
+        flags.append(quality_flag("missing_transaction_currency", Category.FINANCIAL, f"{len(missing_currency)} entries"))
     if entries and transactions:
         flags.append(quality_flag("cashflow_mixed_sources", Category.FINANCIAL,
             "기존 수입·지출과 거래 기록을 함께 합산했습니다. 같은 지출을 두 화면에 중복 입력하지 마세요."))
@@ -192,6 +200,11 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
         [(day, amount) for day, amount, _, kind, _ in usable if kind == "expense"], today)
     income = financial_calculator.monthly_average(
         [(day, amount) for day, amount, _, kind, _ in usable if kind == "income"], today)
+    for kind, average in (("expense", expense), ("income", income)):
+        for incomplete, reason in ((missing_currency, "missing_currency"), (missing, "missing_amount")):
+            if any(r["kind"] == kind and month_offset(today, -3).isoformat() <= r["occurred_on"] < today.replace(day=1).isoformat() for r in incomplete):
+                average.pop("estimate", None)
+                average.update(available=False, monthly_average=None, reason=reason)
     if expense.get("reason") == "insufficient_coverage":
         flags.append(quality_flag("monthly_expense_insufficient_coverage", Category.FINANCIAL,
                            f"recorded {expense['months_with_data']}/{expense['months_considered']} months; "
@@ -200,6 +213,12 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
         flags.append(quality_flag("monthly_expense_unknown", Category.FINANCIAL,
                            "ask the user for monthly spending or state an explicit assumption"))
 
+    current_expenses = [e for e in usable if e[3] == "expense" and e[0] >= today.replace(day=1)]
+    comparison_flows = [e for e in flows if e[0] >= month_offset(today, -3)]
+    expense_comparison_complete = bool(current_expenses) and expense["available"] and not any(
+        e[2] != base for e in comparison_flows) and not any(
+        r["occurred_on"] >= month_offset(today, -3).isoformat() for r in missing)
+    recent_expense = any(e[3] == "expense" and today - timedelta(days=29) <= e[0] <= today for e in usable)
     categories: dict[str, Decimal] = {}
     for _, amount, _, kind, category in usable:
         if kind == "expense":
@@ -209,6 +228,9 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
             "currency": base,
             "monthly_expense": expense,
             "monthly_income": income,
+            "current_month_expense": str(q2(sum((e[1] for e in current_expenses), Decimal(0)))) if current_expenses else None,
+            "expense_comparison_complete": expense_comparison_complete,
+            "has_recent_expense": recent_expense,
             "expense_by_category_12m": {k: str(q2(v)) for k, v in sorted(categories.items(), key=lambda kv: -kv[1])[:10]},
             "planned_expenses": [
                 {"ref": f"planned_expenses:{p.id}", "name": p.name, "amount": str(p.amount), "currency": p.currency,
@@ -437,19 +459,24 @@ def get_goals(ctx: ToolContext) -> ToolResult:
 
 
 def get_health_summary(ctx: ToolContext, days: int = 28) -> ToolResult:
-    logs = workout_log_handler.get_since(ctx.session, ctx.today - timedelta(days=days))
+    today = as_aware(ctx.now).astimezone(ZoneInfo(settings.timezone)).date()
+    logs = [log for log in workout_log_handler.get_since(ctx.session, today - timedelta(days=days - 1))
+            if log.performed_on <= today]
+    last = ctx.session.scalar(select(WorkoutLog).where(WorkoutLog.performed_on <= today)
+                              .order_by(WorkoutLog.performed_on.desc(), WorkoutLog.id.desc()).limit(1))
+    evidence = logs + ([last] if last is not None and last not in logs else [])
     total = sum(l.duration_minutes for l in logs)
     return ToolResult(
         data={
             "window_days": days,
             "sessions": len(logs),
             "total_minutes": total,
-            "last_session_on": iso_or_none(logs[-1].performed_on) if logs else None,
+            "last_session_on": iso_or_none(last.performed_on) if last else None,
             "recent": [{"ref": f"workout_logs:{l.id}", "on": l.performed_on.isoformat(), "activity": l.activity,
                         "minutes": l.duration_minutes, "intensity": l.intensity} for l in logs[-10:]],
         },
-        refs=[record_ref("workout_logs", l) for l in logs],
-        source_updated_at=latest_of(*(l.updated_at for l in logs)),
+        refs=[record_ref("workout_logs", l) for l in evidence],
+        source_updated_at=latest_of(*(l.updated_at for l in evidence)),
         flags=[] if logs else [quality_flag("no_workout_logs", Category.HEALTH)],
     )
 

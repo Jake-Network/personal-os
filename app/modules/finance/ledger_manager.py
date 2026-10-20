@@ -73,6 +73,15 @@ def record(session, body):
     return transaction_dict(obj)
 
 
+def get_transaction(session, item_id):
+    obj = session.get(FinancialTransaction, item_id)
+    if obj is None:
+        raise LookupError("Transaction not found")
+    reversed_id = session.scalar(select(FinancialTransaction.id).where(
+        FinancialTransaction.kind == "reversal", FinancialTransaction.reverses_id == item_id))
+    return dict(transaction_dict(obj), is_reversed=reversed_id is not None)
+
+
 def listing(session, year=None):
     # Status must include reversals outside the filtered year and the listing limit.
     reversed_ids = set(
