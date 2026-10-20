@@ -30,10 +30,12 @@ import { type LedgerDraft, type LedgerEntry, LedgerEntrySheet } from './ledger-v
 import { money } from './presentation';
 import { TRANSACTION_KIND_LABEL } from './transaction-kinds';
 
-function PlannedExpenses() {
+export function PlannedExpenses({ recordId = null }: { recordId?: number | null }) {
   const [view, setView] = useStoredView('finance-planned');
   const rows = useResourceRows('planned-expenses');
   const [selected, setSelected] = useState<Row | 'new' | null>(null);
+  const linked = selected ?? rows.data?.find(row => row.id === recordId) ?? null;
+  const [dismissed, setDismissed] = useState(false);
   const today = todayKey();
   const sorted = [...(rows.data ?? [])].sort((a, b) => String(a.due_on).localeCompare(String(b.due_on)));
   return (
@@ -44,7 +46,7 @@ function PlannedExpenses() {
       actions={
         <>
           <ViewToggle value={view} onChange={setView} />
-          <Button size='sm' onClick={() => setSelected('new')}>
+          <Button size='sm' onClick={() => (setDismissed(false), setSelected('new'))}>
             <Plus /> 추가
           </Button>
         </>
@@ -63,7 +65,7 @@ function PlannedExpenses() {
                   <li key={r.id}>
                     <button
                       type='button'
-                      onClick={() => setSelected(r)}
+                      onClick={() => (setDismissed(false), setSelected(r))}
                       className='flex w-full items-center gap-3 px-1 py-2.5 text-left hover:bg-muted/50'>
                       <span className={cn('w-28 shrink-0 text-ui tabular-nums', past ? 'text-faint' : 'text-muted-foreground')}>
                         {dateOnly(String(r.due_on))}
@@ -79,7 +81,17 @@ function PlannedExpenses() {
           )}
         </>
       )}
-      {selected && <RecordSheet resource='planned-expenses' record={selected === 'new' ? null : selected} open onClose={() => setSelected(null)} />}
+      {linked && !dismissed && (
+        <RecordSheet
+          resource='planned-expenses'
+          record={linked === 'new' ? null : linked}
+          open
+          onClose={() => {
+            setSelected(null);
+            setDismissed(true);
+          }}
+        />
+      )}
     </Section>
   );
 }

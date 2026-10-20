@@ -4,12 +4,13 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { RecommendationFeedbackSummary } from './recommendationFeedbackSummary';
 import type { RecommendationFeedbackUserRating } from './recommendationFeedbackUserRating';
 import type { RecommendationFeedbackUserFeedback } from './recommendationFeedbackUserFeedback';
 
 export interface RecommendationFeedback {
   message_id: number;
-  summary: string;
+  summary?: RecommendationFeedbackSummary;
   user_rating?: RecommendationFeedbackUserRating;
   user_feedback?: RecommendationFeedbackUserFeedback;
 }

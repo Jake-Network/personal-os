@@ -21,6 +21,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { monthLabel } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
+import { todayKey } from '@/lib/utils/zoned';
+import { useResourceRows } from '@/features/personal-data/hooks/use-resource';
+import { AccountsView, CoverageConfirm } from './accounts-view';
+
 import { financeApi, type Snapshot } from './api';
 import { HistoryChart } from './history-chart';
 import { PositionsTable } from './positions-table';
@@ -111,27 +115,68 @@ function SnapshotDetail({ snapshot, onClose, onSaved }: { snapshot: Snapshot; on
 }
 
 function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (s: Snapshot) => void }) {
-  const [month, setMonth] = useState('');
+  const [month, setMonth] = useState(() => {
+    const [year, month] = todayKey().split('-').map(Number);
+    const previous = new Date(Date.UTC(year, month - 2, 1));
+    return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+  const [step, setStep] = useState(0);
+  const accounts = useResourceRows('accounts');
+  const liabilities = useResourceRows('liabilities');
+  const otherAssets = useResourceRows('other-assets');
+  const todayConfirmed =
+    (accounts.data?.length ?? 0) + (liabilities.data?.length ?? 0) + (otherAssets.data?.length ?? 0) > 0 &&
+    [accounts, liabilities, otherAssets].every(query => query.isSuccess) &&
+    [...(accounts.data ?? []), ...(liabilities.data ?? [])].every(row => row.balance != null && row.balance_as_of === todayKey()) &&
+    (otherAssets.data ?? []).every(row => row.value != null && row.value_as_of === todayKey());
   const [target, setTarget] = useState<CorrectionTarget | null>(null);
+  const allHistory = useQuery({ queryKey: ['finance', 'history', 'all'], queryFn: () => financeApi.history('all'), enabled: step === 2 });
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
       <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
         <div className='flex flex-col gap-4 p-5'>
-          <SheetTitle className='pr-8 text-title font-semibold'>{target?.kind === 'create' ? `${monthLabel(target.month)} 월말 기록` : '월말 기록 만들기'}</SheetTitle>
-          {target ? (
+          <SheetTitle className='pr-8 text-title font-semibold'>
+            {target?.kind === 'create' ? `${monthLabel(target.month)} 월말 기록` : '월말 체크인'}
+          </SheetTitle>
+          <p className='text-ui' role='status'>
+            {todayConfirmed ? '오늘 확인 완료' : '오늘 확인 미완료'} / 월말 기록 미완료
+          </p>
+          <div className='flex flex-wrap gap-2' role='group' aria-label='월말 체크인 단계'>
+            {['오늘 잔고 확인', '입력 범위 확인', '지난달 근거 입력'].map((label, index) => (
+              <Button key={label} aria-pressed={step === index} onClick={() => setStep(index)}>
+                {index + 1}. {label}
+              </Button>
+            ))}
+          </div>
+          <p className='text-xs text-muted-foreground'>저장한 잔고와 기준일은 중간에 닫아도 유지됩니다. 오늘 확인과 과거 월말 기록은 별도입니다.</p>
+          {step === 0 ? (
+            <>
+              <AccountsView recordId={null} showCoverage={false} />
+              <Button onClick={() => setStep(1)}>입력 범위 확인으로</Button>
+            </>
+          ) : step === 1 ? (
+            <>
+              <CoverageConfirm />
+              <Button onClick={() => setStep(2)}>지난달 근거 입력으로</Button>
+            </>
+          ) : target ? (
             <SnapshotCorrection target={target} onCancel={() => setTarget(null)} onSaved={onSaved} />
           ) : (
             <form
               className='flex items-end gap-2'
               onSubmit={e => {
                 e.preventDefault();
-                if (month) setTarget({ kind: 'create', month });
+                if (month) {
+                  const existing = allHistory.data?.snapshots.find(snapshot => snapshot.month.startsWith(month));
+                  setTarget(existing ? { kind: 'correct', snapshot: existing } : { kind: 'create', month });
+                }
               }}>
               <div className='flex flex-col gap-1'>
                 <Label htmlFor='close-month'>기록할 달</Label>
                 <Input id='close-month' type='month' value={month} onChange={e => setMonth(e.target.value)} required />
               </div>
-              <Button type='submit' variant='primary' disabled={!month}>
+              <QueryStatus pending={allHistory.isPending} error={allHistory.error} retry={allHistory.refetch} label='기존 월말 기록' />
+              <Button type='submit' variant='primary' disabled={!month || allHistory.isPending || allHistory.isError}>
                 다음
               </Button>
             </form>
@@ -160,13 +205,16 @@ export function HistoryView() {
               type='button'
               aria-pressed={period === value}
               onClick={() => setPeriod(value)}
-              className={cn('h-7 rounded-sm px-3 text-ui text-muted-foreground', period === value && 'bg-card font-medium text-foreground shadow-sm')}>
+              className={cn(
+                'h-7 rounded-sm px-3 text-ui text-muted-foreground',
+                period === value && 'bg-card font-medium text-foreground shadow-sm',
+              )}>
               {label}
             </button>
           ))}
         </div>
         <Button variant='primary' className='ml-auto' onClick={() => setClosing(true)}>
-          <Plus /> 월말 기록 만들기
+          <Plus /> 월말 체크인
         </Button>
       </TabToolbar>
 
@@ -203,7 +251,7 @@ export function HistoryView() {
           <EmptyState
             action={
               <Button size='sm' variant='primary' onClick={() => setClosing(true)}>
-                <Plus /> 월말 기록 만들기
+                <Plus /> 월말 체크인
               </Button>
             }>
             선택한 기간에 월말 기록이 없습니다.
@@ -237,7 +285,11 @@ export function HistoryView() {
                     <Change snapshot={snapshot} />
                   </TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
-                    {snapshot.complete ? <span className='text-xs text-faint'>확정</span> : <QualityBadge flags={issueFlags(snapshot.issues)} label='근거 부족' />}
+                    {snapshot.complete ? (
+                      <span className='text-xs text-faint'>확정</span>
+                    ) : (
+                      <QualityBadge flags={issueFlags(snapshot.issues)} label='근거 부족' />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -78,14 +78,14 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 
 | 영역 | 경로 | 내용 |
 | --- | --- | --- |
-| 홈 | `/` | 확인 필요 항목(승인 대기, 확인 대기 기억, 지연된 할 일, 오늘 일정, 데이터 문제), 핵심 수치, 이번 주 |
+| 홈 | `/` | 확인 필요 항목·결정 회고, 상담 준비, 핵심 수치, 이번 주 살펴볼 것 |
 | 상담 | `/advisor` | 상담 목록 · 대화 · 근거 패널 |
 | 할 일·일정 | `/plan` | 통합 달력, 할 일, 일정, 목표, 운동 |
-| 자산 | `/finance` | 개요, 계좌·부채, 투자, 거래, 월별 기록 |
+| 자산 | `/finance` | 개요, 계좌·부채, 투자, 장부, 월말 체크인 |
 | 커리어 | `/career` | 지원 현황, 경력 기록, 타임라인, 평가 기준 |
-| 기록·회고 | `/reflect` | 결정 기록, 기억, 기간 회고 |
+| 기록·회고 | `/reflect` | 결정 기록, 기간 회고 |
 | 문서함 | `/documents` | 문서 업로드·버전·공유 |
-| 설정 | `/settings/*` | AI 연결, 데이터 공유, 시세 연결, 자동 작업, 보안·백업, 화면 |
+| 설정 | `/settings/*` | AI 연결, AI가 아는 나, 데이터 공유, 시세 연결, 자동 작업, 보안·백업, 화면 |
 
 달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 상담에서는 종일 일정의 제목만 변경 제안할 수 있으며 날짜·시각 변경은 달력에서 직접 합니다. 종일 일정은 시간 일정의 충돌 계산에서 제외합니다. 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
 
@@ -101,17 +101,23 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 
 답변은 근거·계산·출력 검증이 끝난 뒤 표시합니다. 처리 중에는 현재 단계를 보여주며, 검증 전 모델 출력은 확정된 답변으로 표시하지 않습니다.
 
-처음 상담할 때 AI 연결 설정을 확인하세요. 입력창 아래 도구 막대에서 공유 범위, 문서 선택, 과거 경험 범위, `깊게 분석`을 조절하며, 웹 검색은 별도로 켜고 공개 검색어를 입력합니다. 과거 메시지 검색 결과에서도 질문을 보낼 수 있으며 새 답변을 확인하도록 최신 대화로 이동합니다. 전송 실패 후 설정을 바꾸면 이전 요청의 저장 여부를 먼저 확인하며, 이전 공유 범위의 본문을 다시 전송하지 않습니다. 입력한 질문 자체는 모델에 전달되므로 비밀번호나 인증정보를 입력하지 마세요.
+처음 상담할 때 AI 연결 설정을 확인하세요. 입력창의 기본 도구는 공유 범위·깊게 분석·더보기·보내기입니다. 문서·과거 경험·웹 검색은 더보기에서 조절하고 변경한 설정은 칩으로 확인합니다. 웹 검색은 별도로 켜고 공개 검색어를 입력합니다. 과거 메시지 검색 결과에서도 질문을 보낼 수 있으며 새 답변을 확인하도록 최신 대화로 이동합니다. 전송 실패 후 설정을 바꾸면 이전 요청의 저장 여부를 먼저 확인하며, 이전 공유 범위의 본문을 다시 전송하지 않습니다. 입력한 질문 자체는 모델에 전달되므로 비밀번호나 인증정보를 입력하지 마세요.
 
 LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 공유 검사를 사용합니다. 외부 추적 전송이나 외부 임베딩 자동 전환은 활성화하지 않습니다. 합성 데이터와 가짜 제공자 회귀 검증은 실제 제공자의 답변 품질·OAuth 연결 성공·실제 문서의 검색 품질 평가를 대신하지 않습니다.
 
 답변의 수치 필터는 금액·재무 지표·증감률·확률에 관한 문장에서 근거에 없는 숫자를 생략합니다. 일반적인 기간·운동 페이스 계산이나 훈련 제안은 새로운 숫자가 있다는 이유만으로 삭제하지 않습니다. 사용자가 입력해 상담에 전달된 DB 값은 근거로 사용합니다. 이 필터는 문구에 따른 보조 검사이며, 통과한 수치의 정확성을 보증하지 않습니다.
 
+저장된 최종 답변은 `결정으로 기록`하거나 👍/👎로 평가할 수 있습니다. 결정 등록·대안 선택·답변 기록은 같은 폼에서 선택·이유·예상 결과·회고일을 입력하며, 원래 답변의 근거를 보존합니다. 회고일은 앱 시간대 오전 9시로 저장합니다. 확인 질문과 미완성·실패 답변은 대상에서 제외됩니다. 평가는 답변별로 저장되며 같은 버튼을 다시 누르면 해제합니다. 평가와 사유는 상담 근거로 전송하지 않습니다.
+
+홈의 `이번 주 살펴볼 것`은 모델 호출 없이 지출·목표 마감·면접·운동 기록을 확인합니다. 지출은 자료가 충분할 때만 이번 달 누적과 최근 완료된 3개월의 월평균을 비교합니다. `상담으로 이어가기`는 질문 초안만 채우며 기존 초안을 덮어쓰거나 자동 전송하지 않습니다. 상담 준비 체크리스트의 AI 연결 완료는 로컬 설정 상태이며 실제 추론 성공을 뜻하지 않습니다. 모두 충족하면 체크리스트가 숨겨집니다. 기억은 `/settings/memory`의 `AI가 아는 나`에서 관리하며 `/memory`, `/reflect/memory`도 이 화면으로 연결됩니다.
+
+사용 후 살펴볼 지표는 재무 근거 충족률, 30일 이내 잔고 비율, 결정·회고 완료율, 메시지별 최신 👎 비율입니다. 이 지표는 답변의 계산 정확성·근거 연결·공유 제한 준수 검증을 대신하지 않으며, 별도의 자동 품질 측정 기능을 뜻하지 않습니다.
+
 ## Portfolio and monthly history
 
-The 자산 area (`/finance`: 개요, `/finance/accounts`, `/finance/investments`, `/finance/transactions`, `/finance/history`) evaluates local DB accounts, holdings, liabilities and FX; the quote connection lives in `/settings/market`. Google OAuth is optional and restricted to a newly created quote-only file using `drive.file`. Only tickers, currency pairs and quote formulas leave the machine; Google can retain the ticker list. Personal quantities and costs stay local. Existing Sheets imports have an explicit preview/import path; existing snapshots and corrections remain unchanged. See [Finance guide](docs/finance.md).
+The 자산 area (`/finance`: 개요, `/finance/accounts`, `/finance/investments`, `/finance/cashflow`, `/finance/history`) evaluates local DB accounts, holdings, liabilities and FX; the quote connection lives in `/settings/market`. Google OAuth is optional and restricted to a newly created quote-only file using `drive.file`. Only tickers, currency pairs and quote formulas leave the machine; Google can retain the ticker list. Personal quantities and costs stay local. Existing Sheets imports have an explicit preview/import path; existing snapshots and corrections remain unchanged. See [Finance guide](docs/finance.md).
 
-`/career` shows job applications and their interviews; `/career/records` links employment, roles, projects, contributions, achievements, evidence and feedback with date precision. Extracted records remain drafts until confirmed and sharing defaults to local-only. `/career/timeline` derives events from their original records. `/advisor` offers paged title/body/date search, source-linked local summary drafts, cross-conversation keyword/local embedding retrieval, and explicit company/project/decision links. `/reflect/memory` stores revisions and validity intervals. Live balances and schedules always come from domain records, while derived sources are rechecked before transmission.
+`/career` shows job applications and their interviews; `/career/records` links employment, roles, projects, contributions, achievements, evidence and feedback with date precision. Extracted records remain drafts until confirmed and sharing defaults to local-only. `/career/timeline` derives events from their original records. `/advisor` offers paged title/body/date search, source-linked local summary drafts, cross-conversation keyword/local embedding retrieval, and explicit company/project/decision links. `/settings/memory` stores revisions and validity intervals. Live balances and schedules always come from domain records, while derived sources are rechecked before transmission.
 
 `/reflect` holds the decision journal and `/reflect/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/settings/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM review is enabled implicitly.
 

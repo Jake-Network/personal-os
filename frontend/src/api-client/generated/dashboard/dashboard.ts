@@ -17,6 +17,8 @@ import type {
   UseQueryResult,
 } from '@tanstack/react-query';
 
+import type { DashboardSummary } from '../../model';
+
 import { customInstance } from '../../custom-client';
 import type { ErrorType } from '../../custom-client';
 
@@ -26,7 +28,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * @summary Summary
  */
 export const summary = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
-  return customInstance<unknown>({ url: `/api/dashboard/summary`, method: 'GET', signal }, options);
+  return customInstance<DashboardSummary>({ url: `/api/dashboard/summary`, method: 'GET', signal }, options);
 };
 
 export const getSummaryQueryKey = () => {

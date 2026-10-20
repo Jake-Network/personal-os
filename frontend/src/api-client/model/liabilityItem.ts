@@ -21,4 +21,5 @@ export interface LiabilityItem {
   monthly_payment?: LiabilityItemMonthlyPayment;
   balance_as_of: string;
   id: number;
+  version: string;
 }

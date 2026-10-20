@@ -23,6 +23,7 @@ import { evidenceHref } from '../consts';
 import type { ChatMessage } from '../types';
 import { snapshotToInspector, stripBlocks } from '../utils';
 import { MemoryProposalCard, ProposalCard } from './proposal-card';
+import { AnswerActions } from './answer-actions';
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -45,12 +46,16 @@ function CopyButton({ text }: { text: string }) {
 export function MessageItem({
   message: m,
   compact,
+  conversationId,
+  question,
   highlighted,
   onEvidence,
   onDocument,
 }: {
   message: ChatMessage;
   compact?: boolean;
+  conversationId?: number | null;
+  question?: string;
   highlighted?: boolean;
   onEvidence: (message: ChatMessage) => void;
   onDocument: (message: ChatMessage, ref: string) => void;
@@ -68,7 +73,11 @@ export function MessageItem({
           {assistant ? (
             m.content ? (
               <div className={m.streaming ? 'typing' : undefined}>
-                <Markdown text={m.streaming ? stripBlocks(m.content) : m.content} onDocumentRef={ref => onDocument(m, ref)} recordHref={evidenceHref} />
+                <Markdown
+                  text={m.streaming ? stripBlocks(m.content) : m.content}
+                  onDocumentRef={ref => onDocument(m, ref)}
+                  recordHref={evidenceHref}
+                />
               </div>
             ) : (
               <span className='typing text-xs text-faint'>기록을 살펴보고 답변을 준비하는 중</span>
@@ -88,7 +97,7 @@ export function MessageItem({
           )}
         </Alert>
       )}
-      <div className={cn('mt-1 flex min-h-7 items-center gap-1 text-2xs text-faint', !assistant && 'justify-end')}>
+      <div className={cn('mt-1 flex min-h-7 flex-wrap items-center gap-1 text-2xs text-faint', !assistant && 'justify-end')}>
         {m.created_at && <span>{dateTime(m.created_at)}</span>}
         {m.status === 'incomplete' && <Badge variant='warning'>답변이 끝나지 않음</Badge>}
         {!assistant && m.status === 'failed' && <Badge>답변 없음</Badge>}
@@ -98,6 +107,9 @@ export function MessageItem({
           </Button>
         )}
         {assistant && !m.streaming && m.content && <CopyButton text={m.content} />}
+        {assistant && m.is_final_answer && m.id && conversationId && !m.streaming && m.status === 'complete' && (
+          <AnswerActions messageId={m.id} conversationId={conversationId} question={question ?? ''} />
+        )}
       </div>
       {m.proposals?.length || m.memoryProposals?.length ? (
         <div className='mt-2 flex flex-col gap-2.5'>

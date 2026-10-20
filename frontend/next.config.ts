@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
       ['/data/goals', '/plan/goals'],
       ['/data/workout-logs', '/plan/workouts'],
       ['/timeline', '/career/timeline'],
-      ['/memory', '/reflect/memory'],
+      ['/memory', '/settings/memory'],
       ['/reviews', '/reflect/reviews'],
       ['/jobs', '/settings/jobs'],
       ['/settings', '/settings/ai-provider'],

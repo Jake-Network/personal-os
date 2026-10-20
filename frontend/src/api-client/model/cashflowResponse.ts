@@ -4,12 +4,14 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { CashflowResponseScope } from './cashflowResponseScope';
 import type { CashflowRow } from './cashflowRow';
 import type { CashflowSummary } from './cashflowSummary';
 import type { CashflowCategory } from './cashflowCategory';
 import type { CashflowMonth } from './cashflowMonth';
 
 export interface CashflowResponse {
+  scope?: CashflowResponseScope;
   month: string;
   currency: string;
   items: CashflowRow[];

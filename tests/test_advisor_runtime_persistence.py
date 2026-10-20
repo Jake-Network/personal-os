@@ -187,3 +187,19 @@ def test_concurrent_duplicate_creation_and_global_worker_limit(tmp_path):
         claimed = list(workers.map(claim, ["first", "second"]))
     assert sum(run_id is not None for run_id in claimed) == 1
     engine.dispose()
+
+
+def test_workspace_projects_original_question_for_legacy_scenario_without_mutation(session):
+    repo, cid = setup_repo(session)
+    original = repo.create(cid, RunCreate(request_id='original-question', message='원래 질문'))
+    original.status = 'completed'
+    session.flush()
+    scenario = repo.create_scenario(cid, ScenarioCreate(request_id='legacy-scenario', title='대안 이름'),
+        run_id=original.id, evidence={'snapshot_id': 'historical-snapshot'})
+    purged = repo.create_scenario(cid, ScenarioCreate(request_id='purged-scenario', title='삭제된 대안'),
+        run_id=original.id, evidence={'source_purged': True})
+    repo.create(cid, RunCreate(request_id='new-question', message='최신 질문'))
+    projected = {item.id: item for item in repo.workspace(cid).scenarios}
+    assert projected[scenario.id].evidence['question'] == '원래 질문'
+    assert 'question' not in projected[purged.id].evidence
+    assert scenario.evidence == {'snapshot_id': 'historical-snapshot'}

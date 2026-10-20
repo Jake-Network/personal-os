@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 import { ArrowRight, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo, Sparkles, TriangleAlert } from 'lucide-react';
 
-import { useListMemories } from '@/api-client/generated/memory/memory';
+import { useListDecisions, useListMemories } from '@/api-client/generated/memory/memory';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
 import { useSummary } from '@/api-client/generated/dashboard/dashboard';
 import { EmptyState } from '@/components/empty-state';
@@ -22,6 +22,8 @@ import { flagText } from '@/lib/labels';
 import { dateOnly, dateTime, dayLabel, moneyShort, relative, timeOnly } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { addDays, todayKey, zonedDayKey } from '@/lib/utils/zoned';
+
+import { isDecisionReviewDue } from '@/features/memory/review-due';
 
 import { recordHref } from '@/features/personal-data/hooks/use-record-param';
 
@@ -92,6 +94,7 @@ interface AgendaEntry {
 export function DashboardView() {
   const summary = useSummary({ query: { select: d => d as DashboardSummary } });
   const pending = useListProposals({ status: 'pending' }).data?.length ?? 0;
+  const dueReviews = (useListDecisions().data ?? []).filter(d => isDecisionReviewDue(d)).length;
   const proposedMemories = useListMemories({ status: 'proposed' }).data?.length ?? 0;
   const data = summary.data;
   const today = todayKey();
@@ -135,8 +138,13 @@ export function DashboardView() {
         승인을 기다리는 제안 <strong>{pending}건</strong>
       </AttentionItem>
     ),
+    dueReviews > 0 && (
+      <AttentionItem key='reviews' href='/reflect' icon={CalendarClock}>
+        회고할 결정 <strong>{dueReviews}건</strong>
+      </AttentionItem>
+    ),
     proposedMemories > 0 && (
-      <AttentionItem key='m' href='/reflect/memory' icon={Sparkles}>
+      <AttentionItem key='m' href='/settings/memory' icon={Sparkles}>
         확인이 필요한 기억 <strong>{proposedMemories}건</strong>
       </AttentionItem>
     ),
@@ -194,6 +202,40 @@ export function DashboardView() {
               </p>
             )}
           </Section>
+
+          {!Object.values(data.checklist).every(Boolean) && (
+            <Section title='상담 준비 체크리스트'>
+              <ul className='space-y-2 text-ui'>
+                {([
+                  [data.checklist.ai_configuration_complete, '/settings/ai-provider', '선택한 AI 연결 설정 완료'],
+                  [data.checklist.has_cash_account, '/finance/accounts', '현금 종류 계좌 등록'],
+                  [data.checklist.has_recent_expense, '/finance/cashflow', '최근 30일 지출 기록'],
+                  [data.checklist.has_active_application_or_goal, '/plan/goals', '진행 중 지원 또는 목표 등록'],
+                ] as const).map(([complete, href, label]) => (
+                  <li key={label}><Link href={href} className='flex items-center gap-2 hover:underline'>
+                    <CheckCircle2 className={cn('size-4', complete ? 'text-success' : 'text-faint')} aria-hidden />
+                    <span>{label}</span><span className='text-xs text-faint'>{complete ? '완료' : '준비 필요'}</span>
+                  </Link></li>
+                ))}
+              </ul>
+              <p className='mt-2 text-xs text-faint'>AI 연결 설정 완료는 실제 답변 생성 성공을 의미하지 않습니다.</p>
+            </Section>
+          )}
+          {data.signals.length > 0 && (
+            <Section title='이번 주 살펴볼 것'>
+              <ul className='divide-y'>
+                {data.signals.map(signal => (
+                  <li key={signal.kind} className='flex flex-wrap items-center justify-between gap-2 py-2'>
+                    <span>{signal.kind === 'expenses' ? '이번 달 누적 지출이 최근 3개월 월평균을 넘었습니다.'
+                      : signal.kind === 'goals' ? `14일 안에 마감하는 목표 ${signal.count}개가 있습니다.`
+                      : signal.kind === 'interviews' ? `7일 안에 면접 ${signal.count}건이 있습니다.`
+                      : '최근 7일 동안 운동 기록이 없습니다.'}</span>
+                    <Link href={`/advisor?briefing=${signal.kind}`} className='text-xs text-primary hover:underline'>상담으로 이어가기</Link>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
 
           <div className='mb-7 grid grid-cols-1 gap-3 md:grid-cols-3'>
             <Figure

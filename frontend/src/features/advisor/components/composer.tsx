@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, FileText, Globe, History, Microscope, SendHorizontal, ShieldCheck } from 'lucide-react';
+import { ChevronDown, FileText, Globe, History, Microscope, MoreHorizontal, SendHorizontal, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 import type { Category } from '@/api-client/model';
@@ -32,7 +32,16 @@ const toolOn = 'border-input bg-accent text-accent-foreground hover:bg-accent';
 export function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; privacyBlocked: Category[] }) {
   const { preview, input } = send;
   const on = preview ? ALL_CATEGORIES.filter(c => preview.categories.includes(c)) : [];
-  const label = !input.trim() ? '공유 범위' : !preview ? '공유 범위 확인 중' : on.length ? `${on.slice(0, 2).map(c => CATEGORY_LABEL[c]).join('·')}${on.length > 2 ? ` 외 ${on.length - 2}` : ''} 공유` : '개인 기록 공유 안 함';
+  const label = !input.trim()
+    ? '공유 범위'
+    : !preview
+      ? '공유 범위 확인 중'
+      : on.length
+        ? `${on
+            .slice(0, 2)
+            .map(c => CATEGORY_LABEL[c])
+            .join('·')}${on.length > 2 ? ` 외 ${on.length - 2}` : ''} 공유`
+        : '개인 기록 공유 안 함';
   return (
     <Popover>
       <PopoverTrigger className={cn(toolClass, 'min-w-28 justify-start')} aria-label={`이번 질문의 공유 범위: ${label}`}>
@@ -53,7 +62,13 @@ export function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; priv
                 <Switch id={id} checked={checked} disabled={blocked || c === 'profile' || send.busy} onCheckedChange={() => send.toggleCategory(c)} />
                 <Label htmlFor={id} className={cn('flex-1', blocked && 'text-faint')}>
                   {CATEGORY_LABEL[c]}
-                  <span className='block text-2xs font-normal text-faint'>{c === 'profile' ? '개인 프로필 공유는 기본 공유 설정에서 변경할 수 있습니다.' : blocked ? '데이터 공유 설정에서 제외됨' : CATEGORY_HINT[c]}</span>
+                  <span className='block text-2xs font-normal text-faint'>
+                    {c === 'profile'
+                      ? '개인 프로필 공유는 기본 공유 설정에서 변경할 수 있습니다.'
+                      : blocked
+                        ? '데이터 공유 설정에서 제외됨'
+                        : CATEGORY_HINT[c]}
+                  </span>
                 </Label>
               </div>
             );
@@ -73,7 +88,13 @@ function DocumentPicker({ send }: { send: AdvisorSend }) {
   const shareable = (documents.data ?? []).filter(d => d.sharing_enabled && d.active_version_id);
   const shown = shareable.filter(d => d.title.toLowerCase().includes(query.trim().toLowerCase()));
   const ids = draft.documentIds ?? [];
-  const label = !draft.documentSearch ? '문서 안 씀' : ids.length ? `문서 ${ids.length}개` : '문서 자동';
+  const label = !draft.documentSearch
+    ? '문서 안 씀'
+    : ids.length
+      ? `문서 ${ids.length}개`
+      : draft.documentIds === null
+        ? '문서 선택 이어받기'
+        : '문서 주제로 찾기';
   return (
     <Popover>
       <PopoverTrigger className={cn(toolClass, draft.documentSearch && ids.length > 0 && toolOn)} disabled={busy}>
@@ -90,7 +111,9 @@ function DocumentPicker({ send }: { send: AdvisorSend }) {
         {draft.documentSearch && (
           <>
             <p className='text-2xs text-faint'>지정하지 않으면 질문 주제에 맞는 문서를 찾습니다. 최대 {MAX_DOCUMENTS}개까지 지정할 수 있습니다.</p>
-            {shareable.length > 6 && <Input placeholder='문서 찾기' value={query} onChange={e => setQuery(e.target.value)} aria-label='문서 이름으로 찾기' />}
+            {shareable.length > 6 && (
+              <Input placeholder='문서 찾기' value={query} onChange={e => setQuery(e.target.value)} aria-label='문서 이름으로 찾기' />
+            )}
             <div className='flex max-h-56 flex-col gap-1 overflow-y-auto'>
               {documents.error && <p className='text-xs text-destructive'>문서 목록을 불러오지 못했습니다.</p>}
               {documents.isSuccess && shareable.length === 0 && <p className='text-xs text-faint'>공유할 수 있는 문서가 없습니다.</p>}
@@ -109,10 +132,13 @@ function DocumentPicker({ send }: { send: AdvisorSend }) {
               })}
             </div>
             {draft.documentIds !== null && (
-              <Button size='sm' variant='ghost' className='self-start' onClick={() => updateDraft({ documentIds: [] })}>
-                지정 해제하고 주제로 찾기
+              <Button size='sm' variant='ghost' onClick={() => updateDraft({ documentIds: null })}>
+                이전 문서 선택 이어받기
               </Button>
             )}
+            <Button size='sm' variant='ghost' className='self-start' onClick={() => updateDraft({ documentIds: [] })}>
+              지정 해제하고 주제로 찾기
+            </Button>
           </>
         )}
         <Link href='/documents' className='text-xs text-primary hover:underline'>
@@ -141,14 +167,28 @@ function HistoryScope({ send }: { send: AdvisorSend }) {
         </div>
         <div className='flex flex-col gap-1'>
           <Label htmlFor='history-project'>프로젝트</Label>
-          <RecordSelect id='history-project' fieldName='project_id' value={draft.historyProject} onChange={e => updateDraft({ historyProject: e.target.value })} />
+          <RecordSelect
+            id='history-project'
+            fieldName='project_id'
+            value={draft.historyProject}
+            onChange={e => updateDraft({ historyProject: e.target.value })}
+          />
         </div>
         <div className='flex flex-col gap-1'>
           <Label htmlFor='history-decision'>결정</Label>
-          <RecordSelect id='history-decision' fieldName='decision_id' value={draft.historyDecision} onChange={e => updateDraft({ historyDecision: e.target.value })} />
+          <RecordSelect
+            id='history-decision'
+            fieldName='decision_id'
+            value={draft.historyDecision}
+            onChange={e => updateDraft({ historyDecision: e.target.value })}
+          />
         </div>
         {count > 0 && (
-          <Button size='sm' variant='ghost' className='self-start' onClick={() => updateDraft({ historyCompany: '', historyProject: '', historyDecision: '' })}>
+          <Button
+            size='sm'
+            variant='ghost'
+            className='self-start'
+            onClick={() => updateDraft({ historyCompany: '', historyProject: '', historyDecision: '' })}>
             범위 지우기
           </Button>
         )}
@@ -196,7 +236,13 @@ export function Composer({
         <div className='rounded-lg border bg-background focus-within:ring-2 focus-within:ring-ring'>
           <Textarea
             className='max-h-[200px] min-h-[52px] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0'
-            placeholder={waiting ? '위 질문에 답해 주세요' : busy ? '분석하는 동안 다음 질문을 미리 써 둘 수 있습니다' : '무엇이든 물어보세요. 예: 지금 퇴사해도 6개월 버틸 수 있을까?'}
+            placeholder={
+              waiting
+                ? '위 질문에 답해 주세요'
+                : busy
+                  ? '분석하는 동안 다음 질문을 미리 써 둘 수 있습니다'
+                  : '무엇이든 물어보세요. 예: 지금 퇴사해도 6개월 버틸 수 있을까?'
+            }
             value={send.input}
             onChange={e => send.setInput(e.target.value)}
             onKeyDown={e => {
@@ -212,17 +258,6 @@ export function Composer({
             {!waiting && (
               <>
                 <ShareSummary send={send} privacyBlocked={privacyBlocked} />
-                <DocumentPicker send={send} />
-                {!compact && <HistoryScope send={send} />}
-                <button
-                  type='button'
-                  className={cn(toolClass, draft.webSearch && toolOn)}
-                  aria-pressed={draft.webSearch}
-                  disabled={busy}
-                  onClick={() => updateDraft({ webSearch: !draft.webSearch })}>
-                  <Globe />
-                  웹 검색
-                </button>
                 <button
                   type='button'
                   className={cn(toolClass, draft.depth === 'deep' && toolOn)}
@@ -232,6 +267,24 @@ export function Composer({
                   <Microscope />
                   깊게 분석
                 </button>
+                <Popover>
+                  <PopoverTrigger className={toolClass} disabled={busy}>
+                    <MoreHorizontal />
+                    더보기
+                  </PopoverTrigger>
+                  <PopoverContent className='flex flex-col items-start gap-2'>
+                    <DocumentPicker send={send} />
+                    <HistoryScope send={send} />
+                    <button
+                      type='button'
+                      className={cn(toolClass, draft.webSearch && toolOn)}
+                      aria-pressed={draft.webSearch}
+                      disabled={busy}
+                      onClick={() => updateDraft({ webSearch: !draft.webSearch })}>
+                      <Globe />웹 검색
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </>
             )}
             <Button variant='primary' size='sm' className='ml-auto' onClick={() => void send.send()} disabled={!send.canSend}>
@@ -240,6 +293,23 @@ export function Composer({
             </Button>
           </div>
         </div>
+        {!waiting && (
+          <div className='flex flex-wrap gap-1 text-2xs text-muted-foreground'>
+            {!draft.documentSearch ? (
+              <span className='rounded border px-2 py-0.5'>문서 검색 끔</span>
+            ) : (
+              draft.documentIds !== null && (
+                <span className='rounded border px-2 py-0.5'>
+                  {draft.documentIds.length ? `지정 문서 ${draft.documentIds.length}개` : '문서 지정 해제 · 주제로 찾기'}
+                </span>
+              )
+            )}
+            {[draft.historyCompany, draft.historyProject, draft.historyDecision].some(Boolean) && (
+              <span className='rounded border px-2 py-0.5'>과거 경험 범위 지정</span>
+            )}
+            {draft.webSearch && <span className='rounded border px-2 py-0.5'>웹 검색 사용</span>}
+          </div>
+        )}
         {draft.webSearch && !waiting && (
           <div className='flex flex-col gap-1'>
             <Input

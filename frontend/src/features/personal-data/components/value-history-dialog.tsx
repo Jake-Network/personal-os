@@ -2,7 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { getHistoryAccountsQueryOptions, getHistoryHoldingsQueryOptions } from '@/api-client/generated/personal-data/personal-data';
+import {
+  getHistoryAccountsQueryOptions,
+  getHistoryHoldingsQueryOptions,
+  getHistoryLiabilitiesQueryOptions,
+  getHistoryOtherAssetsQueryOptions,
+} from '@/api-client/generated/personal-data/personal-data';
 import type { ValueChangeItem } from '@/api-client/model';
 import { EmptyState } from '@/components/empty-state';
 import { Alert } from '@/components/ui/alert';
@@ -14,11 +19,13 @@ import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
 import { fieldLabel } from '../consts/resources';
 
 /** Resources whose manual value edits are kept in the append-only history. */
-export const HISTORY_RESOURCES = new Set(['accounts', 'holdings']);
+export const HISTORY_RESOURCES = new Set(['accounts', 'holdings', 'liabilities', 'other-assets']);
 
 const CHANGE_LABEL: Record<string, string> = { baseline: '기존 값', create: '등록', update: '수정', delete: '삭제' };
 
 function historyQuery(resource: string, id: number) {
+  if (resource === 'liabilities') return getHistoryLiabilitiesQueryOptions(id);
+  if (resource === 'other-assets') return getHistoryOtherAssetsQueryOptions(id);
   return resource === 'accounts' ? getHistoryAccountsQueryOptions(id) : getHistoryHoldingsQueryOptions(id);
 }
 
@@ -57,7 +64,11 @@ export function ValueHistoryDialog({ resource, id, label, onClose }: { resource:
                 <TableRow key={row.id}>
                   <TableCell>{dateOnly(row.as_of)}</TableCell>
                   <TableCell>{fieldLabel(row.field)}</TableCell>
-                  <TableCell>{CHANGE_LABEL[row.change_kind] ?? row.change_kind}</TableCell>
+                  <TableCell>
+                    {row.change_kind === 'update' && row.old_value === row.new_value
+                      ? '기준일 확인'
+                      : (CHANGE_LABEL[row.change_kind] ?? row.change_kind)}
+                  </TableCell>
                   <TableCell className='text-right tabular-nums'>{value(row, row.old_value)}</TableCell>
                   <TableCell className='text-right tabular-nums'>{value(row, row.new_value)}</TableCell>
                   <TableCell className='text-faint'>{dateTime(row.recorded_at)}</TableCell>

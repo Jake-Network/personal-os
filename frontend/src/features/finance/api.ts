@@ -57,6 +57,7 @@ export type FinanceLine = {
 };
 
 export type Portfolio = {
+  coverage?: string[];
   lines: FinanceLine[];
   total_assets: string | null;
   total_liabilities: string | null;
@@ -83,6 +84,8 @@ export type Snapshot = Portfolio & {
 };
 
 export const financeApi = {
+  confirmValue: (resource: 'accounts' | 'liabilities' | 'other-assets', id: number, version: string) =>
+    customInstance({ url: `/api/data/${resource}/${id}/confirm-value`, method: 'POST', data: { expected_version: version } }),
   googleStatus: () => customInstance<GoogleConnection>({ url: '/api/finance/google/status' }),
   googleLogin: (writeAccess = false, returnTo?: 'holdings') =>
     customInstance<{ authorize_url: string }>({

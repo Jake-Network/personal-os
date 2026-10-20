@@ -29,6 +29,7 @@ import type {
   CareerCriterionItem,
   CashflowEntryCreate,
   CashflowEntryItem,
+  ConfirmValueInput,
   FxRateCreate,
   FxRateItem,
   GoalCreate,
@@ -268,6 +269,78 @@ export const useDeleteAccounts = <TError = ErrorType<HTTPValidationError>, TCont
   queryClient?: QueryClient,
 ): UseMutationResult<Awaited<ReturnType<typeof deleteAccounts>>, TError, { itemId: number }, TContext> => {
   const mutationOptions = getDeleteAccountsMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Confirm Value
+ */
+export const confirmValueAccounts = (
+  itemId: number,
+  confirmValueInput: BodyType<ConfirmValueInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<AccountItem>(
+    {
+      url: `/api/data/accounts/${itemId}/confirm-value`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: confirmValueInput,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getConfirmValueAccountsMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmValueAccounts>>,
+    TError,
+    { itemId: number; data: BodyType<ConfirmValueInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof confirmValueAccounts>>, TError, { itemId: number; data: BodyType<ConfirmValueInput> }, TContext> => {
+  const mutationKey = ['confirmValueAccounts'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmValueAccounts>>,
+    { itemId: number; data: BodyType<ConfirmValueInput> }
+  > = props => {
+    const { itemId, data } = props ?? {};
+
+    return confirmValueAccounts(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmValueAccountsMutationResult = NonNullable<Awaited<ReturnType<typeof confirmValueAccounts>>>;
+export type ConfirmValueAccountsMutationBody = BodyType<ConfirmValueInput>;
+export type ConfirmValueAccountsMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Confirm Value
+ */
+export const useConfirmValueAccounts = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof confirmValueAccounts>>,
+      TError,
+      { itemId: number; data: BodyType<ConfirmValueInput> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof confirmValueAccounts>>, TError, { itemId: number; data: BodyType<ConfirmValueInput> }, TContext> => {
+  const mutationOptions = getConfirmValueAccountsMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };
@@ -591,6 +664,176 @@ export const useDeleteOtherAssets = <TError = ErrorType<HTTPValidationError>, TC
   return useMutation(mutationOptions, queryClient);
 };
 /**
+ * @summary Confirm Value
+ */
+export const confirmValueOtherAssets = (
+  itemId: number,
+  confirmValueInput: BodyType<ConfirmValueInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<OtherAssetItem>(
+    {
+      url: `/api/data/other-assets/${itemId}/confirm-value`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: confirmValueInput,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getConfirmValueOtherAssetsMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmValueOtherAssets>>,
+    TError,
+    { itemId: number; data: BodyType<ConfirmValueInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmValueOtherAssets>>,
+  TError,
+  { itemId: number; data: BodyType<ConfirmValueInput> },
+  TContext
+> => {
+  const mutationKey = ['confirmValueOtherAssets'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmValueOtherAssets>>,
+    { itemId: number; data: BodyType<ConfirmValueInput> }
+  > = props => {
+    const { itemId, data } = props ?? {};
+
+    return confirmValueOtherAssets(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmValueOtherAssetsMutationResult = NonNullable<Awaited<ReturnType<typeof confirmValueOtherAssets>>>;
+export type ConfirmValueOtherAssetsMutationBody = BodyType<ConfirmValueInput>;
+export type ConfirmValueOtherAssetsMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Confirm Value
+ */
+export const useConfirmValueOtherAssets = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof confirmValueOtherAssets>>,
+      TError,
+      { itemId: number; data: BodyType<ConfirmValueInput> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof confirmValueOtherAssets>>,
+  TError,
+  { itemId: number; data: BodyType<ConfirmValueInput> },
+  TContext
+> => {
+  const mutationOptions = getConfirmValueOtherAssetsMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Append-only manual edit history; kept even after the record itself is deleted.
+ * @summary Item History
+ */
+export const historyOtherAssets = (itemId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<ValueChangeItem[]>({ url: `/api/data/other-assets/${itemId}/history`, method: 'GET', signal }, options);
+};
+
+export const getHistoryOtherAssetsQueryKey = (itemId?: number) => {
+  return [`/api/data/other-assets/${itemId}/history`] as const;
+};
+
+export const getHistoryOtherAssetsQueryOptions = <TData = Awaited<ReturnType<typeof historyOtherAssets>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getHistoryOtherAssetsQueryKey(itemId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof historyOtherAssets>>> = ({ signal }) => historyOtherAssets(itemId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!itemId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof historyOtherAssets>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type HistoryOtherAssetsQueryResult = NonNullable<Awaited<ReturnType<typeof historyOtherAssets>>>;
+export type HistoryOtherAssetsQueryError = ErrorType<HTTPValidationError>;
+
+export function useHistoryOtherAssets<TData = Awaited<ReturnType<typeof historyOtherAssets>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, Awaited<ReturnType<typeof historyOtherAssets>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useHistoryOtherAssets<TData = Awaited<ReturnType<typeof historyOtherAssets>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, Awaited<ReturnType<typeof historyOtherAssets>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useHistoryOtherAssets<TData = Awaited<ReturnType<typeof historyOtherAssets>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Item History
+ */
+
+export function useHistoryOtherAssets<TData = Awaited<ReturnType<typeof historyOtherAssets>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyOtherAssets>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getHistoryOtherAssetsQueryOptions(itemId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * @summary List Items
  */
 export const listLiabilities = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
@@ -818,6 +1061,176 @@ export const useDeleteLiabilities = <TError = ErrorType<HTTPValidationError>, TC
 
   return useMutation(mutationOptions, queryClient);
 };
+/**
+ * @summary Confirm Value
+ */
+export const confirmValueLiabilities = (
+  itemId: number,
+  confirmValueInput: BodyType<ConfirmValueInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<LiabilityItem>(
+    {
+      url: `/api/data/liabilities/${itemId}/confirm-value`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: confirmValueInput,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getConfirmValueLiabilitiesMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof confirmValueLiabilities>>,
+    TError,
+    { itemId: number; data: BodyType<ConfirmValueInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof confirmValueLiabilities>>,
+  TError,
+  { itemId: number; data: BodyType<ConfirmValueInput> },
+  TContext
+> => {
+  const mutationKey = ['confirmValueLiabilities'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof confirmValueLiabilities>>,
+    { itemId: number; data: BodyType<ConfirmValueInput> }
+  > = props => {
+    const { itemId, data } = props ?? {};
+
+    return confirmValueLiabilities(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ConfirmValueLiabilitiesMutationResult = NonNullable<Awaited<ReturnType<typeof confirmValueLiabilities>>>;
+export type ConfirmValueLiabilitiesMutationBody = BodyType<ConfirmValueInput>;
+export type ConfirmValueLiabilitiesMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Confirm Value
+ */
+export const useConfirmValueLiabilities = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof confirmValueLiabilities>>,
+      TError,
+      { itemId: number; data: BodyType<ConfirmValueInput> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof confirmValueLiabilities>>,
+  TError,
+  { itemId: number; data: BodyType<ConfirmValueInput> },
+  TContext
+> => {
+  const mutationOptions = getConfirmValueLiabilitiesMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Append-only manual edit history; kept even after the record itself is deleted.
+ * @summary Item History
+ */
+export const historyLiabilities = (itemId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<ValueChangeItem[]>({ url: `/api/data/liabilities/${itemId}/history`, method: 'GET', signal }, options);
+};
+
+export const getHistoryLiabilitiesQueryKey = (itemId?: number) => {
+  return [`/api/data/liabilities/${itemId}/history`] as const;
+};
+
+export const getHistoryLiabilitiesQueryOptions = <TData = Awaited<ReturnType<typeof historyLiabilities>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getHistoryLiabilitiesQueryKey(itemId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof historyLiabilities>>> = ({ signal }) => historyLiabilities(itemId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!itemId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof historyLiabilities>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type HistoryLiabilitiesQueryResult = NonNullable<Awaited<ReturnType<typeof historyLiabilities>>>;
+export type HistoryLiabilitiesQueryError = ErrorType<HTTPValidationError>;
+
+export function useHistoryLiabilities<TData = Awaited<ReturnType<typeof historyLiabilities>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, Awaited<ReturnType<typeof historyLiabilities>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useHistoryLiabilities<TData = Awaited<ReturnType<typeof historyLiabilities>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, Awaited<ReturnType<typeof historyLiabilities>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useHistoryLiabilities<TData = Awaited<ReturnType<typeof historyLiabilities>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Item History
+ */
+
+export function useHistoryLiabilities<TData = Awaited<ReturnType<typeof historyLiabilities>>, TError = ErrorType<HTTPValidationError>>(
+  itemId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof historyLiabilities>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getHistoryLiabilitiesQueryOptions(itemId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
 /**
  * @summary List Items
  */

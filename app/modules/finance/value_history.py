@@ -8,6 +8,8 @@ from pydantic import BaseModel
 # resource name -> (table name, as-of attribute on the row, tracked fields)
 TRACKED: dict[str, tuple[str, str | None, tuple[str, ...]]] = {
     "accounts": ("accounts", "balance_as_of", ("balance",)),
+    "liabilities": ("liabilities", "balance_as_of", ("balance",)),
+    "other-assets": ("other_assets", "value_as_of", ("value",)),
     "holdings": ("holdings", None, ("quantity", "avg_cost")),
 }
 # Request fields that only date the history row and are not columns of the current-state table.

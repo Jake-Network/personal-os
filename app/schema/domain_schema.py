@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer, model_validator
 
 from app.modules.finance.formatting import quantity_text
 
@@ -28,8 +28,19 @@ class AccountCreate(BaseModel):
     is_liquid: bool = True
 
 
+class ConfirmValueInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: datetime
+
+
 class AccountItem(_Item, AccountCreate):
-    pass
+    version: datetime = Field(validation_alias="updated_at")
+
+    @computed_field
+    @property
+    def balance_stale(self) -> bool:
+        from app.modules.finance.clock import local_today
+        return (local_today() - self.balance_as_of).days > 45
 
 
 class OtherAssetCreate(BaseModel):
@@ -42,7 +53,7 @@ class OtherAssetCreate(BaseModel):
 
 
 class OtherAssetItem(_Item, OtherAssetCreate):
-    pass
+    version: datetime = Field(validation_alias="updated_at")
 
 
 class LiabilityCreate(BaseModel):
@@ -56,7 +67,7 @@ class LiabilityCreate(BaseModel):
 
 
 class LiabilityItem(_Item, LiabilityCreate):
-    pass
+    version: datetime = Field(validation_alias="updated_at")
 
 
 class HoldingCreate(BaseModel):

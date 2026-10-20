@@ -4,12 +4,14 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { DecisionCreateSourceMessageId } from './decisionCreateSourceMessageId';
 import type { DecisionCreateExpectedOutcome } from './decisionCreateExpectedOutcome';
 import type { DecisionCreateContextSnapshotId } from './decisionCreateContextSnapshotId';
 import type { DecisionCreateConversationId } from './decisionCreateConversationId';
 import type { DecisionCreateReviewOn } from './decisionCreateReviewOn';
 
 export interface DecisionCreate {
+  source_message_id?: DecisionCreateSourceMessageId;
   title: string;
   choice: string;
   rationale: string;

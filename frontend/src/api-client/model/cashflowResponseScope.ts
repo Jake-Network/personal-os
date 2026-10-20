@@ -5,10 +5,10 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type CashflowRowKind = (typeof CashflowRowKind)[keyof typeof CashflowRowKind];
+export type CashflowResponseScope = (typeof CashflowResponseScope)[keyof typeof CashflowResponseScope];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-export const CashflowRowKind = {
-  income: 'income',
-  expense: 'expense',
+export const CashflowResponseScope = {
+  household: 'household',
+  all: 'all',
 } as const;

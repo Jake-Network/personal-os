@@ -57,7 +57,12 @@ def list_decisions(session: Session = Depends(get_session)):
 
 @router.post("/decisions", response_model=DecisionItem, status_code=201)
 def create_decision(body: DecisionCreate, session: Session = Depends(get_session)):
-    return decision_journal_manager.create(session, body)
+    try:
+        return decision_journal_manager.create(session, body)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post("/decisions/{entry_id}/review", response_model=DecisionItem)

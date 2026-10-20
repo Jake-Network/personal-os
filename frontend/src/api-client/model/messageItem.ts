@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { MessageItemContextSnapshotId } from './messageItemContextSnapshotId';
+import type { MessageItemSourceQuestion } from './messageItemSourceQuestion';
 import type { MessageItemModel } from './messageItemModel';
 
 export interface MessageItem {
@@ -14,6 +15,8 @@ export interface MessageItem {
   content: string;
   status: string;
   context_snapshot_id: MessageItemContextSnapshotId;
+  is_final_answer?: boolean;
+  source_question?: MessageItemSourceQuestion;
   model: MessageItemModel;
   created_at: string;
 }

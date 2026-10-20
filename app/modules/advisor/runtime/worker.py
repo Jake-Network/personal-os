@@ -170,7 +170,7 @@ async def process_one(database):
             if user:
                 user.status, user.context_snapshot_id = 'complete', snapshot_id
             row.assistant_message_id = reply.id
-            evidence = {'snapshot_id': snapshot_id, 'baseline_snapshot_id': state.get('baseline_snapshot_id', snapshot_id),
+            evidence = {'question': body.message, 'snapshot_id': snapshot_id, 'baseline_snapshot_id': state.get('baseline_snapshot_id', snapshot_id),
                         'as_of': state.get('baseline_payload', {}).get('generated_at') or state.get('context', {}).get('generated_at')}
             scenarios = []
             scenario_views = []

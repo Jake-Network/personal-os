@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { getSummaryQueryKey } from '@/api-client/generated/dashboard/dashboard';
+
 import { RESOURCE_API, type Row } from '../api/resource-api';
 
 export function useResourceRows<T extends Row = Row>(resource: string, enabled = true) {
@@ -18,7 +20,7 @@ export function useInvalidateResource() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: RESOURCE_API[resource].queryKey }),
       queryClient.invalidateQueries({ queryKey: ['finance'] }),
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: getSummaryQueryKey() }),
       queryClient.invalidateQueries({ queryKey: ['/api/timeline'] }),
     ]);
 }
@@ -33,7 +35,7 @@ export function useUpdateRow(resource: string) {
   });
 }
 
-const SERVER_FIELDS = new Set(['id', 'created_at', 'updated_at', 'ref']);
+const SERVER_FIELDS = new Set(['id', 'created_at', 'updated_at', 'ref', 'version', 'balance_stale']);
 
 /** PUT replaces the record: send the stored fields plus the changes, never the server-managed ones. */
 export function updatePayload(row: Row, changes: Record<string, unknown>): Record<string, unknown> {

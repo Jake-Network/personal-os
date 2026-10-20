@@ -29,6 +29,10 @@ const response: CashflowResponse = {
 };
 
 describe('household ledger view', () => {
+  it('offers all transaction filters and preserved entry points', () => {
+    const html = render(response);
+    for (const label of ['매수', '매도', '상환', '예정 지출', '거래 추가', '오늘 평가액 기록', 'CSV 붙여넣기']) expect(html).toContain(label);
+  });
   it('labels totals, categories, trends and excluded records in the response currency', () => {
     const html = render({
       ...response,
@@ -58,6 +62,12 @@ describe('household ledger view', () => {
     expect(html).toContain('미기록');
     expect(html).toContain('외화 기록 1건은 원화 합계에서 제외했습니다.');
     expect(html).toContain('1 / 24');
+  });
+
+  it('shows quantity-only rights changes without inventing a monetary amount', () => {
+    const html = render({ ...response, total: 1, items: [{ source: 'financial_transactions', id: 8, occurred_on: '2026-10-01', kind: 'split', original_kind: 'split', amount: null, quantity: '0.125', currency: null, category: '미분류', description: '권리변동', is_reversed: false }] });
+    expect(html).toContain('수량 0.125');
+    expect(html).not.toContain('0원');
   });
 
   it('offers edit for ordinary records and cancellation for ledger records sharing the same id', () => {

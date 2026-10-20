@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '@/api-client/api-error';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
-import { getListDecisionsQueryKey, useCreateDecision } from '@/api-client/generated/memory/memory';
+import { DecisionFormSheet } from '@/features/memory/components/decision-form';
 import type { ScenarioView } from '@/api-client/model';
 import { Alert } from '@/components/ui/alert';
 import { X } from 'lucide-react';
@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { advisorLabel, advisorValue, visibleAdvisorEntries } from '../presentation';
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
@@ -86,7 +85,7 @@ function ScenarioCard({
         </details>
       )}
       <div className='flex flex-wrap gap-1.5'>
-        <Button size='sm' variant='primary' disabled={busy} onClick={onDecision}>
+        <Button size='sm' variant='primary' disabled={busy || typeof scenario.evidence.snapshot_id !== 'string'} onClick={onDecision}>
           이걸로 결정
         </Button>
         <Button size='sm' disabled={busy || selected} onClick={onSelect}>
@@ -96,6 +95,9 @@ function ScenarioCard({
           조건 바꿔 보기
         </Button>
       </div>
+      {typeof scenario.evidence.snapshot_id !== 'string' && (
+        <p className='text-xs text-warning'>분석 당시 근거가 없어 이 대안을 결정에 연결할 수 없습니다.</p>
+      )}
       {editing && (
         <div className='grid gap-2'>
           <Textarea
@@ -145,15 +147,7 @@ export function WorkspacePanel({
     { status: 'pending' },
     { query: { enabled: conversationId !== null, select: list => list.filter(p => p.conversation_id === conversationId) } },
   );
-  const [decision, setDecision] = useState<{ scenario: ScenarioView; rationale: string; expected: string; reviewOn: string } | null>(null);
-  const recordDecision = useCreateDecision({
-    mutation: {
-      onSuccess: () => {
-        setDecision(null);
-        return queryClient.invalidateQueries({ queryKey: getListDecisionsQueryKey() });
-      },
-    },
-  });
+  const [decision, setDecision] = useState<ScenarioView | null>(null);
   const scenarioRequests = useRef(new Map<string, { scenarioRequest: string; runRequest: string }>());
   const mutation = useMutation({
     mutationFn: async ({ scenario, condition }: { scenario: ScenarioView; condition?: string }) => {
@@ -198,7 +192,7 @@ export function WorkspacePanel({
       busy={busy}
       onSelect={() => mutation.mutate({ scenario })}
       onRevise={condition => mutation.mutateAsync({ scenario, condition })}
-      onDecision={() => setDecision({ scenario, rationale: '', expected: '', reviewOn: '' })}
+      onDecision={() => setDecision(scenario)}
     />
   );
   const hasScenarios = !!workspace.data?.scenarios?.length;
@@ -250,48 +244,23 @@ export function WorkspacePanel({
             </details>
           )}
           {decision && (
-            <form
-              className='grid gap-2 rounded-lg border p-3'
-              onSubmit={event => {
-                event.preventDefault();
-                recordDecision.mutate({
-                  data: {
-                    title: decision.scenario.title,
-                    choice: decision.scenario.title,
-                    rationale: decision.rationale,
-                    alternatives: currentScenarios.filter(scenario => scenario.id !== decision.scenario.id).map(scenario => scenario.title),
-                    expected_outcome: decision.expected || null,
-                    review_on: decision.reviewOn || null,
-                    conversation_id: conversationId,
-                    context_snapshot_id:
-                      (decision.scenario.evidence.snapshot_id as string | undefined) ??
-                      (run?.result?.context_snapshot_id as string | null | undefined),
-                  },
-                });
-              }}>
-              <h3 className='text-sm font-medium'>결정 기록 · {decision.scenario.title}</h3>
-              <label className='grid gap-1 text-xs'>
-                선택한 이유
-                <Textarea required value={decision.rationale} onChange={e => setDecision({ ...decision, rationale: e.target.value })} />
-              </label>
-              <label className='grid gap-1 text-xs'>
-                기대 결과
-                <Textarea value={decision.expected} onChange={e => setDecision({ ...decision, expected: e.target.value })} />
-              </label>
-              <label className='grid gap-1 text-xs'>
-                돌아볼 날짜
-                <Input type='date' value={decision.reviewOn} onChange={e => setDecision({ ...decision, reviewOn: e.target.value })} />
-              </label>
-              {recordDecision.error && <Alert variant='destructive'>{errorMessage(recordDecision.error)}</Alert>}
-              <div className='flex gap-2'>
-                <Button type='submit' size='sm' disabled={recordDecision.isPending || !decision.rationale.trim()}>
-                  결정 저장
-                </Button>
-                <Button type='button' size='sm' onClick={() => setDecision(null)}>
-                  닫기
-                </Button>
-              </div>
-            </form>
+            <DecisionFormSheet
+              key={decision.id}
+              open
+              onClose={() => setDecision(null)}
+              defaults={{
+                title: String(decision.evidence.question ?? decision.title),
+                choice: decision.title,
+                alternatives: (workspace.data?.scenarios ?? [])
+                  .filter(scenario => scenario.run_id === decision.run_id && scenario.id !== decision.id)
+                  .map(scenario => scenario.title)
+                  .join('\n'),
+              }}
+              source={{
+                conversation_id: conversationId,
+                context_snapshot_id: typeof decision.evidence.snapshot_id === 'string' ? decision.evidence.snapshot_id : null,
+              }}
+            />
           )}
         </TabsContent>
         <TabsContent value='evidence' className='mt-0'>

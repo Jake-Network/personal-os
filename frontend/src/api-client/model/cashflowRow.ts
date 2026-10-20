@@ -5,17 +5,20 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { CashflowRowSource } from './cashflowRowSource';
-import type { CashflowRowKind } from './cashflowRowKind';
+import type { CashflowRowAmount } from './cashflowRowAmount';
+import type { CashflowRowQuantity } from './cashflowRowQuantity';
+import type { CashflowRowCurrency } from './cashflowRowCurrency';
 import type { CashflowRowDescription } from './cashflowRowDescription';
 
 export interface CashflowRow {
   source: CashflowRowSource;
   id: number;
   occurred_on: string;
-  kind: CashflowRowKind;
+  kind: string;
   original_kind: string;
-  amount: string;
-  currency: string;
+  amount: CashflowRowAmount;
+  quantity?: CashflowRowQuantity;
+  currency: CashflowRowCurrency;
   category: string;
   description: CashflowRowDescription;
   is_reversed: boolean;

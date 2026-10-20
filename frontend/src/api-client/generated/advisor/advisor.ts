@@ -35,6 +35,7 @@ import type {
   MessagePageParams,
   RebuildHistoryIndexParams,
   RecommendationFeedback,
+  RecommendationItem,
   SearchMessagesParams,
   SnapshotCompareResponse,
   SnapshotResponse,
@@ -1300,3 +1301,93 @@ export const useUnlinkConversation = <TError = ErrorType<HTTPValidationError>, T
 
   return useMutation(mutationOptions, queryClient);
 };
+/**
+ * @summary List Recommendations
+ */
+export const listRecommendations = (conversationId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<RecommendationItem[]>(
+    { url: `/api/advisor/conversations/${conversationId}/recommendations`, method: 'GET', signal },
+    options,
+  );
+};
+
+export const getListRecommendationsQueryKey = (conversationId?: number) => {
+  return [`/api/advisor/conversations/${conversationId}/recommendations`] as const;
+};
+
+export const getListRecommendationsQueryOptions = <TData = Awaited<ReturnType<typeof listRecommendations>>, TError = ErrorType<HTTPValidationError>>(
+  conversationId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListRecommendationsQueryKey(conversationId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecommendations>>> = ({ signal }) =>
+    listRecommendations(conversationId, requestOptions, signal);
+
+  return { queryKey, queryFn, enabled: !!conversationId, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listRecommendations>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListRecommendationsQueryResult = NonNullable<Awaited<ReturnType<typeof listRecommendations>>>;
+export type ListRecommendationsQueryError = ErrorType<HTTPValidationError>;
+
+export function useListRecommendations<TData = Awaited<ReturnType<typeof listRecommendations>>, TError = ErrorType<HTTPValidationError>>(
+  conversationId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, Awaited<ReturnType<typeof listRecommendations>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListRecommendations<TData = Awaited<ReturnType<typeof listRecommendations>>, TError = ErrorType<HTTPValidationError>>(
+  conversationId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, Awaited<ReturnType<typeof listRecommendations>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListRecommendations<TData = Awaited<ReturnType<typeof listRecommendations>>, TError = ErrorType<HTTPValidationError>>(
+  conversationId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Recommendations
+ */
+
+export function useListRecommendations<TData = Awaited<ReturnType<typeof listRecommendations>>, TError = ErrorType<HTTPValidationError>>(
+  conversationId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listRecommendations>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListRecommendationsQueryOptions(conversationId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
