@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { todayKey } from '@/lib/utils/zoned';
 import { useResourceRows } from '@/features/personal-data/hooks/use-resource';
 import { AccountsView, CoverageConfirm } from './accounts-view';
+import { CheckInStatus } from './check-in-status';
 
 import { financeApi, type Snapshot } from './api';
 import { HistoryChart } from './history-chart';
@@ -130,7 +131,9 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
     [...(accounts.data ?? []), ...(liabilities.data ?? [])].every(row => row.balance != null && row.balance_as_of === todayKey()) &&
     (otherAssets.data ?? []).every(row => row.value != null && row.value_as_of === todayKey());
   const [target, setTarget] = useState<CorrectionTarget | null>(null);
-  const allHistory = useQuery({ queryKey: ['finance', 'history', 'all'], queryFn: () => financeApi.history('all'), enabled: step === 2 });
+  const allHistory = useQuery({ queryKey: ['finance', 'history', 'all'], queryFn: () => financeApi.history('all') });
+  const [saved, setSaved] = useState<Snapshot | null>(null);
+  const monthSnapshot = saved?.month.startsWith(month) ? saved : allHistory.data?.snapshots.find(snapshot => snapshot.month.startsWith(month));
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
       <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
@@ -138,9 +141,19 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <SheetTitle className='pr-8 text-title font-semibold'>
             {target?.kind === 'create' ? `${monthLabel(target.month)} 월말 기록` : '월말 체크인'}
           </SheetTitle>
-          <p className='text-ui' role='status'>
-            {todayConfirmed ? '오늘 확인 완료' : '오늘 확인 미완료'} / 월말 기록 미완료
-          </p>
+          <CheckInStatus
+            todayConfirmed={todayConfirmed}
+            month={month}
+            snapshot={monthSnapshot}
+            pending={allHistory.isPending}
+            failed={allHistory.isError}
+          />
+          {saved && (
+            <div className='flex items-center gap-2'>
+              <span>월말 기록을 저장했습니다.</span>
+              <Button onClick={() => onSaved(saved)}>저장한 기록 보기</Button>
+            </div>
+          )}
           <div className='flex flex-wrap gap-2' role='group' aria-label='월말 체크인 단계'>
             {['오늘 잔고 확인', '입력 범위 확인', '지난달 근거 입력'].map((label, index) => (
               <Button key={label} aria-pressed={step === index} onClick={() => setStep(index)}>
@@ -160,20 +173,36 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
               <Button onClick={() => setStep(2)}>지난달 근거 입력으로</Button>
             </>
           ) : target ? (
-            <SnapshotCorrection target={target} onCancel={() => setTarget(null)} onSaved={onSaved} />
+            <SnapshotCorrection
+              target={target}
+              onCancel={() => setTarget(null)}
+              onSaved={snapshot => {
+                setSaved(snapshot);
+                setTarget(null);
+              }}
+            />
           ) : (
             <form
               className='flex items-end gap-2'
               onSubmit={e => {
                 e.preventDefault();
                 if (month) {
-                  const existing = allHistory.data?.snapshots.find(snapshot => snapshot.month.startsWith(month));
+                  const existing = monthSnapshot;
                   setTarget(existing ? { kind: 'correct', snapshot: existing } : { kind: 'create', month });
                 }
               }}>
               <div className='flex flex-col gap-1'>
                 <Label htmlFor='close-month'>기록할 달</Label>
-                <Input id='close-month' type='month' value={month} onChange={e => setMonth(e.target.value)} required />
+                <Input
+                  id='close-month'
+                  type='month'
+                  value={month}
+                  onChange={e => {
+                    setMonth(e.target.value);
+                    setSaved(null);
+                  }}
+                  required
+                />
               </div>
               <QueryStatus pending={allHistory.isPending} error={allHistory.error} retry={allHistory.refetch} label='기존 월말 기록' />
               <Button type='submit' variant='primary' disabled={!month || allHistory.isPending || allHistory.isError}>

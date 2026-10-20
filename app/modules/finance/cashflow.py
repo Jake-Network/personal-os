@@ -32,7 +32,7 @@ def load_flows(session, since: date, until: datetime, scope="household"):
         FinancialTransaction.reverses_id.in_(transaction_query.with_only_columns(FinancialTransaction.id))))) if transactions else []
     reversed_ids = {r.reverses_id for r in reversals}
     rows = [{"source": "cashflow_entries", "id": e.id, "occurred_on": e.occurred_on.isoformat(),
-             "kind": e.kind, "original_kind": e.kind, "amount": str(e.amount), "currency": e.currency,
+             "kind": e.kind, "original_kind": e.kind, "amount": str(e.amount), "currency": (e.currency or "").strip() or None,
              "category": (e.category or "").strip() or "미분류", "description": e.description,
              "is_reversed": False, "quantity": None} for e in entries]
     rows += [{"source": "financial_transactions", "id": t.id,
@@ -40,7 +40,7 @@ def load_flows(session, since: date, until: datetime, scope="household"):
               "kind": "income" if t.kind in INCOME else "expense" if t.kind in OUTFLOW else t.kind, "original_kind": t.kind,
               "amount": str(t.payload["amount"]) if t.payload.get("amount") is not None else None,
               "quantity": str(t.payload["quantity"]) if t.payload.get("quantity") is not None else None,
-              "currency": t.payload.get("currency"),
+              "currency": (t.payload.get("currency") or "").strip() or None,
               "category": (t.payload.get("category") or "").strip() or "미분류",
               "description": t.payload.get("description") or t.payload.get("note"),
               "is_reversed": t.id in reversed_ids} for t in transactions]
@@ -56,7 +56,7 @@ def summarize(rows, currency="KRW"):
     return {"income": str(income) if amounts["income"] else None,
             "expense": str(expense) if amounts["expense"] else None,
             "net": str(income - expense) if usable else None,
-            "record_count": len(active), "foreign_count": sum(r["currency"] != currency for r in active)}
+            "record_count": len(active), "foreign_count": sum(bool(r["currency"]) and r["currency"] != currency for r in active)}
 
 
 def month_offset(day, offset):
@@ -73,12 +73,13 @@ def report(session, month=None, kind=None, category=None, search=None, page=1, p
     until = datetime.combine(end, time.min, ZoneInfo(settings.timezone)).astimezone(UTC)
     rows, _, _, _ = load_flows(session, month_offset(selected, -5), until, scope)
     period_rows = [r for r in rows if r["occurred_on"] < end.isoformat()]
-    household_rows = [r for r in period_rows if r["kind"] in {"income", "expense"}]
     rows = [r for r in period_rows
             if (not kind or r["kind"] == kind or r["original_kind"] == kind)
             and (not transaction_kind or (r["source"] == "financial_transactions" and r["original_kind"] == transaction_kind))
             and (category is None or r["category"] == category)
             and (not search or search.casefold() in (r["description"] or "").casefold())]
+    # Quality follows the same selected six-month records as the trend, before pagination.
+    household_rows = [r for r in rows if r["kind"] in {"income", "expense"}]
     current = sorted([r for r in rows if r["occurred_on"] >= selected.isoformat()],
                      key=lambda r: (r["occurred_on"], r["source"], r["id"]), reverse=True)
     currency = (app_setting_handler.get_value(session, "base_currency") or {}).get("currency", "KRW")
@@ -102,4 +103,5 @@ def report(session, month=None, kind=None, category=None, search=None, page=1, p
             "data_quality_flags": ["recorded_flows_only"] +
                 (["cashflow_mixed_sources"] if mixed_sources else []) +
                 (["foreign_currency_excluded"] if quality_summary["foreign_count"] else []) +
+                (["missing_transaction_currency"] if any(not r["currency"] and not r["is_reversed"] for r in household_rows) else []) +
                 (["missing_transaction_amount"] if any(r["amount"] is None and not r["is_reversed"] for r in household_rows) else [])}

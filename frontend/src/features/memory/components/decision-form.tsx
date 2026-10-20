@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { zonedInstant } from '@/lib/utils/zoned';
-import { type DecisionForm, EMPTY_DECISION, decisionSchema } from '../schema';
+import { type DecisionForm, EMPTY_DECISION, decisionSchema, decisionDefaults } from '../schema';
 function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
   return (
     <div className='flex flex-col gap-1'>
@@ -36,7 +36,7 @@ export function DecisionFormSheet({
   source?: Partial<Pick<DecisionCreate, 'conversation_id' | 'context_snapshot_id' | 'source_message_id'>>;
 }) {
   const queryClient = useQueryClient();
-  const form = useForm<DecisionForm>({ resolver: zodResolver(decisionSchema), defaultValues: { ...EMPTY_DECISION, ...defaults } });
+  const form = useForm<DecisionForm>({ resolver: zodResolver(decisionSchema), defaultValues: decisionDefaults(defaults) });
   const create = useCreateDecision({
     mutation: {
       onSuccess: async () => {

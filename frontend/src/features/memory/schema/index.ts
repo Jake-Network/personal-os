@@ -9,7 +9,11 @@ export const memorySchema = z.object({
 export type MemoryForm = z.infer<typeof memorySchema>;
 
 export const decisionSchema = z.object({
-  title: z.string().trim().min(1, '결정을 입력하세요.'),
+  title: z
+    .string()
+    .trim()
+    .min(1, '결정을 입력하세요.')
+    .refine(value => Array.from(value).length <= 200, '결정 제목은 200자 이내로 입력하세요.'),
   choice: z.string().trim().min(1, '선택한 안을 입력하세요.'),
   rationale: z.string().trim().min(1, '선택 이유를 입력하세요.'),
   alternatives: z.string(),
@@ -19,3 +23,14 @@ export const decisionSchema = z.object({
 export type DecisionForm = z.infer<typeof decisionSchema>;
 
 export const EMPTY_DECISION: DecisionForm = { title: '', choice: '', rationale: '', alternatives: '', expected_outcome: '', review_on: '' };
+
+/** Python's string length and slicing count Unicode code points, including emoji. */
+export function decisionDefaults(defaults: Partial<DecisionForm> = {}): DecisionForm {
+  return {
+    ...EMPTY_DECISION,
+    ...defaults,
+    title: Array.from(defaults.title?.trim() ?? '')
+      .slice(0, 200)
+      .join(''),
+  };
+}

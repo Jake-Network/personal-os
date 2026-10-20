@@ -65,7 +65,7 @@ class DecisionJournalManager:
     def create(self, session: Session, body: DecisionCreate) -> DecisionJournalEntry:
         from app.modules.advisor.answer_actions import final_answer_ids
         from app.modules.database.model import AdvisorMessage, ContextSnapshot, AdvisorConversation
-        values = body.model_dump(exclude={"source_message_id"})
+        values = body.model_dump()
         if body.source_message_id is not None:
             message = session.get(AdvisorMessage, body.source_message_id)
             if message is None:
@@ -81,7 +81,7 @@ class DecisionJournalManager:
             raise LookupError("conversation not found")
         if values["context_snapshot_id"] is not None:
             snapshot = session.get(ContextSnapshot, values["context_snapshot_id"])
-            if snapshot is None:
+            if snapshot is None or snapshot.payload.get("source_purged"):
                 raise ValueError("결정의 근거가 삭제되었습니다.")
             if values["conversation_id"] not in (None, snapshot.conversation_id):
                 raise ValueError("대화와 결정의 근거가 일치하지 않습니다.")

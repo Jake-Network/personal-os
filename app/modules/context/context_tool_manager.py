@@ -36,6 +36,7 @@ from app.modules.crud import (
 )
 from app.modules.database.model import FxRate, Holding, LocalFinanceCoverage, WorkoutLog
 from app.modules.finance.financial_calculator import financial_calculator
+from app.modules.finance import clock as finance_clock
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
 from app.modules.context.derived import calendar_conflicts, fx_table_from_rates
 from app.modules.context.records import as_aware, clip_text, iso_or_none, latest_of, quality_flag, record_ref
@@ -46,7 +47,6 @@ from app.modules.context.portfolio_tools import (
 )
 
 STALE_PRICE_DAYS = 3
-STALE_BALANCE_DAYS = 45
 
 
 def base_currency(session: Session) -> str:
@@ -92,8 +92,9 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
     coverage = s.get(LocalFinanceCoverage, 1)
     if not liabilities and (coverage is None or "liability" not in coverage.kinds):
         flags.append(quality_flag("no_liabilities_recorded", Category.FINANCIAL, "debt may be zero or simply not entered"))
+    today = as_aware(ctx.now).astimezone(ZoneInfo(settings.timezone)).date()
     for a in accounts:
-        if (ctx.today - a.balance_as_of).days > STALE_BALANCE_DAYS:
+        if (today - a.balance_as_of).days > finance_clock.STALE_BALANCE_DAYS:
             flags.append(quality_flag("stale_balance", Category.FINANCIAL, f"{a.name} as of {a.balance_as_of}"))
 
     assets = [Position(f"accounts:{a.id}", a.name, a.balance, a.currency, account_bucket(a.kind),
@@ -180,13 +181,16 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
               r["kind"], "uncategorized" if r["category"] == "미분류" else r["category"])
              for r in rows if not r["is_reversed"] and r["amount"] is not None]
     missing = [r for r in rows if not r["is_reversed"] and r["amount"] is None]
+    missing_currency = [r for r in rows if not r["is_reversed"] and not r["currency"]]
     planned = planned_expense_handler.get_upcoming(s, today)
     base = base_currency(s)
-    foreign = [e for e in flows if e[2] != base]
+    foreign = [e for e in flows if e[2] and e[2] != base]
     usable = [e for e in flows if e[2] == base]
     flags = []
     if missing:
         flags.append(quality_flag("missing_transaction_amount", Category.FINANCIAL, f"{len(missing)} entries"))
+    if missing_currency:
+        flags.append(quality_flag("missing_transaction_currency", Category.FINANCIAL, f"{len(missing_currency)} entries"))
     if entries and transactions:
         flags.append(quality_flag("cashflow_mixed_sources", Category.FINANCIAL,
             "기존 수입·지출과 거래 기록을 함께 합산했습니다. 같은 지출을 두 화면에 중복 입력하지 마세요."))
@@ -197,8 +201,10 @@ def get_cashflow_summary(ctx: ToolContext) -> ToolResult:
     income = financial_calculator.monthly_average(
         [(day, amount) for day, amount, _, kind, _ in usable if kind == "income"], today)
     for kind, average in (("expense", expense), ("income", income)):
-        if any(r["kind"] == kind and month_offset(today, -3).isoformat() <= r["occurred_on"] < today.replace(day=1).isoformat() for r in missing):
-            average.update(available=False, monthly_average=None, reason="missing_amount")
+        for incomplete, reason in ((missing_currency, "missing_currency"), (missing, "missing_amount")):
+            if any(r["kind"] == kind and month_offset(today, -3).isoformat() <= r["occurred_on"] < today.replace(day=1).isoformat() for r in incomplete):
+                average.pop("estimate", None)
+                average.update(available=False, monthly_average=None, reason=reason)
     if expense.get("reason") == "insufficient_coverage":
         flags.append(quality_flag("monthly_expense_insufficient_coverage", Category.FINANCIAL,
                            f"recorded {expense['months_with_data']}/{expense['months_considered']} months; "

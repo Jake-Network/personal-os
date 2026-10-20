@@ -162,6 +162,7 @@ export * from './decisionItemConversationId';
 export * from './decisionItemExpectedOutcome';
 export * from './decisionItemReviewOn';
 export * from './decisionItemReviewedAt';
+export * from './decisionItemSourceMessageId';
 export * from './decisionReview';
 export * from './deleteDocumentParams';
 export * from './documentItem';

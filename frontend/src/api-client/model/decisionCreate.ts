@@ -12,6 +12,7 @@ import type { DecisionCreateReviewOn } from './decisionCreateReviewOn';
 
 export interface DecisionCreate {
   source_message_id?: DecisionCreateSourceMessageId;
+  /** @maxLength 200 */
   title: string;
   choice: string;
   rationale: string;

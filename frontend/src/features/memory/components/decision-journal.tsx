@@ -94,8 +94,10 @@ function DecisionDetail({ decision: d, onClose }: { decision: DecisionItem; onCl
             </div>
           </dl>
           {d.conversation_id && (
-            <Link href={`/advisor/${d.conversation_id}`} className='inline-flex items-center gap-1.5 text-ui text-primary hover:underline'>
-              <MessagesSquare className='size-3.5' aria-hidden /> 결정한 상담 열기
+            <Link
+              href={`/advisor/${d.conversation_id}${d.source_message_id ? `?message=${d.source_message_id}` : ''}`}
+              className='inline-flex items-center gap-1.5 text-ui text-primary hover:underline'>
+              <MessagesSquare className='size-3.5' aria-hidden /> {d.source_message_id ? '결정한 답변 열기' : '결정한 상담 열기'}
             </Link>
           )}
           <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>

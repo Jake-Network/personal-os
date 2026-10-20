@@ -220,6 +220,16 @@ def test_selected_workspace_scenario_does_not_force_unrelated_question_into_anal
     client, database, provider = runtime_env
     scenario = client.post('/api/advisor/conversations/1/scenarios', json={
         'request_id': 'old-scenario', 'title': '지난 재무 대안', 'assumptions': {'financial': {'monthly_expense': '1234567'}}}).json()
+    # Selecting an old alternative requires its original, still-valid evidence.
+    from app.modules.database.model import ContextSnapshot
+    from app.modules.database.model.advisor_runtime import AdvisorScenario
+    with database.session() as session:
+        snapshot = ContextSnapshot(id='old-scenario-evidence', conversation_id=1, context_categories=[],
+            record_references=[], source_updated_at={}, data_quality_flags=[], payload={}, content_hash='synthetic')
+        session.add(snapshot)
+        session.flush()
+        session.get(AdvisorScenario, scenario['id']).evidence = {'snapshot_id': snapshot.id}
+        session.commit()
     selected = client.post('/api/advisor/conversations/1/scenarios/select', json={
         'scenario_id': scenario['id'], 'expected_revision': 1})
     assert selected.status_code == 200, selected.text

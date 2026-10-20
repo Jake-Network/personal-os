@@ -4,6 +4,7 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
+import type { DecisionItemSourceMessageId } from './decisionItemSourceMessageId';
 import type { DecisionItemContextSnapshotId } from './decisionItemContextSnapshotId';
 import type { DecisionItemConversationId } from './decisionItemConversationId';
 import type { DecisionItemExpectedOutcome } from './decisionItemExpectedOutcome';
@@ -12,6 +13,7 @@ import type { DecisionItemActualOutcome } from './decisionItemActualOutcome';
 import type { DecisionItemReviewedAt } from './decisionItemReviewedAt';
 
 export interface DecisionItem {
+  source_message_id: DecisionItemSourceMessageId;
   id: number;
   title: string;
   decided_at: string;

@@ -39,8 +39,8 @@ class AccountItem(_Item, AccountCreate):
     @computed_field
     @property
     def balance_stale(self) -> bool:
-        from app.modules.finance.clock import local_today
-        return (local_today() - self.balance_as_of).days > 45
+        from app.modules.finance.clock import STALE_BALANCE_DAYS, local_today
+        return (local_today() - self.balance_as_of).days > STALE_BALANCE_DAYS
 
 
 class OtherAssetCreate(BaseModel):

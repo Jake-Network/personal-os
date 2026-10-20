@@ -61,8 +61,7 @@ class RunRepository:
             scenario = self.session.get(AdvisorScenario, request.scenario_id)
             if not scenario or scenario.conversation_id != conversation_id:
                 raise HTTPException(404, "대안을 찾을 수 없습니다.")
-            if scenario.evidence.get('source_purged'):
-                raise HTTPException(409, '대안의 근거가 삭제되었습니다. 새 조건으로 분석하세요.')
+            self._require_scenario_evidence(scenario)
         message = AdvisorMessage(conversation_id=conversation_id, role="user",
                                  content=request.message, status="pending")
         self.session.add(message)
@@ -286,6 +285,15 @@ class RunRepository:
         self.session.flush()
         return row
 
+    def _require_scenario_evidence(self, scenario):
+        from app.modules.database.model import ContextSnapshot
+        snapshot_id = scenario.evidence.get('snapshot_id')
+        snapshot = self.session.get(ContextSnapshot, snapshot_id) if snapshot_id else None
+        if (scenario.evidence.get('source_purged') or snapshot is None
+                or snapshot.payload.get('source_purged')
+                or snapshot.conversation_id != scenario.conversation_id):
+            raise HTTPException(409, '대안의 근거가 없거나 삭제되었습니다. 새 조건으로 분석하세요.')
+
     def select_scenario(self, conversation_id, request):
         self._conversation(conversation_id)
         self.session.execute(update(AdvisorConversation).where(AdvisorConversation.id == conversation_id)
@@ -294,10 +302,7 @@ class RunRepository:
         if request.scenario_id is not None and (not scenario or scenario.conversation_id != conversation_id):
             raise HTTPException(404, "대안을 찾을 수 없습니다.")
         if scenario is not None:
-            from app.modules.database.model import ContextSnapshot
-            snapshot_id = scenario.evidence.get('snapshot_id')
-            if scenario.evidence.get('source_purged') or (snapshot_id and self.session.get(ContextSnapshot, snapshot_id) is None):
-                raise HTTPException(409, '대안의 근거가 삭제되었습니다. 새 조건으로 분석하세요.')
+            self._require_scenario_evidence(scenario)
         workspace = self.session.get(AdvisorWorkspace, conversation_id)
         if workspace is None:
             workspace = AdvisorWorkspace(conversation_id=conversation_id)

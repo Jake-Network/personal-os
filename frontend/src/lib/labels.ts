@@ -62,6 +62,7 @@ const FLAG_TEXT: Record<string, string> = {
   cashflow_foreign_currency_ignored: '외화 현금흐름은 월평균 계산에서 제외했습니다',
   recorded_flows_only: '기록한 수입·지출만 합산했습니다',
   foreign_currency_excluded: '외화 기록은 원화 합계에서 제외했습니다',
+  missing_transaction_currency: '통화가 없는 기록이 있어 합계 불완전',
   missing_transaction_amount: '금액이 없는 기록이 있어 합계 불완전',
   cashflow_mixed_sources: '수입·지출과 거래 기록 함께 사용',
   spendable_liquidity_unknown: '생활비 현금 미기록',

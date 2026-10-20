@@ -108,7 +108,11 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
               <span>
                 {TRANSACTION_KIND_LABEL[linkedTransaction.data.kind]} · {linkedTransaction.data.note || linkedTransaction.data.source}
               </span>
-              <span>{money(linkedTransaction.data.amount, linkedTransaction.data.currency)}</span>
+              <span>
+                {linkedTransaction.data.currency?.trim()
+                  ? money(linkedTransaction.data.amount, linkedTransaction.data.currency)
+                  : `${linkedTransaction.data.amount ?? '금액 없음'} · 통화 미기록`}
+              </span>
               {linkedTransaction.data.is_reversed ? (
                 <Badge>취소됨</Badge>
               ) : (
@@ -225,7 +229,7 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
             <>
               <Section
                 title='기록된 월별 수입·지출'
-                actions={<QualityBadge flags={data.data_quality_flags.map(code => ({ code }))} label='기록 범위 확인' />}>
+                actions={<QualityBadge flags={data.data_quality_flags.map(code => ({ code }))} label='선택 조건의 6개월 기록' />}>
                 <dl className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
                   {[
                     ['수입', data.summary.income],
@@ -239,13 +243,13 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
                   ))}
                 </dl>
                 {data.data_quality_flags.includes('cashflow_mixed_sources') && (
-                  <p className='mt-3 text-ui text-warning'>가계부와 거래 기록을 함께 합산했습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.</p>
+                  <p className='mt-3 text-ui text-warning'>선택한 조건의 최근 6개월에 가계부와 거래 기록이 함께 있습니다. 같은 수입·지출을 중복 입력했는지 확인하세요.</p>
                 )}
                 {data.summary.foreign_count > 0 && (
                   <p className='mt-3 text-ui text-warning'>
                     {data.currency === 'KRW'
-                      ? `외화 기록 ${data.summary.foreign_count}건은 원화 합계에서 제외했습니다.`
-                      : `다른 통화 기록 ${data.summary.foreign_count}건은 ${data.currency} 합계에서 제외했습니다.`}
+                      ? `선택한 달의 외화 기록 ${data.summary.foreign_count}건은 원화 합계에서 제외했습니다.`
+                      : `선택한 달의 다른 통화 기록 ${data.summary.foreign_count}건은 ${data.currency} 합계에서 제외했습니다.`}
                   </p>
                 )}
               </Section>
@@ -308,7 +312,9 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
                               ? item.quantity
                                 ? `수량 ${item.quantity}`
                                 : '금액 없음'
-                              : money(item.amount, item.currency ?? undefined)}
+                              : item.currency?.trim()
+                                ? money(item.amount, item.currency)
+                                : `${item.amount} · 통화 미기록`}
                           </TableCell>
                           <TableCell>
                             {item.source === 'cashflow_entries' ? (

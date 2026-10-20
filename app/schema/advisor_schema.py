@@ -117,7 +117,7 @@ class MemoryItem(BaseModel):
 
 class DecisionCreate(BaseModel):
     source_message_id: int | None = None
-    title: str
+    title: str = Field(max_length=200)
     choice: str
     rationale: str
     alternatives: list[str] = []
@@ -134,6 +134,7 @@ class DecisionReview(BaseModel):
 class DecisionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    source_message_id: int | None
     id: int
     title: str
     decided_at: datetime

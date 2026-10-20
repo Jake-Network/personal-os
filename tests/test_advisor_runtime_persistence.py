@@ -17,6 +17,15 @@ def setup_repo(session):
     session.flush()
     return RunRepository(session), conversation.id
 
+
+def snapshot_evidence(session, conversation_id):
+    from app.modules.database.model import ContextSnapshot
+    snapshot = ContextSnapshot(id='scenario-evidence', conversation_id=conversation_id, context_categories=[],
+        record_references=[], source_updated_at={}, data_quality_flags=[], payload={}, content_hash='synthetic')
+    session.add(snapshot)
+    session.flush()
+    return {'snapshot_id': snapshot.id}
+
 def test_run_request_id_is_stable_and_active_conversation_exclusive(session):
     repo, cid = setup_repo(session)
     request = RunCreate(request_id="same", message="질문")
@@ -82,7 +91,8 @@ def test_clarification_resume_exactly_once_and_cancel_fences_worker(session):
 
 def test_scenario_versions_preserve_original_and_selection_is_optimistic(session):
     repo, cid = setup_repo(session)
-    original = repo.create_scenario(cid, ScenarioCreate(request_id="a", title="원본", assumptions={"expense": "100"}))
+    original = repo.create_scenario(cid, ScenarioCreate(request_id="a", title="원본", assumptions={"expense": "100"}),
+        evidence=snapshot_evidence(session, cid))
     child = repo.create_scenario(cid, ScenarioCreate(request_id="b", title="수정", parent_id=original.id,
         parent_revision=original.revision, assumptions={"expense": "80"}))
     assert child.revision == 2
@@ -94,7 +104,8 @@ def test_scenario_versions_preserve_original_and_selection_is_optimistic(session
 
 def test_scenario_can_be_deselected_with_optimistic_revision(session):
     repo, cid = setup_repo(session)
-    scenario = repo.create_scenario(cid, ScenarioCreate(request_id="selected", title="선택"))
+    scenario = repo.create_scenario(cid, ScenarioCreate(request_id="selected", title="선택"),
+        evidence=snapshot_evidence(session, cid))
     repo.select_scenario(cid, ScenarioSelect(scenario_id=scenario.id, expected_revision=1))
     repo.select_scenario(cid, ScenarioSelect(scenario_id=None, expected_revision=2))
     assert repo.workspace(cid).selected_scenario_id is None
