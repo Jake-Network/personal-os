@@ -63,7 +63,7 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                     return False
             if any(not record_allowed(session, r.get("table"), r.get("id")) or not record_exists(session, r.get("table"), r.get("id")) or not reference_generation_matches(session, r) for r in snapshot.record_references):
                 return False
-            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "financial_transactions", "holdings"}]
+            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "financial_transactions", "holdings", "playbook_revisions"}]
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table in {"personal_memories", "memory_revisions"}:
@@ -105,6 +105,17 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
             if record.source_document_version_id:
                 dependencies.append({"table": "document_versions", "id": record.source_document_version_id})
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
+                return False
+        elif table == "playbook_revisions":
+            from app.modules.database.model import Playbook, PlaybookRevision
+            revision = session.get(PlaybookRevision, key)
+            playbook = session.get(Playbook, revision.playbook_id) if revision else None
+            # A procedure is sent only while approved, shareable and free of now-restricted origins.
+            if (revision is None or playbook is None or revision.source_purged
+                    or revision.status not in {"active", "superseded"} or not playbook.external_allowed
+                    or not record_allowed(session, "playbooks", playbook.id)
+                    or set(revision.categories) & {str(c) for c in excluded}
+                    or not source_allowed(session, revision.source_references, excluded, seen, memo, document_scope)):
                 return False
         elif table == "conversation_summaries":
             summary = session.get(ConversationSummary, key)

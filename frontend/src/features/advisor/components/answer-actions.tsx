@@ -5,6 +5,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ThumbsDown, ThumbsUp } from 'lucide-react';
 import { errorMessage } from '@/api-client/api-error';
 import { rateRecommendation, useListRecommendations, getListRecommendationsQueryKey } from '@/api-client/generated/advisor/advisor';
+import { useReflectOnAnswer } from '@/api-client/generated/agent/agent';
+import { notify } from '@/components/notify';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,10 +26,28 @@ export function AnswerActions({ messageId, conversationId, question }: { message
     onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
   });
   const disabled = save.isPending || !ratings.isSuccess;
+  // A stable request ID: asking again returns the same reflection instead of another model call.
+  const learn = useReflectOnAnswer({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ['background-jobs'] });
+        notify.success('배울 점을 정리하고 있습니다. 제안은 알림과 승인 대기에서 확인하세요');
+      },
+      onError: notify.error,
+    },
+  });
   return (
     <>
       <Button size='sm' variant='ghost' onClick={() => setDecision(true)}>
         결정으로 기록
+      </Button>
+      <Button
+        size='sm'
+        variant='ghost'
+        title='다음 상담에서 다시 쓸 절차와 기억 후보를 AI에 한 번 더 요청해 제안받습니다. 승인하기 전에는 쓰지 않습니다.'
+        disabled={learn.isPending || learn.isSuccess}
+        onClick={() => learn.mutate({ messageId, data: { request_id: `reflect:${messageId}` } })}>
+        {learn.isSuccess ? '배우는 중' : '이 상담에서 배우기'}
       </Button>
       <Button
         size='icon-sm'

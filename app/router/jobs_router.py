@@ -5,7 +5,8 @@ from app.modules.crud import app_setting_handler
 from sqlalchemy.orm import Session
 from app.modules.database.model.review_jobs import BackgroundJob, JobSchedule
 from app.modules.database.model.base import utcnow
-from app.schema.review_jobs_schema import ScheduleActivation, ScheduleCreate, ScheduleItem
+from app.schema.review_jobs_schema import BriefingCreate, RunNow, ScheduleActivation, ScheduleCreate, ScheduleItem
+from app.modules.agent import briefing
 from sqlalchemy import select, update
 
 
@@ -56,10 +57,16 @@ def create_job_schedule(body: ScheduleCreate, session: Session = Depends(get_ses
 
 
 @router.patch("/schedules/{schedule_id}", response_model=ScheduleItem)
-def activate_job_schedule(schedule_id: int, body: ScheduleActivation, session: Session = Depends(get_session)):
+async def activate_job_schedule(schedule_id: int, body: ScheduleActivation, session: Session = Depends(get_session)):
     schedule = session.get(JobSchedule, schedule_id)
     if schedule is None:
         raise HTTPException(404, "주기 작업을 찾을 수 없습니다")
+    if schedule.kind in briefing.KINDS:
+        await briefing.activate(session, schedule, body.enabled)
+        if not body.enabled:
+            briefing.cancel_queued(session, schedule)
+        session.commit()
+        return schedule
     schedule.enabled = body.enabled
     if not body.enabled:
         # Revocation also stops already-enqueued work that has not started.
@@ -70,6 +77,45 @@ def activate_job_schedule(schedule_id: int, body: ScheduleActivation, session: S
     return schedule
 
 
+
+
+@router.post("/briefings", response_model=ScheduleItem, status_code=201)
+async def create_briefing_schedule(body: BriefingCreate, session: Session = Depends(get_session)):
+    schedule = JobSchedule(name=body.name, kind=body.kind, cadence=briefing.KINDS[body.kind], enabled=False,
+                           local_time=body.local_time, next_run_at=utcnow(), options=briefing.options_of(body))
+    session.add(schedule)
+    session.flush()
+    await briefing.activate(session, schedule, body.enabled)
+    session.commit()
+    return schedule
+
+
+@router.put("/briefings/{schedule_id}", response_model=ScheduleItem)
+async def update_briefing_schedule(schedule_id: int, body: BriefingCreate, session: Session = Depends(get_session)):
+    schedule = session.get(JobSchedule, schedule_id)
+    if schedule is None or schedule.kind not in briefing.KINDS:
+        raise HTTPException(404, "브리핑 예약을 찾을 수 없습니다")
+    schedule.name, schedule.kind, schedule.cadence = body.name, body.kind, briefing.KINDS[body.kind]
+    schedule.local_time, schedule.options = body.local_time, briefing.options_of(body)
+    # Any edit re-pins authority from the current connection, or clears it.
+    await briefing.activate(session, schedule, body.enabled)
+    if not body.enabled:
+        briefing.cancel_queued(session, schedule)
+    session.commit()
+    return schedule
+
+
+@router.post("/briefings/{schedule_id}/run-now")
+def run_briefing_now(schedule_id: int, body: RunNow, session: Session = Depends(get_session)):
+    schedule = session.get(JobSchedule, schedule_id)
+    if schedule is None or schedule.kind not in briefing.KINDS:
+        raise HTTPException(404, "브리핑 예약을 찾을 수 없습니다")
+    from zoneinfo import ZoneInfo
+    from app.config import settings
+    today = utcnow().astimezone(ZoneInfo(settings.timezone)).date()
+    result = briefing.run(session, schedule, today, key=f"briefing:{schedule.id}:manual:{body.request_id}")
+    session.commit()
+    return {key: value for key, value in result.items() if key != "signals"} | {"signal_count": len(result.get("signals", []))}
 
 
 @router.get("/quote-refresh", response_model=QuoteRefreshConsent)

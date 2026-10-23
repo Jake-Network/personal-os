@@ -9,7 +9,7 @@ KEY = "privacy.local_only_records"
 TABLES = frozenset({"accounts", "holdings", "other_assets", "liabilities", "cashflow_entries", "financial_transactions",
     "planned_expenses", "job_applications", "interviews", "career_criteria", "career_records",
     "calendar_events", "tasks", "goals", "workout_logs", "personal_memories", "documents",
-    "decision_journal", "advisor_messages", "conversation_summaries"})
+    "decision_journal", "advisor_messages", "conversation_summaries", "playbooks", "playbook_revisions"})
 TOOL_TABLES = {
     "get_accounts_summary": {"accounts", "other_assets", "liabilities", "holdings"},
     "get_cashflow_summary": {"cashflow_entries", "financial_transactions", "planned_expenses", "accounts", "holdings"},
@@ -99,8 +99,13 @@ def invalidate_deleted_source(session, table, record_id):
         identities.update(("memory_revisions", str(key)) for key in session.scalars(select(MemoryRevision.id).where(MemoryRevision.memory_id == record_id)))
     if table == "advisor_conversations":
         identities.update(("advisor_messages", str(key)) for key in session.scalars(select(AdvisorMessage.id).where(AdvisorMessage.conversation_id == record_id)))
+    if table == "playbooks":
+        from app.modules.database.model import PlaybookRevision
+        identities.update(("playbook_revisions", str(key)) for key in session.scalars(select(PlaybookRevision.id).where(PlaybookRevision.playbook_id == record_id)))
     if table not in TABLES and table != "advisor_conversations":
         return
+    from app.modules.playbooks.playbook_manager import purge_sources
+    purge_sources(session, identities)
     for snapshot in session.scalars(select(ContextSnapshot)):
         hit = any((ref.get("table"), str(ref.get("id"))) in identities
                   or ref.get("table") == table and ref.get("id") is None

@@ -52,6 +52,7 @@ class AdvisorConversation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     domain: Mapped[str | None] = mapped_column(String(32))  # optional starting domain (financial, career ...)
+    origin: Mapped[str] = mapped_column(String(16), default="user")  # user | schedule
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
     messages: Mapped[list["AdvisorMessage"]] = relationship(

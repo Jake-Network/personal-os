@@ -96,6 +96,8 @@ class AdvisorManager:
         prepared.snapshots.update(related_snapshots)
         inherited = inherited_evidence(prepared)
         experiences = history_service.experiences(session, query, excluded, options)
+        from app.modules.playbooks.selection import select_playbooks
+        playbooks, playbook_flags = select_playbooks(session, query, excluded, options.playbook_ids, options.playbook_slugs)
         package = self.builder.build(session, route, conversation_id=conversation_id, query=query,
                                      document_search=options.document_search,
                                      document_ids=options.document_ids or (), excluded=excluded,
@@ -105,7 +107,8 @@ class AdvisorManager:
                                      inherited_unknown=inherited.unknown,
                                      history_document_refs=inherited.document_refs,
                                      history_message_refs=[m.id for m in prepared.messages],
-                                     history_search_flags=retrieval_flags, historical_experiences=experiences)
+                                     history_search_flags=retrieval_flags, historical_experiences=experiences,
+                                     playbooks=playbooks, playbook_flags=playbook_flags)
         return route, package, options, prepared
 
     def prepare_history(self, session, conversation_id, before_id, options, excluded=None):
@@ -118,7 +121,9 @@ class AdvisorManager:
         """What would be shared for this question — nothing is persisted or sent."""
         route, package, _, prepared = self.prepare_context(session, query, conversation, options)
         # The same total request budget applies to previews, without resolving a provider.
-        build_request("preview", prepared.decision(), package, query, self.sharing_exclusions(session, options))
+        from app.modules.agent.settings_manager import style_instruction
+        build_request("preview", prepared.decision(), package, query, self.sharing_exclusions(session, options),
+                      style=style_instruction(session))
         session.rollback()
         inspector = package.inspector()
         inspector["context_snapshot_id"] = None

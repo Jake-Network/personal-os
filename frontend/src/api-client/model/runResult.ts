@@ -11,6 +11,7 @@ import type { RunResultComparison } from './runResultComparison';
 import type { ArtifactRef } from './artifactRef';
 import type { ActionProposalView } from './actionProposalView';
 import type { MemoryProposalView } from './memoryProposalView';
+import type { PlaybookUseView } from './playbookUseView';
 
 export interface RunResult {
   answer?: string;
@@ -25,4 +26,5 @@ export interface RunResult {
   limitations?: string[];
   model_calls?: number;
   tool_calls?: number;
+  playbooks?: PlaybookUseView[];
 }

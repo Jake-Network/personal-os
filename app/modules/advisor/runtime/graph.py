@@ -2,6 +2,7 @@
 import json
 import re
 import hashlib
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal, TypedDict
 
@@ -51,6 +52,8 @@ class Plan(StrictModel):
     tasks: list[ResearchTask] = Field(default_factory=list, max_length=24)
     clarification: Question | None = None
     scenarios: list[Scenario] = Field(default_factory=list, max_length=3)
+    # Slugs from the provided playbook catalog whose full procedure this question needs.
+    playbooks: list[str] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode='after')
     def acyclic(self):
@@ -191,6 +194,7 @@ class ConsultationState(TypedDict, total=False):
     previous_analysis: bool
     clarification_count: int
     clarification_unknown: bool
+    playbook_slugs: list[str]
 
 
 def scenario_followup(query):
@@ -255,6 +259,19 @@ def build_conversation_graph(session, manager, conversation, options, model, che
     assembler = ContextAssembler(session, manager, conversation, options, model,
                                  guard=guard, current_message_id=current_message_id, authorization=run_authorization)
     tools = read_tools(assembler)
+    base_options = options
+    explicit_playbooks = bool(getattr(options, 'playbook_ids', ()) or getattr(options, 'playbook_slugs', ()))
+
+    def apply_playbooks(state):
+        # A plan's choice persists in the checkpoint; a user's explicit choice always wins.
+        if options is not None and not explicit_playbooks and state.get('playbook_slugs'):
+            assembler.options = replace(base_options, playbook_slugs=tuple(state['playbook_slugs']))
+
+    def playbook_catalog():
+        if options is None or session is None:
+            return []
+        from app.modules.playbooks.selection import catalog
+        return catalog(session, manager.sharing_exclusions(session, options))
 
     async def progress(stage, **metadata):
         if on_progress:
@@ -291,6 +308,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         assembler.baseline_snapshot_id = state.get('baseline_snapshot_id')
         attempts = 2 if schema else 1
         validation_errors = []
+        apply_playbooks(state)
         for attempt in range(attempts):
             if state['model_calls'] >= max_calls:
                 raise AdvisorError('상담 모델 호출 한도에 도달했습니다.', provider_code='analysis_budget_exceeded')
@@ -378,6 +396,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'clarification': None, 'needs_replan': False,
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
         conditional = state.get('clarification_unknown') or state.get('clarification_count', 0) >= 2
+        catalog = [] if explicit_playbooks else playbook_catalog()
         result = await call(state,
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
             '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
@@ -392,13 +411,25 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             '명시된 조건만 구조화하세요. 불명확하면 확인 질문을 하세요. '
             + ('사용자가 모르는 조건 또는 확인 질문 한도에 도달했습니다. 추가 확인 질문을 하지 마세요. '
                '모르는 값은 unresolved에 남기고, 가정을 사실로 채우지 말고 가능한 범위의 조건부 답변을 준비하세요. '
-               if conditional else '') + '허용 도구: ' + ', '.join(tools), Plan,
+               if conditional else '') + '허용 도구: ' + ', '.join(tools) +
+            ('. playbook_catalog에서 이 질문에 필요한 승인된 상담 절차가 있으면 slug를 playbooks에 최대 2개 넣으세요. '
+             '카탈로그에 없는 slug는 쓰지 마세요.' if catalog else ''), Plan,
             {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
+             **({'playbook_catalog': catalog} if catalog else {}),
              'selected_scenarios': state.get('selected_scenarios', []),
              'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})})
         _, max_tools, _ = limits(state)
         if any(t.tool not in tools for t in result.tasks):
             raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
+        # An optional procedure choice never fails the consultation: unknown slugs are dropped and disclosed.
+        offered = {item['slug'] for item in catalog}
+        chosen = [slug for slug in dict.fromkeys(result.playbooks) if slug in offered]
+        if len(chosen) < len(set(result.playbooks)):
+            state['limitations'] = [*state['limitations'], '승인된 플레이북 목록에 없는 절차는 사용하지 않았습니다.']
+        result.playbooks = chosen
+        if chosen:
+            state['playbook_slugs'] = chosen
+            apply_playbooks(state)
         previous = {task['id']: task for task in state.get('plan', {}).get('tasks', [])}
         proposed = {task.id: task.model_dump() for task in result.tasks}
         invalidated = {key for key in previous.keys() | proposed.keys()
@@ -418,7 +449,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         if conditional:
             result.clarification = None
         return {**state, 'results': kept, 'plan': result.model_dump(), 'problem': problem, 'needs_replan': False,
-                'baseline_snapshot_id': '', 'baseline_payload': {},
+                'playbook_slugs': state.get('playbook_slugs', []), 'baseline_snapshot_id': '', 'baseline_payload': {},
                 'clarification': result.clarification.model_dump() if result.clarification else None}
 
     def clarify(state):

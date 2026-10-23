@@ -192,6 +192,8 @@ async def process_one(database):
                 'tool_calls': state.get('tool_calls', 0),
                 'proposals': [{'id': a.id, 'action': a.action, 'payload': a.payload, 'rationale': a.rationale} for a in actions],
                 'memory_proposals': [{'id': m.id, 'kind': m.kind, 'content': m.content} for m in mems]}
+            from app.modules.playbooks.selection import record_usage
+            result['playbooks'] = record_usage(session, run_id, snapshot_id)
             result['comparison'] = {'scenarios': scenario_views, 'evidence_basis': evidence,
                                     'limitations': result['limitations']} if scenarios else None
             result['artifacts'] = ([{'kind': 'message', 'id': str(reply.id), 'revision': row.answer_revision}]
@@ -205,6 +207,10 @@ async def process_one(database):
             repo.append_event(run_id, 'delta', {'text': answer, 'answer_revision': row.answer_revision}, f'answer:{row.answer_revision}', worker_id=owner, generation=generation)
             repo.append_event(run_id, 'done', result, f'done:{row.answer_revision}', worker_id=owner, generation=generation)
             repo.transition(run_id, 'completed', worker_id=owner, generation=generation, result=result)
+            from app.modules.agent.reflection import after_run
+            from app.modules.agent import briefing
+            after_run(session, run_id, state)
+            briefing.after_run(session, row)
             session.commit()
         except (LeaseLost, CheckpointLeaseLost):
             session.rollback()

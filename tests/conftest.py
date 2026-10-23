@@ -94,6 +94,7 @@ def client(session, monkeypatch, checkpoint_schema):
     from app.main import app
     from app.modules.documents import document_manager
     from app.modules.jobs import job_manager
+    from app.modules.agent import reflection
 
     async def idle_worker(_database, stop):
         await stop.wait()
@@ -102,6 +103,7 @@ def client(session, monkeypatch, checkpoint_schema):
     # worker remains active so legacy SSE tests exercise durable server execution.
     monkeypatch.setattr(document_manager, "process_pending", idle_worker)
     monkeypatch.setattr(job_manager, "process_pending", idle_worker)
+    monkeypatch.setattr(reflection, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
     with TestClient(app, base_url="http://127.0.0.1:8000") as c:
         from app.config import settings

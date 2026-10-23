@@ -105,7 +105,9 @@ class DecisionJournalManager:
         from app.modules.reviews.review_manager import add_outcome
         from app.schema.review_jobs_schema import OutcomeCreate
 
-        add_outcome(session, entry_id, OutcomeCreate(actual_outcome=body.actual_outcome))
+        record = add_outcome(session, entry_id, OutcomeCreate(actual_outcome=body.actual_outcome))
+        from app.modules.agent.reflection import after_outcome
+        after_outcome(session, entry_id, record.id)
         session.refresh(entry)
         audit_log_handler.record(session, "user", "decision.review", f"decision_journal:{entry.id}")
         session.commit()

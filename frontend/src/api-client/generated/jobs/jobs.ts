@@ -21,11 +21,13 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BriefingCreate,
   HTTPValidationError,
   JobItem,
   ListBackgroundJobsParams,
   QuoteRefreshConsent,
   ReviewJobCreate,
+  RunNow,
   ScheduleActivation,
   ScheduleCreate,
   ScheduleItem,
@@ -420,6 +422,186 @@ export const useActivateJobSchedule = <TError = ErrorType<HTTPValidationError>, 
   TContext
 > => {
   const mutationOptions = getActivateJobScheduleMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Create Briefing Schedule
+ */
+export const createBriefingSchedule = (
+  briefingCreate: BodyType<BriefingCreate>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<ScheduleItem>(
+    { url: `/api/jobs/briefings`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: briefingCreate, signal },
+    options,
+  );
+};
+
+export const getCreateBriefingScheduleMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof createBriefingSchedule>>, TError, { data: BodyType<BriefingCreate> }, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof createBriefingSchedule>>, TError, { data: BodyType<BriefingCreate> }, TContext> => {
+  const mutationKey = ['createBriefingSchedule'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBriefingSchedule>>, { data: BodyType<BriefingCreate> }> = props => {
+    const { data } = props ?? {};
+
+    return createBriefingSchedule(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateBriefingScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof createBriefingSchedule>>>;
+export type CreateBriefingScheduleMutationBody = BodyType<BriefingCreate>;
+export type CreateBriefingScheduleMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Create Briefing Schedule
+ */
+export const useCreateBriefingSchedule = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof createBriefingSchedule>>, TError, { data: BodyType<BriefingCreate> }, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof createBriefingSchedule>>, TError, { data: BodyType<BriefingCreate> }, TContext> => {
+  const mutationOptions = getCreateBriefingScheduleMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Update Briefing Schedule
+ */
+export const updateBriefingSchedule = (
+  scheduleId: number,
+  briefingCreate: BodyType<BriefingCreate>,
+  options?: SecondParameter<typeof customInstance>,
+) => {
+  return customInstance<ScheduleItem>(
+    { url: `/api/jobs/briefings/${scheduleId}`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, data: briefingCreate },
+    options,
+  );
+};
+
+export const getUpdateBriefingScheduleMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateBriefingSchedule>>,
+    TError,
+    { scheduleId: number; data: BodyType<BriefingCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateBriefingSchedule>>,
+  TError,
+  { scheduleId: number; data: BodyType<BriefingCreate> },
+  TContext
+> => {
+  const mutationKey = ['updateBriefingSchedule'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateBriefingSchedule>>,
+    { scheduleId: number; data: BodyType<BriefingCreate> }
+  > = props => {
+    const { scheduleId, data } = props ?? {};
+
+    return updateBriefingSchedule(scheduleId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateBriefingScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof updateBriefingSchedule>>>;
+export type UpdateBriefingScheduleMutationBody = BodyType<BriefingCreate>;
+export type UpdateBriefingScheduleMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Update Briefing Schedule
+ */
+export const useUpdateBriefingSchedule = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof updateBriefingSchedule>>,
+      TError,
+      { scheduleId: number; data: BodyType<BriefingCreate> },
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof updateBriefingSchedule>>,
+  TError,
+  { scheduleId: number; data: BodyType<BriefingCreate> },
+  TContext
+> => {
+  const mutationOptions = getUpdateBriefingScheduleMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Run Briefing Now
+ */
+export const runBriefingNow = (
+  scheduleId: number,
+  runNow: BodyType<RunNow>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<unknown>(
+    { url: `/api/jobs/briefings/${scheduleId}/run-now`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: runNow, signal },
+    options,
+  );
+};
+
+export const getRunBriefingNowMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof runBriefingNow>>, TError, { scheduleId: number; data: BodyType<RunNow> }, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof runBriefingNow>>, TError, { scheduleId: number; data: BodyType<RunNow> }, TContext> => {
+  const mutationKey = ['runBriefingNow'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof runBriefingNow>>, { scheduleId: number; data: BodyType<RunNow> }> = props => {
+    const { scheduleId, data } = props ?? {};
+
+    return runBriefingNow(scheduleId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunBriefingNowMutationResult = NonNullable<Awaited<ReturnType<typeof runBriefingNow>>>;
+export type RunBriefingNowMutationBody = BodyType<RunNow>;
+export type RunBriefingNowMutationError = ErrorType<HTTPValidationError>;
+
+/**
+ * @summary Run Briefing Now
+ */
+export const useRunBriefingNow = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof runBriefingNow>>, TError, { scheduleId: number; data: BodyType<RunNow> }, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof runBriefingNow>>, TError, { scheduleId: number; data: BodyType<RunNow> }, TContext> => {
+  const mutationOptions = getRunBriefingNowMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };

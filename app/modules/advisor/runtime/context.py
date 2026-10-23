@@ -17,6 +17,7 @@ from app.modules.advisor.memory_store import ConfirmedMemoryStore
 from app.modules.advisor.retrievers import HistoryRetriever, DocumentRetriever
 from app.enums.context_category import ALL_CATEGORIES
 from app.modules.advisor.history_service import history_service
+from app.modules.agent.settings_manager import style_instruction
 
 
 def bounded_history_excerpt(messages, budget=4000):
@@ -224,7 +225,8 @@ class ContextAssembler:
                     payload['data']['conversation_summary']['content'] = ''
                     empty_package = replace(package, payload=payload)
                     base_request = build_request(self.model, history.decision(), empty_package, query,
-                        self.manager.sharing_exclusions(self.session, options), structured_output=structured_output)
+                        self.manager.sharing_exclusions(self.session, options), structured_output=structured_output,
+                        style=style_instruction(self.session))
                     base_request.instructions += '\n' + instruction
                     if derived:
                         base_request.input.insert(-1, {'role': 'developer', 'content':
@@ -256,7 +258,7 @@ class ContextAssembler:
                 'historical': True} for m in history.messages]
             request = build_request(self.model, history.decision(), package, query,
                                     self.manager.sharing_exclusions(self.session, options),
-                                    structured_output=structured_output)
+                                    structured_output=structured_output, style=style_instruction(self.session))
             request.authorization = self.authorization
             if instruction:
                 request.instructions += '\n' + instruction

@@ -26,6 +26,8 @@ export interface AskRequest {
   document_ids?: AskRequestDocumentIds;
   web_search?: boolean;
   web_query?: AskRequestWebQuery;
+  /** @maxItems 2 */
+  playbook_ids?: number[];
   history_since?: AskRequestHistorySince;
   history_until?: AskRequestHistoryUntil;
   history_company?: AskRequestHistoryCompany;

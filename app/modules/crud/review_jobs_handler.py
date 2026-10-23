@@ -25,9 +25,14 @@ def by_request(session: Session, model, request_id: str):
     return session.scalar(select(model).where(model.request_id == request_id))
 
 
+# Jobs that call a model run on the async agent worker under the global one-run gate.
+LLM_KINDS = frozenset({"advisor_reflection"})
+
+
 def claim(session: Session, owner: str, now=None):
     now = now or utcnow()
     eligible = and_(BackgroundJob.enabled.is_(True), BackgroundJob.attempts < BackgroundJob.max_attempts,
+                    BackgroundJob.kind.not_in(LLM_KINDS),
                     BackgroundJob.run_after <= now,
                     or_(BackgroundJob.status == "pending", and_(BackgroundJob.status == "running", BackgroundJob.lease_until <= now)))
     job_id = session.scalar(select(BackgroundJob.id).where(eligible).order_by(BackgroundJob.run_after, BackgroundJob.id).limit(1))

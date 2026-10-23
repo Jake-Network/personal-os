@@ -132,7 +132,7 @@ def enqueue_schedules(session: Session, now=None):
 
     now = now or utcnow()
     due = list(session.scalars(select(JobSchedule).where(
-        JobSchedule.enabled.is_(True), JobSchedule.next_run_at <= now)))
+        JobSchedule.kind == "period_review", JobSchedule.enabled.is_(True), JobSchedule.next_run_at <= now)))
     for schedule in due:
         # A delayed/restarted worker catches up one period per cycle, retaining each
         # due date instead of silently skipping months during downtime.
@@ -147,6 +147,8 @@ def enqueue_schedules(session: Session, now=None):
         if handler.by_request(session, BackgroundJob, request_id) is None:
             session.add(BackgroundJob(request_id=request_id, kind="period_review", enabled=True, payload=payload,
                                       run_after=now))
+    from app.modules.agent import briefing
+    briefing.due(session, now)
     consent = app_setting_handler.get_value(session, "jobs.quote_refresh") or {}
     if consent.get("enabled"):
         request_id = f"quote-refresh:{int(now.timestamp()) // 300}"

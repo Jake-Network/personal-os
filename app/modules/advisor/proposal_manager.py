@@ -148,12 +148,14 @@ class ProposalManager:
             })
             for p in validated
         ]
+        from app.modules.context.content_safety import findings
+        # Candidates are later injected into prompts; model-written instructions or secrets never become one.
         mems = [
             personal_memory_handler.create(session, {
                 "kind": m["kind"], "content": m["content"].strip()[:1000], "status": "proposed",
                 "source": "advisor", "source_message_id": message_id,
             })
-            for m in memories
+            for m in memories if not findings(m["content"])
         ]
         from app.modules.context.record_privacy import stamp_references
         for memory in mems:

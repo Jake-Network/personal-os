@@ -83,9 +83,10 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 | 할 일·일정 | `/plan` | 통합 달력, 할 일, 일정, 목표, 운동 |
 | 자산 | `/finance` | 개요, 계좌·부채, 투자, 장부, 월말 체크인 |
 | 커리어 | `/career` | 지원 현황, 경력 기록, 타임라인, 평가 기준 |
-| 기록·회고 | `/reflect` | 결정 기록, 기간 회고 |
+| 기록·회고 | `/reflect` | 결정 기록, 기간 회고, 플레이북 |
 | 문서함 | `/documents` | 문서 업로드·버전·공유 |
-| 설정 | `/settings/*` | AI 연결, AI가 아는 나, 데이터 공유, 시세 연결, 자동 작업, 보안·백업, 화면 |
+| 알림 | `/inbox` | 브리핑·학습 제안·예약 중지·실패 알림 (이 기기에서만 표시) |
+| 설정 | `/settings/*` | AI 연결, AI가 아는 나, 상담 방식, 데이터 공유, 시세 연결, 자동 작업(정기 회고·브리핑), 보안·백업, 화면 |
 
 달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 상담에서는 종일 일정의 제목만 변경 제안할 수 있으며 날짜·시각 변경은 달력에서 직접 합니다. 종일 일정은 시간 일정의 충돌 계산에서 제외합니다. 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
 
@@ -113,13 +114,25 @@ LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 
 
 사용 후 살펴볼 지표는 재무 근거 충족률, 30일 이내 잔고 비율, 결정·회고 완료율, 메시지별 최신 👎 비율입니다. 이 지표는 답변의 계산 정확성·근거 연결·공유 제한 준수 검증을 대신하지 않으며, 별도의 자동 품질 측정 기능을 뜻하지 않습니다.
 
+## 플레이북·학습·브리핑
+
+상담 결과를 다음 상담의 절차로 쌓고, 사용자가 묻기 전에 확인할 일을 알려 줍니다. 모든 학습 결과는 제안으로만 저장되며 사용자가 승인하기 전에는 상담에 쓰이지 않습니다.
+
+- **플레이북(`/reflect/playbooks`):** 상담에서 따를 확인 순서입니다. 로컬 DB에 수정 기록으로 보관하며 내용은 고쳐 쓰지 않고 새 버전을 쌓습니다. 사용자가 직접 쓰거나 고친 버전은 바로 쓰이고, 상담에서 나온 제안은 기준 버전과 비교(diff)한 뒤 승인합니다. 그 사이 플레이북이 바뀌었으면 승인할 수 없습니다. 질문에 트리거 단어가 있거나 입력창에서 `/짧은이름`으로 부르면 최대 두 개를 보냅니다. 깊게 분석에서는 계획 단계가 제목·요약 목록만 보고 고르고, 고른 절차의 본문만 근거 데이터(`data.playbooks`)에 넣습니다. 답변 당시 쓴 버전은 근거 스냅샷과 사용 기록에 남습니다. 관련 영역 중 하나라도 공유를 막았거나, `상담에 보내기`를 껐거나, 보관했거나, 학습 근거가 삭제된 플레이북은 보내지 않습니다. 예산이 부족하면 플레이북 전체를 빼고 `context_section_omitted`로 알리며 절차 중간을 자르지 않습니다.
+- **저장 규칙:** 플레이북은 기록이 아니라 교훈입니다. AI가 제안한 내용에 금액·특정 날짜·레코드 참조·지시 변경 문장·비밀값·보이지 않는 제어 문자가 있으면 저장하지 않습니다. 사용자가 직접 쓴 내용은 경고와 함께 저장합니다. AI가 제안한 기억 후보에도 같은 지시·비밀값 검사를 적용합니다. 검사는 패턴 기반 보조 장치이며 통과한 내용의 안전을 보증하지 않습니다.
+- **상담에서 배우기:** 답변의 `이 상담에서 배우기`는 그 상담을 다시 읽어 플레이북·기억 후보를 제안받는 AI 호출을 한 번 더 만듭니다. `/settings/agent`에서 켜면 분석이 길었거나(도구 3회 이상·재계획·확인 질문) 사용자가 정정한 상담, 결과를 기록한 결정 회고에 대해 자동으로 요청합니다(기본 꺼짐). 회고 요청도 상담과 같은 `ContextAssembler` 경로를 거치므로 **요청 시점의** 공유 범위·이력 차단·예산·스냅샷이 적용됩니다. 실행 권한은 요청할 때 고정되고, 앱 잠금·연결 계정·모델이 바뀌면 호출 없이 취소합니다. 상담 실행과 같은 전역 1개 실행 규칙을 따르며, 앱이 실행 중 멈춰 호출 결과가 불확실하면 자동으로 다시 호출하지 않고 실패로 두어 `/settings/jobs`에서 명시적으로 재시도하게 합니다. 학습된 절차는 근거 상담의 공유 범주를 함께 가져가므로, 그 범주를 막으면 보내지 않습니다.
+- **브리핑(`/settings/jobs`):** 매일·매주 정한 시각(`PERSONAL_OS_TIMEZONE`)에 회고할 결정, 다시 확인할 기억, 다가오는 면접·목표 마감, 오래된 시세·잔고, 승인 대기 항목을 모델 없이 계산해 알림에 표시합니다. 항목이 없으면 아무것도 하지 않습니다. `AI 정리`를 켠 경우에만 항목이 있는 날 새 상담(`origin=schedule`)을 만들어 분석하고, 이전 브리핑 대화는 다시 보내지 않습니다. 보내는 영역은 항목에 필요한 범주와 사용자가 고른 범주의 교집합이며 승인 대기 수 같은 로컬 항목은 보내지 않습니다. 켤 때의 연결·모델로만 실행하고, 바뀌면 예약을 멈추고 알립니다. 결과 제안은 승인 대기로만 들어갑니다. 앱이 꺼져 있어 놓친 날은 몰아서 실행하지 않고 가장 최근 1회만 실행합니다(기간 회고는 놓친 기간을 순서대로 처리합니다). 예약을 끄면 시작 전인 브리핑 실행도 취소합니다.
+- **상담 방식:** 말투·답변 길이·결론 우선·추가 메모를 정합니다. 시스템 규칙 뒤에 "규칙을 바꾸지 않는다"는 표시와 함께 붙으며 데이터·공유·승인 규칙은 그대로입니다.
+
+알림은 이 기기에서만 표시하며 모델에 보내지 않습니다. 메신저·외부 알림 연동은 없습니다. 이 기능의 회귀 검증(`tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_migration.py`)은 합성 데이터와 가짜 제공자로 전송 payload를 확인하며, 실제 모델의 학습 제안 품질은 평가하지 않습니다.
+
 ## Portfolio and monthly history
 
 The 자산 area (`/finance`: 개요, `/finance/accounts`, `/finance/investments`, `/finance/cashflow`, `/finance/history`) evaluates local DB accounts, holdings, liabilities and FX; the quote connection lives in `/settings/market`. Google OAuth is optional and restricted to a newly created quote-only file using `drive.file`. Only tickers, currency pairs and quote formulas leave the machine; Google can retain the ticker list. Personal quantities and costs stay local. Existing Sheets imports have an explicit preview/import path; existing snapshots and corrections remain unchanged. See [Finance guide](docs/finance.md).
 
 `/career` shows job applications and their interviews; `/career/records` links employment, roles, projects, contributions, achievements, evidence and feedback with date precision. Extracted records remain drafts until confirmed and sharing defaults to local-only. `/career/timeline` derives events from their original records. `/advisor` offers paged title/body/date search, source-linked local summary drafts, cross-conversation keyword/local embedding retrieval, and explicit company/project/decision links. `/settings/memory` stores revisions and validity intervals. Live balances and schedules always come from domain records, while derived sources are rechecked before transmission.
 
-`/reflect` holds the decision journal and `/reflect/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/settings/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM review is enabled implicitly.
+`/reflect` holds the decision journal and `/reflect/reviews` keeps repeated decision outcomes and month/quarter/year review drafts with frozen evidence. Confirmation is explicit. `/settings/jobs` exposes local recurring review schedules, retry and failure states; schedules are disabled until the user enables them. Review generation is deterministic and local. No background external LLM work is enabled implicitly: learning reflections and model briefings run only after the explicit opt-ins described above.
 
 ## Consultation latency and analysis depth
 
@@ -171,7 +184,7 @@ app/
 frontend/src/
   app/          routes; (main)/advisor/layout.tsx hosts the workspace so /advisor → /advisor/[id] keeps the stream
   api-client/   axios mutator, SSE client, error normalization; generated/ + model/ come from orval
-  features/     advisor, dashboard, plan, finance, holdings, career, memory, reviews, documents, personal-data, approvals, settings
+  features/     advisor, dashboard, plan, finance, holdings, career, memory, reviews, documents, personal-data, approvals, playbooks, inbox, settings
   components/   shared UI (page header/sections, tabs, record states, calendar/); ui/ holds the shadcn primitives
   widgets/      providers, app shell, sidebar
   lib/          Korean labels, formatting, QueryClient
@@ -187,6 +200,8 @@ frontend/src/
 | 상담 이력·공유·미리보기 | `modules/advisor/advisor_manager.py`, `modules/advisor/runtime/context.py` |
 | FinancialCalculator | `modules/finance/financial_calculator.py` |
 | DecisionJournalService | `modules/advisor/memory_manager.py` |
+| 플레이북(승인·선택·저장 규칙) | `modules/playbooks/` |
+| 학습 회고·브리핑·알림·상담 방식 | `modules/agent/` |
 | ConversationRepository | `modules/crud/conversation_handler.py` |
 
 Inside a module package, files are split by role:

@@ -8,24 +8,29 @@ import { PageContainer, PageHeader, Section } from '@/components/page-container'
 import { QueryStatus } from '@/components/query-status';
 
 import { useListMemories } from '@/api-client/generated/memory/memory';
+import { useListPendingPlaybookRevisions } from '@/api-client/generated/playbooks/playbooks';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
 import { dateTime } from '@/lib/utils/format';
 
 import { MemoryProposalCard, ProposalCard } from '@/features/advisor/components/proposal-card';
+import { PlaybookProposalCard } from '@/features/playbooks/components/playbook-proposal-card';
 
 export function ApprovalsView() {
   const proposals = useListProposals({ status: 'pending' });
   const memories = useListMemories({ status: 'proposed' });
+  const playbooks = useListPendingPlaybookRevisions();
   const approved = useListProposals({ status: 'approved' });
   const rejected = useListProposals({ status: 'rejected' });
   const history = [...(approved.data ?? []), ...(rejected.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const empty = proposals.isSuccess && memories.isSuccess && proposals.data.length === 0 && memories.data.length === 0;
+  const empty =
+    proposals.isSuccess && memories.isSuccess && playbooks.isSuccess && proposals.data.length === 0 && memories.data.length === 0 && playbooks.data.length === 0;
 
   return (
     <PageContainer className='max-w-[820px]'>
-      <PageHeader title='승인 대기' description='상담에서 나온 변경 제안과 기억 후보입니다. 승인한 것만 반영됩니다.' />
+      <PageHeader title='승인 대기' description='상담에서 나온 변경 제안, 기억 후보와 배운 절차입니다. 승인한 것만 반영됩니다.' />
       <QueryStatus pending={proposals.isPending} error={proposals.error} retry={proposals.refetch} label='변경 제안' />
       <QueryStatus pending={memories.isPending} error={memories.error} retry={memories.refetch} label='기억 후보' />
+      <QueryStatus pending={playbooks.isPending} error={playbooks.error} retry={playbooks.refetch} label='플레이북 제안' />
       {empty && <EmptyState icon={Inbox} title='기다리는 항목이 없습니다' className='rounded-lg border bg-card' />}
 
       {!!proposals.data?.length && (
@@ -53,6 +58,16 @@ export function ApprovalsView() {
           <div className='flex flex-col gap-3'>
             {memories.data.map(m => (
               <MemoryProposalCard key={m.id} memory={m} />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {!!playbooks.data?.length && (
+        <Section title='플레이북 제안' count={playbooks.data.length}>
+          <div className='flex flex-col gap-3'>
+            {playbooks.data.map(r => (
+              <PlaybookProposalCard key={r.id} revision={r} />
             ))}
           </div>
         </Section>

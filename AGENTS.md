@@ -31,10 +31,11 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 | 자산·재무 | `app/modules/finance/`, `app/modules/portfolio/`: 로컬 재무 원본, 시세 전용 Sheets, 결정적 계산, 거래·월별 이력, 수동 값 변경 이력. |
 | 커리어·생활 관리 | `app/modules/personal_data/`, `app/modules/crud/`, `app/schema/domain_schema.py`: 채용 지원, 면접, 커리어 기준, 일정, 목표, 작업, 운동 기록 등. 재직·프로젝트·성과는 `app/modules/career/`에서 관리한다. |
 | 개인 상담 | `app/modules/advisor/`, `app/modules/context/`: 질문별 데이터 선택, 공유 필터, 근거 스냅샷, 스트리밍 답변, 제안·기억·결정 기록. |
+| 플레이북·학습·브리핑 | `app/modules/playbooks/`, `app/modules/agent/`: 승인된 상담 절차(DB revision), 상담 후 학습 회고(`advisor_reflection` 잡), 결정적 신호와 예약 브리핑, 로컬 알림, 상담 방식. |
 | 문서 상담 | `app/modules/documents/`: PDF·Markdown·TXT의 버전 관리, 비동기 인덱싱, 검색, 인용과 출처 추적. |
 | 모델·연결 | `app/modules/llm/`, `app/modules/auth/`: 모델 제공자 인터페이스, ChatGPT 연결과 별도 Google OAuth. |
 
-현재는 로컬 단일 사용자 제품이다. 모델 제공자 인터페이스의 존재를 실제 연동 완료로 간주하지 않는다. 특히 `CodexAppServerProvider`는 스텁이다. 외부 캘린더 동기화와 증권 거래를 지원한다고 가정하지 않는다. `app/modules/jobs/`의 주기 회고와 시세 갱신은 사용자가 명시적으로 활성화한 작업만 실행한다. 새로운 외부 연동이나 자동 실행은 권한·실패·취소 동작까지 별도 설계한다.
+현재는 로컬 단일 사용자 제품이다. 모델 제공자 인터페이스의 존재를 실제 연동 완료로 간주하지 않는다. 특히 `CodexAppServerProvider`는 스텁이다. 외부 캘린더 동기화와 증권 거래를 지원한다고 가정하지 않는다. `app/modules/jobs/`의 주기 회고와 시세 갱신, `app/modules/agent/`의 자동 학습 회고와 AI 브리핑은 사용자가 명시적으로 활성화한 작업만 실행한다. 모델을 호출하는 잡(`review_jobs_handler.LLM_KINDS`)은 비동기 에이전트 워커만 가져가며 상담 실행과 같은 전역 1개 실행 게이트(`take_runtime_gate`)를 쓴다. 실행 권한은 요청·활성화 시점에 고정하고 바뀌면 취소·일시정지하며, 호출 완료가 불명확한 중단은 자동 재호출하지 않는다. 새로운 외부 연동이나 자동 실행은 권한·실패·취소 동작까지 별도 설계한다.
 
 ## 제품에서 지켜야 할 원칙
 
@@ -66,6 +67,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - 재무, 커리어, 일정과 목표 간의 제약을 연결한다. 검증 가능한 통계 없이 투자 성과나 합격 확률을 만들어내지 않는다.
 - 읽기 도구와 쓰기 경로를 분리한다. 현재 허용된 제안은 `create_task`, `calendar_update`, `goal_update`이며 실제 반영은 명시적 사용자 승인 후에만 한다. LLM에는 재무 테이블이나 Sheets 변경 경로를 제공하지 않는다.
 - 제안 payload는 서버에서 검증한다. 중복 승인, 승인·거절 경합, 실패 시 롤백과 감사 기록을 보호한다. 도구나 action을 추가할 때 허용 목록과 회귀 검증도 함께 변경한다.
+- 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
 - LLM이 추출한 장기 기억은 사용자가 확인하기 전에는 확정하지 않는다. 의사결정 기록은 당시 근거·기대 결과·실제 결과를 구분해 회고할 수 있게 한다.
 - **개발 에이전트의 자율 작업 권한은 제품 안의 승인 절차를 생략할 권한이 아니다.**
 
@@ -122,6 +124,7 @@ corepack yarn generate-api
 | 상담에 전달되는 데이터 | `tests/test_advisor_product_context.py`, `test_context_routing.py`, `test_context_budget.py`, `test_calendar_context.py` |
 | 공유·문서 근거 | `tests/test_privacy_history.py`, `test_advisor_documents.py`, `test_document_evidence.py`, `test_documents.py` |
 | 승인·연결·신뢰 경계 | `tests/test_proposal_race.py`, `test_oauth.py`, `test_google_oauth.py`, `test_llm_failures.py`, `test_local_trust.py` |
+| 플레이북·학습·브리핑 | `tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_migration.py` |
 | DB 변경 | `tests/test_migration_manager.py`, `test_legacy_database.py`, 도메인 migration 테스트 및 `.github/workflows/ci.yml`의 PostgreSQL 검증 |
 
 테스트는 결과뿐 아니라 **모델에 실제로 전달되는 payload**를 검사한다. 예를 들어 최신 잔고 반영, 공유 제외 후 과거 턴 차단, 요청한 일정 범위, 정확한 계산 결과와 불완전성 플래그를 합성 데이터와 가짜 제공자로 확인한다. 모킹된 요청 경로 통과와 실제 LLM의 답변 품질·OAuth·Sheets 연동 성공을 구별한다. 실제 연동 또는 품질 평가가 필요한 작업에서는 측정한 환경과 결과를 별도로 보고한다.

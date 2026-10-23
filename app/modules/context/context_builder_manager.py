@@ -88,7 +88,8 @@ class ContextBuilderManager:
               history_document_refs: set[str] | None = None,
               inherited_unknown: bool = False, history_message_refs: list[int] | None = None,
               history_search_flags: list[dict] | None = None,
-              historical_experiences: ToolResult | None = None) -> ContextPackage:
+              historical_experiences: ToolResult | None = None,
+              playbooks: list | None = None, playbook_flags: list[dict] | None = None) -> ContextPackage:
         now = now or datetime.now(UTC)
         data, refs, flags, freshness = self.collect(session, route.selected, now, query=query,
             document_scope={"enabled": document_search, "document_ids": list(document_ids)})
@@ -99,6 +100,13 @@ class ContextBuilderManager:
             data["search_past_experiences"] = historical_experiences.data
             refs.extend({**ref, "category": "profile", "tool": "search_past_experiences"} for ref in historical_experiences.refs)
             flags.extend(historical_experiences.flags)
+        if playbooks:
+            # Approved procedure, not user data: the snapshot keeps the exact revision that was sent.
+            from app.modules.playbooks.selection import package_section
+            data["playbooks"] = package_section(session, playbooks)
+            refs.extend({"table": "playbook_revisions", "id": revision.id, "category": "system", "tool": "playbooks"}
+                        for revision in playbooks)
+        flags.extend(playbook_flags or [])
         from app.modules.context.record_privacy import stamp_references
         refs = stamp_references(session, refs)
         if document_search and query:

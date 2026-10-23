@@ -73,6 +73,13 @@ class MemoryProposalView(BaseModel):
     kind: str
     content: str
 
+class PlaybookUseView(BaseModel):
+    revision_id: int
+    playbook_id: int
+    slug: str | None = None
+    title: str
+    revision: int
+
 class RunResult(BaseModel):
     answer: str = ''
     message_id: int | None = None
@@ -86,6 +93,7 @@ class RunResult(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     model_calls: int = 0
     tool_calls: int = 0
+    playbooks: list[PlaybookUseView] = Field(default_factory=list)
 
 class RunView(BaseModel):
     model_config = ConfigDict(from_attributes=True)

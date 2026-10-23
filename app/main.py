@@ -34,6 +34,8 @@ from app.router import (
     market_data_router,
     advisor_runtime_router,
     locale_router,
+    playbook_router,
+    agent_router,
 )
 
 
@@ -58,12 +60,14 @@ async def lifespan(_app: FastAPI):
     from app.modules.documents.document_manager import process_pending
     from app.modules.jobs.job_manager import process_pending as process_jobs
     from app.modules.advisor.runtime.worker import process_pending as process_consultations
+    from app.modules.agent.reflection import process_pending as process_reflections
     stop = asyncio.Event()
     workers = []
     if _app.state.security_schema_ready:
         workers = [asyncio.create_task(process_pending(db, stop)),
                    asyncio.create_task(process_jobs(db, stop)),
-                   asyncio.create_task(process_consultations(db, stop))]
+                   asyncio.create_task(process_consultations(db, stop)),
+                   asyncio.create_task(process_reflections(db, stop))]
     try:
         yield
     finally:
@@ -98,5 +102,5 @@ async def advisor_error_handler(_request: Request, exc: AdvisorError):
 for module in (health_router, oauth_callback_router, ai_provider_router, privacy_router, advisor_router,
                proposal_router, memory_router, personal_data_router, dashboard_router, portfolio_router, google_oauth_router, document_router, security_router,
                transfer_policy_router, career_router, reviews_router, jobs_router, market_data_router, advisor_runtime_router,
-               locale_router):
+               locale_router, playbook_router, agent_router):
     app.include_router(module.router)
