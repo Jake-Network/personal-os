@@ -10,6 +10,7 @@ export interface ConversationItem {
   id: number;
   title: string;
   domain: ConversationItemDomain;
+  origin?: string;
   created_at: string;
   updated_at: string;
 }

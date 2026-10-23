@@ -151,6 +151,9 @@ class ContextPackage:
             "data_quality_flags": self.data_quality_flags,
             "document_citations": payload_citations(self.payload),
             "web_sources": self.payload.get('data', {}).get('web_search', {}).get('pages', []),
+            "playbooks": [{"ref": ref, "playbook_id": item.get("playbook_id"), "slug": item.get("slug"),
+                           "title": item.get("title")}
+                          for ref, item in self.payload.get('data', {}).get('playbooks', {}).get('items', {}).items()],
         }
 
 

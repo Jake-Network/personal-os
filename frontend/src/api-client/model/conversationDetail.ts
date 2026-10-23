@@ -11,6 +11,7 @@ export interface ConversationDetail {
   id: number;
   title: string;
   domain: ConversationDetailDomain;
+  origin?: string;
   created_at: string;
   updated_at: string;
   messages: MessageItem[];

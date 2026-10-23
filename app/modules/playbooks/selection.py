@@ -76,7 +76,7 @@ def package_section(session: Session, revisions: list[PlaybookRevision]) -> dict
         Playbook.id.in_([revision.playbook_id for revision in revisions]))).all())
     return {"procedural_not_facts": True,
             "items": {f"playbook_revisions:{revision.id}": {
-                "slug": slugs.get(revision.playbook_id), "revision": revision.revision,
+                "playbook_id": revision.playbook_id, "slug": slugs.get(revision.playbook_id), "revision": revision.revision,
                 "title": revision.title, "steps": revision.body} for revision in revisions}}
 
 

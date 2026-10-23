@@ -21,11 +21,13 @@ LABELS = {
     "stale_data": "오래된 시세·잔고가 있습니다",
     "approvals": "승인을 기다리는 제안이 있습니다",
 }
-# Which data a model briefing would need for each signal. Approvals stay local-only.
+# Which data a model briefing would need for each signal. Signals whose records no context
+# tool provides (decision journal, memory review dates, approvals) stay local-only: they never
+# wake the model, because a briefing about them would have no evidence to work from.
 CATEGORIES = {
     "expenses": {Category.FINANCIAL}, "goals": {Category.GOALS}, "interviews": {Category.CAREER, Category.CALENDAR},
     "interviews_soon": {Category.CAREER, Category.CALENDAR}, "exercise": {Category.HEALTH},
-    "decisions_due": {Category.PROFILE}, "memories_due": {Category.PROFILE},
+    "decisions_due": set(), "memories_due": set(),
     "stale_data": {Category.FINANCIAL, Category.INVESTMENT}, "approvals": set(),
 }
 LINKS = {"expenses": "/finance", "goals": "/plan", "interviews": "/career", "interviews_soon": "/career",

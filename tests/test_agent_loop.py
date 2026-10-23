@@ -118,8 +118,8 @@ def test_trigger_match_sends_the_approved_revision_and_records_its_use(env):
     assert run["status"] == "completed", run
     items = package(requests[0])["data"]["playbooks"]["items"]
     revision_id = playbook["active_revision"]["id"]
-    assert items == {f"playbook_revisions:{revision_id}": {"slug": "이직-점검", "revision": 1,
-                                                           "title": "이직 준비 점검", "steps": STEPS}}
+    assert items == {f"playbook_revisions:{revision_id}": {"playbook_id": playbook["id"], "slug": "이직-점검",
+                                                           "revision": 1, "title": "이직 준비 점검", "steps": STEPS}}
     assert package(requests[0])["data"]["playbooks"]["procedural_not_facts"] is True
     assert "승인된 상담 절차(플레이북)" in requests[0].instructions
     assert run["result"]["playbooks"] == [{"revision_id": revision_id, "playbook_id": playbook["id"],
@@ -381,6 +381,16 @@ def due_decision(database):
         session.commit()
 
 
+def upcoming_interview(database):
+    from app.modules.database.model import Interview, JobApplication
+    with database.session() as session:
+        application = JobApplication(company="합성로보틱스", role="합성 엔지니어", status="interviewing")
+        session.add(application)
+        session.flush()
+        session.add(Interview(application_id=application.id, stage="1차", starts_at=datetime.now(UTC) + timedelta(days=2)))
+        session.commit()
+
+
 def test_briefing_without_signals_is_silent(env):
     client, database, provider = env
     schedule_id = schedule(database, llm_enabled=True)
@@ -405,9 +415,19 @@ def test_briefing_signals_stay_local_without_model_opt_in(env):
     assert not provider.requests
 
 
-def test_model_briefing_runs_in_a_fresh_conversation_once(env):
+def test_local_only_signals_never_wake_the_model(env):
     client, database, provider = env
     due_decision(database)
+    created = client.post("/api/jobs/briefings", json={"name": "아침 브리핑", "local_time": "08:00",
+                                                       "llm_enabled": True, "enabled": True}).json()
+    result = client.post(f"/api/jobs/briefings/{created['id']}/run-now", json={"request_id": "x"}).json()
+    assert result["state"] == "signals" and result["model"] == "no_shared_category"
+    assert not provider.requests
+
+
+def test_model_briefing_runs_in_a_fresh_conversation_once(env):
+    client, database, provider = env
+    upcoming_interview(database)
     created = client.post("/api/jobs/briefings", json={"name": "아침 브리핑", "local_time": "08:00",
                                                        "llm_enabled": True, "enabled": True})
     assert created.status_code == 201, created.text
@@ -421,11 +441,11 @@ def test_model_briefing_runs_in_a_fresh_conversation_once(env):
         assert len(runs) == 1
         conversation = session.get(AdvisorConversation, runs[0].conversation_id)
         assert conversation.origin == "schedule" and conversation.id != 1
-        assert runs[0].input_payload["categories"] == ["profile"]
+        assert runs[0].input_payload["categories"] == ["calendar", "career"]
     provider.replies.append(FINAL)
     assert asyncio.run(process_one(database))
     request = provider.requests[-1]
-    assert "예약된 브리핑입니다" in outbound(request)
+    assert "예약된 브리핑입니다" in outbound(request) and "합성로보틱스" in outbound(request)
     assert "get_accounts_summary" not in package(request)["data"]
     with database.session() as session:
         assert session.get(AdvisorRun, runs[0].id).status == "completed"
@@ -435,7 +455,7 @@ def test_model_briefing_runs_in_a_fresh_conversation_once(env):
 
 def test_authority_change_pauses_the_briefing(env):
     client, database, provider = env
-    due_decision(database)
+    upcoming_interview(database)
     created = client.post("/api/jobs/briefings", json={"name": "아침 브리핑", "local_time": "08:00",
                                                        "llm_enabled": True, "enabled": True}).json()
     from app.modules.llm import run_policy
@@ -456,7 +476,7 @@ def test_authority_change_pauses_the_briefing(env):
 
 def test_pausing_withdraws_a_queued_briefing_run(env):
     client, database, provider = env
-    due_decision(database)
+    upcoming_interview(database)
     created = client.post("/api/jobs/briefings", json={"name": "아침 브리핑", "local_time": "08:00",
                                                        "llm_enabled": True, "enabled": True}).json()
     client.post(f"/api/jobs/briefings/{created['id']}/run-now", json={"request_id": "x"})

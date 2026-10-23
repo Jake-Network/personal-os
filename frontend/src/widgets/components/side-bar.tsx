@@ -13,7 +13,8 @@ import { NavLink } from './nav-link';
 
 export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
   const pending = (useListProposals({ status: 'pending' }).data?.length ?? 0) + (useListPendingPlaybookRevisions().data?.length ?? 0);
-  const unread = useCountUnreadInbox().data?.unread ?? 0;
+  // Local-only count; background reflections and briefings land here after the run that triggered them.
+  const unread = useCountUnreadInbox({ query: { refetchInterval: 30000 } }).data?.unread ?? 0;
   const provider = useGetStatus().data;
   const providerOn = provider?.connected && provider.plan_usage_enabled;
   const providerOff = provider?.status === 'needs_reauth';

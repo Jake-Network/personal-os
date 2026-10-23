@@ -21,6 +21,7 @@ class ConversationItem(BaseModel):
     id: int
     title: str
     domain: str | None
+    origin: str = "user"  # user | schedule (a briefing run in its own conversation)
     created_at: datetime
     updated_at: datetime
 
