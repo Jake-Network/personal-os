@@ -58,6 +58,8 @@ async def process_one(database):
                 repository = RunRepository(checking)
                 repository.heartbeat(run_id, owner, generation)
                 authorization.require(checking, auth)
+                from app.modules.agent.briefing import require_run_authorized
+                require_run_authorized(checking, repository.get(run_id))
                 checking.commit()
 
         async def heartbeat():
@@ -81,7 +83,8 @@ async def process_one(database):
             with run_checkpointer(database, run_id, owner, generation) as checkpointer:
                 graph = build_conversation_graph(session, advisor_manager, conversation, body.options(), run.model,
                     checkpointer=checkpointer, guard=guard, current_message_id=run.user_message_id,
-                    on_progress=progress, run_authorization=auth)
+                    on_progress=progress, run_authorization=auth, run_id=run_id,
+                    run_owner=owner, run_generation=generation)
                 saved = await graph.aget_state(config)
                 pending = {item.id for task_state in saved.tasks for item in task_state.interrupts}
                 response_id = run.checkpoint.get('question_id')
@@ -208,9 +211,7 @@ async def process_one(database):
             repo.append_event(run_id, 'done', result, f'done:{row.answer_revision}', worker_id=owner, generation=generation)
             repo.transition(run_id, 'completed', worker_id=owner, generation=generation, result=result)
             from app.modules.agent.reflection import after_run
-            from app.modules.agent import briefing
             after_run(session, run_id, state)
-            briefing.after_run(session, row)
             session.commit()
         except (LeaseLost, CheckpointLeaseLost):
             session.rollback()

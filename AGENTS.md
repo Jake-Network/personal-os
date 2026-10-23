@@ -67,7 +67,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - 재무, 커리어, 일정과 목표 간의 제약을 연결한다. 검증 가능한 통계 없이 투자 성과나 합격 확률을 만들어내지 않는다.
 - 읽기 도구와 쓰기 경로를 분리한다. 현재 허용된 제안은 `create_task`, `calendar_update`, `goal_update`이며 실제 반영은 명시적 사용자 승인 후에만 한다. LLM에는 재무 테이블이나 Sheets 변경 경로를 제공하지 않는다.
 - 제안 payload는 서버에서 검증한다. 중복 승인, 승인·거절 경합, 실패 시 롤백과 감사 기록을 보호한다. 도구나 action을 추가할 때 허용 목록과 회귀 검증도 함께 변경한다.
-- 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
+- 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, 탐색 목록도 크기를 제한한 `data.playbook_catalog`와 정확한 revision 참조로 기록한다. 회고의 원문·결정 결과는 스냅샷에 포함하고, 학습한 절차와 기억은 그 스냅샷 출처를 승인 후에도 보존한다. revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
 - LLM이 추출한 장기 기억은 사용자가 확인하기 전에는 확정하지 않는다. 의사결정 기록은 당시 근거·기대 결과·실제 결과를 구분해 회고할 수 있게 한다.
 - **개발 에이전트의 자율 작업 권한은 제품 안의 승인 절차를 생략할 권한이 아니다.**
 

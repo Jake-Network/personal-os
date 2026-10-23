@@ -16,9 +16,9 @@ import { MemoryProposalCard, ProposalCard } from '@/features/advisor/components/
 import { PlaybookProposalCard } from '@/features/playbooks/components/playbook-proposal-card';
 
 export function ApprovalsView() {
-  const proposals = useListProposals({ status: 'pending' });
-  const memories = useListMemories({ status: 'proposed' });
-  const playbooks = useListPendingPlaybookRevisions();
+  const proposals = useListProposals({ status: 'pending' }, { query: { refetchInterval: 30000 } });
+  const memories = useListMemories({ status: 'proposed' }, { query: { refetchInterval: 30000 } });
+  const playbooks = useListPendingPlaybookRevisions({ query: { refetchInterval: 30000 } });
   const approved = useListProposals({ status: 'approved' });
   const rejected = useListProposals({ status: 'rejected' });
   const history = [...(approved.data ?? []), ...(rejected.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));

@@ -255,9 +255,10 @@ def structured_response(content, schema):
 
 def build_conversation_graph(session, manager, conversation, options, model, checkpointer=None,
                              guard=None, current_message_id=None, on_progress=None, run_authorization=None,
-                             on_stream=None):
+                             on_stream=None, run_id=None, run_owner=None, run_generation=None):
     assembler = ContextAssembler(session, manager, conversation, options, model,
-                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization)
+                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization, run_id=run_id,
+                                 run_owner=run_owner, run_generation=run_generation)
     tools = read_tools(assembler)
     base_options = options
     explicit_playbooks = bool(getattr(options, 'playbook_ids', ()) or getattr(options, 'playbook_slugs', ()))
@@ -267,11 +268,11 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         if options is not None and not explicit_playbooks and state.get('playbook_slugs'):
             assembler.options = replace(base_options, playbook_slugs=tuple(state['playbook_slugs']))
 
-    def playbook_catalog():
+    def playbook_catalog(query):
         if options is None or session is None:
-            return []
-        from app.modules.playbooks.selection import catalog
-        return catalog(session, manager.sharing_exclusions(session, options))
+            return {}, []
+        from app.modules.playbooks.selection import catalog_context
+        return catalog_context(session, manager.sharing_exclusions(session, options), query)
 
     async def progress(stage, **metadata):
         if on_progress:
@@ -303,7 +304,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
     def pending_tasks(state):
         return [task for task in state['plan']['tasks'] if state.get('results', {}).get(task['id']) is None]
 
-    async def call(state, instruction, schema=None, derived=None, history_source_ids=()):
+    async def call(state, instruction, schema=None, derived=None, history_source_ids=(), context_data=None, context_flags=()):
         max_calls, _, _ = limits(state)
         assembler.baseline_snapshot_id = state.get('baseline_snapshot_id')
         attempts = 2 if schema else 1
@@ -321,6 +322,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 prompt += '\n검증 오류(필드 경로와 오류 유형만): ' + json.dumps(validation_errors, ensure_ascii=False)
                 prompt += '\n필수 필드와 자료형을 확인하고, 스키마에 없는 필드와 JSON 밖의 설명은 빼세요.'
             extra = {'history_source_ids': history_source_ids} if history_source_ids else {}
+            if context_data or context_flags:
+                extra.update(context_data=context_data, context_flags=context_flags)
             request, package = await assembler.assemble(state['query'], instruction=prompt,
                 derived=derived, sources=state.get('sources', []), structured_output=schema is not None, **extra)
             state['sources'] = list(dict.fromkeys([*state.get('sources', []), package.snapshot_id]))
@@ -396,7 +399,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'clarification': None, 'needs_replan': False,
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
         conditional = state.get('clarification_unknown') or state.get('clarification_count', 0) >= 2
-        catalog = [] if explicit_playbooks else playbook_catalog()
+        catalog, catalog_flags = ({}, []) if explicit_playbooks else playbook_catalog(state['query'])
         result = await call(state,
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
             '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
@@ -415,14 +418,14 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             ('. playbook_catalog에서 이 질문에 필요한 승인된 상담 절차가 있으면 slug를 playbooks에 최대 2개 넣으세요. '
              '카탈로그에 없는 slug는 쓰지 마세요.' if catalog else ''), Plan,
             {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
-             **({'playbook_catalog': catalog} if catalog else {}),
              'selected_scenarios': state.get('selected_scenarios', []),
-             'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})})
+             'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})},
+            context_data={'playbook_catalog': catalog} if catalog else None, context_flags=catalog_flags)
         _, max_tools, _ = limits(state)
         if any(t.tool not in tools for t in result.tasks):
             raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
         # An optional procedure choice never fails the consultation: unknown slugs are dropped and disclosed.
-        offered = {item['slug'] for item in catalog}
+        offered = {item['slug'] for item in state.get('numeric_basis', {}).get('playbook_catalog', {}).get('items', {}).values()}
         chosen = [slug for slug in dict.fromkeys(result.playbooks) if slug in offered]
         if len(chosen) < len(set(result.playbooks)):
             state['limitations'] = [*state['limitations'], '승인된 플레이북 목록에 없는 절차는 사용하지 않았습니다.']

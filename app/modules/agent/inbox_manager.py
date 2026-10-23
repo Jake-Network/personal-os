@@ -13,12 +13,18 @@ from app.modules.database.model.base import utcnow
 
 
 def notify(session: Session, kind: str, title: str, dedupe_key: str, *, summary: str = "",
-           severity: str = "info", links: dict | None = None) -> InboxItem:
+           severity: str = "info", links: dict | None = None,
+           reopen_on_change: bool = False) -> InboxItem:
     existing = inbox_handler.by_key(session, dedupe_key)
     if existing is not None:
-        if existing.status == "unread":
-            # The same notice for the same period keeps its identity but shows current counts.
-            existing.title, existing.summary, existing.links = title[:200], summary, links or {}
+        changed = (existing.kind, existing.title, existing.summary, existing.severity, existing.links) != (
+            kind, title[:200], summary, severity, links or {})
+        if existing.status == "unread" or reopen_on_change:
+            # A terminal transition is new information even if preparation was already read.
+            existing.kind, existing.title, existing.summary = kind, title[:200], summary
+            existing.severity, existing.links = severity, links or {}
+            if reopen_on_change and changed:
+                existing.status, existing.read_at = "unread", None
         return existing
     item = InboxItem(kind=kind, title=title[:200], summary=summary, severity=severity,
                      links=links or {}, dedupe_key=dedupe_key[:160])

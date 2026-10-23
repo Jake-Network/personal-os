@@ -15,6 +15,11 @@ class LLMRequest:
     source_message_ids: tuple[int, ...] = ()
     authorization: dict | None = None
     json_mode: bool = False
+    run_id: str | None = None
+    run_owner: str | None = None
+    run_generation: int | None = None
+    background_job_id: int | None = None
+    background_job_owner: str | None = None
 
 
 @dataclass

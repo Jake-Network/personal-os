@@ -43,7 +43,7 @@ function NextActions({ item }: { item: InboxItemView }) {
   const links = item.links as Record<string, unknown>;
   const signals = (Array.isArray(links.signals) ? links.signals : []) as Signal[];
   const actions: { href: string; label: string }[] = [];
-  if (typeof links.conversation_id === 'number' && item.kind !== 'job_failed') actions.push({ href: `/advisor/${links.conversation_id}`, label: '상담 보기' });
+  if (typeof links.conversation_id === 'number') actions.push({ href: `/advisor/${links.conversation_id}`, label: '상담 보기' });
   if (item.kind === 'learning_proposals' && (Array.isArray(links.playbook_revision_ids) || Array.isArray(links.memory_ids))) actions.push({ href: '/approvals', label: '제안 검토' });
   if (item.kind === 'schedule_paused' || item.kind === 'job_failed') actions.push({ href: '/settings/jobs', label: '자동 작업 확인' });
   if (typeof links.playbook_id === 'number') actions.push({ href: `/reflect/playbooks?record=${links.playbook_id}`, label: '플레이북 보기' });
@@ -67,7 +67,7 @@ function NextActions({ item }: { item: InboxItemView }) {
 
 export function InboxView() {
   const queryClient = useQueryClient();
-  const items = useListInboxItems();
+  const items = useListInboxItems(undefined, { query: { refetchInterval: 30000 } });
   const refresh = () =>
     Promise.all([getListInboxItemsQueryKey(), getCountUnreadInboxQueryKey()].map(queryKey => queryClient.invalidateQueries({ queryKey })));
   const options = { mutation: { onSuccess: refresh, onError: notify.error } };

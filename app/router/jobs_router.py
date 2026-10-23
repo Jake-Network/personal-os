@@ -63,8 +63,7 @@ async def activate_job_schedule(schedule_id: int, body: ScheduleActivation, sess
         raise HTTPException(404, "주기 작업을 찾을 수 없습니다")
     if schedule.kind in briefing.KINDS:
         await briefing.activate(session, schedule, body.enabled)
-        if not body.enabled:
-            briefing.cancel_queued(session, schedule)
+        briefing.cancel_unfinished(session, schedule)
         session.commit()
         return schedule
     schedule.enabled = body.enabled
@@ -99,8 +98,7 @@ async def update_briefing_schedule(schedule_id: int, body: BriefingCreate, sessi
     schedule.local_time, schedule.options = body.local_time, briefing.options_of(body)
     # Any edit re-pins authority from the current connection, or clears it.
     await briefing.activate(session, schedule, body.enabled)
-    if not body.enabled:
-        briefing.cancel_queued(session, schedule)
+    briefing.cancel_unfinished(session, schedule)
     session.commit()
     return schedule
 

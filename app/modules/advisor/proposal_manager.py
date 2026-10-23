@@ -124,7 +124,8 @@ def _validate_target_changes(action: str, payload: dict, target) -> None:
 class ProposalManager:
     @staticmethod
     def record(session: Session, conversation_id: int, message_id: int, proposals: list[dict],
-               memories: list[dict]) -> tuple[list[ProposedAction], list[PersonalMemory]]:
+               memories: list[dict], *, memory_sources: list[dict] | None = None
+               ) -> tuple[list[ProposedAction], list[PersonalMemory]]:
         validated = []
         for proposal in proposals:
             action = proposal.get("action")
@@ -158,9 +159,13 @@ class ProposalManager:
             for m in memories if not findings(m["content"])
         ]
         from app.modules.context.record_privacy import stamp_references
+        sources = list(memory_sources or [])
+        if message_id is not None and not any(
+                ref.get("table") == "advisor_messages" and ref.get("id") == message_id for ref in sources):
+            sources.append({"table": "advisor_messages", "id": message_id})
         for memory in mems:
             session.add(MemoryRevision(memory_id=memory.id, revision=0, kind=memory.kind, content=memory.content,
-                status="proposed", source_references=stamp_references(session, [{"table": "advisor_messages", "id": message_id}])))
+                status="proposed", source_references=stamp_references(session, sources)))
         for a in actions:
             audit_log_handler.record(session, "advisor", f"propose.{a.action}", f"proposed_actions:{a.id}",
                                      {"payload": a.payload})

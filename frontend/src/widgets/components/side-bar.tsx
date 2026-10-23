@@ -12,7 +12,9 @@ import { NAV_ITEMS, SETTINGS_ITEM } from './nav-items';
 import { NavLink } from './nav-link';
 
 export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
-  const pending = (useListProposals({ status: 'pending' }).data?.length ?? 0) + (useListPendingPlaybookRevisions().data?.length ?? 0);
+  const pending =
+    (useListProposals({ status: 'pending' }, { query: { refetchInterval: 30000 } }).data?.length ?? 0) +
+    (useListPendingPlaybookRevisions({ query: { refetchInterval: 30000 } }).data?.length ?? 0);
   // Local-only count; background reflections and briefings land here after the run that triggered them.
   const unread = useCountUnreadInbox({ query: { refetchInterval: 30000 } }).data?.unread ?? 0;
   const provider = useGetStatus().data;

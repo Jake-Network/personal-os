@@ -63,7 +63,7 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                     return False
             if any(not record_allowed(session, r.get("table"), r.get("id")) or not record_exists(session, r.get("table"), r.get("id")) or not reference_generation_matches(session, r) for r in snapshot.record_references):
                 return False
-            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "financial_transactions", "holdings", "playbook_revisions"}]
+            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "decision_reviews", "financial_transactions", "holdings", "playbook_revisions"}]
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table in {"personal_memories", "memory_revisions"}:
@@ -131,6 +131,16 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                 if transaction.payload.get(field) is not None]
             if transaction.reverses_id:
                 dependencies.append({"table": "financial_transactions", "id": transaction.reverses_id})
+            if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
+                return False
+        elif table == "decision_reviews":
+            from app.modules.database.model.review_jobs import DecisionReviewRecord
+            outcome = session.get(DecisionReviewRecord, key)
+            if outcome is None:
+                return False
+            dependencies = [{"table": "decision_journal", "id": outcome.decision_id}]
+            if outcome.context_snapshot_id:
+                dependencies.append({"table": "context_snapshots", "id": outcome.context_snapshot_id})
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table == "decision_journal":

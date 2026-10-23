@@ -38,7 +38,7 @@ REFLECTION_PROMPT = (
     "재사용할 '절차'만 제안하세요. 플레이북은 사람의 기록이 아니라 교훈입니다: 금액·잔고·특정 날짜·레코드 ref·"
     "개인 사실을 넣지 말고, 어떤 근거를 어떤 순서로 확인하고 무엇을 주의할지 단계로 쓰세요. "
     "기존 플레이북을 고칠 때는 existing_playbooks에 있는 slug와 active_revision_id를 base_revision_id로 그대로 쓰고 "
-    "전체 수정본을 body에 쓰세요. 새 플레이북은 catalog에 없는 slug(소문자·숫자·한글·하이픈)를 쓰세요. "
+    "전체 수정본을 body에 쓰세요. 새 플레이북은 playbook_catalog에 없는 slug(소문자·숫자·한글·하이픈)를 쓰세요. "
     "사용자가 명시한 장기 선호·제약이 있을 때만 memories 후보를 만드세요. 재사용할 교훈이 없으면 "
     "nothing_to_learn=true로 비워 두세요. 모든 제안은 사용자가 승인해야 적용됩니다.")
 
@@ -74,7 +74,7 @@ class Reflection(StrictModel):
 
 
 def enqueue(session: Session, *, request_id: str, source: str, run_id: str | None = None,
-            decision_id: int | None = None, automatic: bool = False) -> BackgroundJob:
+            decision_id: int | None = None, outcome_id: int | None = None, automatic: bool = False) -> BackgroundJob:
     """Pin run authority now; the caller commits. Raises when the source cannot be reflected on."""
     from app.modules.database.model import AdvisorConversation, DecisionJournalEntry
     from app.modules.database.model.advisor_runtime import AdvisorRun
@@ -102,7 +102,18 @@ def enqueue(session: Session, *, request_id: str, source: str, run_id: str | Non
         if (existing.kind, existing.payload.get("source"), existing.payload.get("run_id"),
                 existing.payload.get("decision_id")) != (KIND, source, run_id, decision_id):
             raise ValueError("같은 요청 ID에 다른 작업을 사용할 수 없습니다")
+        if outcome_id is not None and existing.payload.get("outcome_id") != outcome_id:
+            raise ValueError("같은 요청 ID에 다른 회고 결과를 사용할 수 없습니다")
         return existing
+    if source == "decision_outcome":
+        from app.modules.database.model.review_jobs import DecisionReviewRecord
+        outcome = (session.get(DecisionReviewRecord, outcome_id) if outcome_id is not None else
+                   session.scalar(select(DecisionReviewRecord).where(DecisionReviewRecord.decision_id == decision_id)
+                                  .order_by(DecisionReviewRecord.id.desc()).limit(1)))
+        if outcome_id is not None and (outcome is None or outcome.decision_id != decision_id):
+            raise ValueError("결정에 연결된 회고 결과를 찾을 수 없습니다")
+        # Freeze the append-only event now; a delayed job must never substitute a newer outcome.
+        payload["outcome_id"] = outcome.id if outcome is not None else None
     payload["authorization"] = run_policy.capture(session)
     job = BackgroundJob(request_id=request_id, kind=KIND, enabled=True, payload=payload, max_attempts=1,
                         run_after=utcnow())
@@ -149,7 +160,7 @@ def after_outcome(session: Session, decision_id: int, review_id: int) -> None:
             return
         with session.begin_nested():
             enqueue(session, request_id=f"reflect:decision:{review_id}", source="decision_outcome",
-                    decision_id=decision_id, automatic=True)
+                    decision_id=decision_id, outcome_id=review_id, automatic=True)
     except Exception as exc:
         logger.info("Automatic decision reflection skipped: %s", type(exc).__name__)
 
@@ -167,9 +178,14 @@ def claim(session: Session, owner: str):
         return None
     take_runtime_gate(session)
     # An interrupted call may have reached the provider: fail it for an explicit retry, never replay.
-    session.execute(update(BackgroundJob).where(BackgroundJob.kind.in_(LLM_KINDS), BackgroundJob.status == "running",
-        BackgroundJob.lease_until <= now).values(status="failed", last_error="interrupted",
-                                                  lease_owner=None, lease_until=None))
+    expired = session.execute(update(BackgroundJob).where(BackgroundJob.kind.in_(LLM_KINDS), BackgroundJob.status == "running",
+        BackgroundJob.lease_until <= now).values(status="failed", last_error="interrupted", completed_at=now,
+            lease_owner=None, lease_until=None).returning(BackgroundJob.id, BackgroundJob.payload)).all()
+    from app.modules.agent.inbox_manager import notify
+    for job_id, payload in expired:
+        notify(session, "job_failed", "학습 회고가 중단되었습니다", f"reflection-failed:{job_id}",
+            summary="모델 호출의 완료 여부가 불확실해 자동으로 다시 실행하지 않습니다. 자동 작업에서 상태를 확인하세요.",
+            severity="warning", links={"job_id": job_id, "conversation_id": payload.get("conversation_id")})
     if session.scalar(select(AdvisorRun.id).where(AdvisorRun.status.in_(["running", "cancel_requested"]),
                                                   AdvisorRun.lease_until > now).limit(1)):
         return None
@@ -192,7 +208,7 @@ def claim(session: Session, owner: str):
 def _heartbeat(database, job_id, owner):
     with database.session() as session:
         changed = session.execute(update(BackgroundJob).where(BackgroundJob.id == job_id, BackgroundJob.status == "running",
-            BackgroundJob.lease_owner == owner).values(lease_until=utcnow() + LEASE))
+            BackgroundJob.lease_owner == owner, BackgroundJob.lease_until > utcnow()).values(lease_until=utcnow() + LEASE))
         session.commit()
         return changed.rowcount == 1
 
@@ -200,7 +216,7 @@ def _heartbeat(database, job_id, owner):
 def _finish(session: Session, job_id: int, owner: str, status: str, result: dict | None = None,
             error: str | None = None) -> bool:
     changed = session.execute(update(BackgroundJob).where(BackgroundJob.id == job_id, BackgroundJob.status == "running",
-        BackgroundJob.lease_owner == owner).values(status=status, result=result, last_error=error,
+        BackgroundJob.lease_owner == owner, BackgroundJob.lease_until > utcnow()).values(status=status, result=result, last_error=error,
                                                     completed_at=utcnow(), lease_owner=None, lease_until=None))
     return changed.rowcount == 1
 
@@ -223,7 +239,7 @@ async def process_one(database) -> bool:
     pulse = asyncio.create_task(beat())
     with database.session() as session:
         try:
-            work = asyncio.create_task(reflect(session, job_id, payload))
+            work = asyncio.create_task(reflect(session, job_id, payload, owner=owner))
             done, _ = await asyncio.wait({work, pulse}, return_when=asyncio.FIRST_COMPLETED)
             if pulse in done:
                 work.cancel()
@@ -236,6 +252,9 @@ async def process_one(database) -> bool:
                 return True
             session.commit()
         except asyncio.CancelledError:
+            work.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await work
             session.rollback()
             raise
         except AdvisorError as exc:
@@ -267,7 +286,18 @@ def _record_failure(session, job_id, owner, payload, code):
         session.rollback()
 
 
-async def reflect(session: Session, job_id: int, payload: dict) -> tuple[str, dict]:
+def require_job_authorized(session: Session, job_id: int, owner: str | None) -> None:
+    """Re-read learning consent at the final provider boundary, after async assembly."""
+    from app.modules.agent.settings_manager import learning
+    job = session.get(BackgroundJob, job_id, populate_existing=True)
+    if (job is None or job.kind != KIND or not owner or job.lease_owner != owner
+            or job.status != "running" or not job.enabled or job.lease_until is None
+            or job.lease_until <= utcnow()
+            or (job.payload.get("automatic") and not learning(session).enabled)):
+        raise AdvisorError("학습 회고의 실행 동의나 상태가 변경되었습니다.", provider_code="run_authorization_changed")
+
+
+async def reflect(session: Session, job_id: int, payload: dict, *, owner: str) -> tuple[str, dict]:
     from app.modules.advisor.advisor_manager import advisor_manager
     from app.modules.advisor.runtime.context import ContextAssembler
     from app.modules.advisor.runtime.graph import structured_response
@@ -287,12 +317,13 @@ async def reflect(session: Session, job_id: int, payload: dict) -> tuple[str, di
     if conversation is None:
         return "cancelled", {"state": "source_deleted"}
     used_slugs, derived, message_id = [], {}, None
+    source_flags = []
     if payload["source"] == "run":
         run = session.get(AdvisorRun, payload["run_id"])
         if run is None or run.status != "completed":
             return "cancelled", {"state": "source_deleted"}
         body = RunCreate.model_validate(run.input_payload)
-        options, question, model = body.options(), body.message, run.model
+        options, question = body.options(), body.message
         result = run.result or {}
         used_slugs = [item.get("slug") for item in result.get("playbooks", []) if item.get("slug")]
         message_id = run.assistant_message_id
@@ -309,41 +340,76 @@ async def reflect(session: Session, job_id: int, payload: dict) -> tuple[str, di
         decision = session.get(DecisionJournalEntry, payload["decision_id"])
         if decision is None:
             return "cancelled", {"state": "source_deleted"}
-        outcome = session.scalar(select(DecisionReviewRecord).where(DecisionReviewRecord.decision_id == decision.id)
-                                 .order_by(DecisionReviewRecord.id.desc()).limit(1))
+        if "outcome_id" not in payload:
+            return "cancelled", {"state": "source_unknown"}
+        outcome = session.get(DecisionReviewRecord, payload["outcome_id"]) if payload["outcome_id"] is not None else None
+        if payload["outcome_id"] is not None and (outcome is None or outcome.decision_id != decision.id):
+            return "cancelled", {"state": "source_deleted"}
         options, question = AskOptions(), f"결정 회고: {decision.title}"
-        model = await advisor_manager.gateway.resolve_model(session)
+        from app.modules.context.source_policy import source_allowed
+        excluded = advisor_manager.sharing_exclusions(session, options)
+        if not source_allowed(session, [{"table": "decision_journal", "id": decision.id}], excluded):
+            return "cancelled", {"state": "source_restricted"}
         message_id = decision.source_message_id
         derived = {"decision_review": {"choice": decision.choice, "rationale": decision.rationale,
-            "expected_outcome": decision.expected_outcome, "alternatives": decision.alternatives,
+            "expected_outcome": outcome.expected_outcome if outcome else decision.expected_outcome,
+            "alternatives": decision.alternatives,
             "actual_outcome": outcome.actual_outcome if outcome else None,
             "lessons": outcome.lessons if outcome else None, "historical": True}}
         sources = [{"table": "decision_journal", "id": decision.id}]
-    from app.modules.playbooks.selection import catalog, select_playbooks
+        if outcome is not None:
+            sources.append({"table": "decision_reviews", "id": outcome.id})
+    from app.modules.playbooks.selection import catalog_context, select_playbooks
     from app.modules.crud.playbook_handler import playbook_handler
     excluded = advisor_manager.sharing_exclusions(session, options)
+    from app.modules.context.source_policy import source_allowed
+    if payload["source"] == "run" and not source_allowed(session, sources, excluded,
+            document_scope={"enabled": options.document_search, "document_ids": list(options.document_ids or [])}):
+        # The old question and diagnostic strings may themselves contain revoked data.
+        # Review only freshly assembled, permitted context in that case.
+        question = "공유가 허용된 현재 기록에서 재사용할 상담 절차가 있는지 회고해 주세요."
+        derived, sources, used_slugs = {}, [], []
+        source_flags.append({"code": "reflection_source_withheld", "category": "system",
+            "detail": "공유 제한으로 선택한 과거 상담 대신 현재 공유된 기록만 회고했습니다."})
+    elif payload["source"] == "run":
+        from app.modules.database.model import AdvisorMessage
+        # A selected old answer is mandatory learning evidence, regardless of the recent-history window.
+        derived["source_messages"] = [{"ref": f"advisor_messages:{ref['id']}",
+            "role": message.role, "content": message.content, "historical": True}
+            for ref in sources if ref["table"] == "advisor_messages"
+            if (message := session.get(AdvisorMessage, ref["id"])) is not None]
     related, _ = select_playbooks(session, question, excluded, explicit_slugs=used_slugs)
     related_slugs = {}
     for revision in related:
         playbook = playbook_handler.get(session, revision.playbook_id)
         related_slugs[playbook.slug] = revision
     derived["existing_playbooks"] = [{"slug": slug, "active_revision_id": revision.id, "title": revision.title,
-        "summary": revision.summary, "triggers": revision.triggers, "steps": revision.body}
+        "summary": revision.summary}
         for slug, revision in related_slugs.items()]
-    derived["catalog"] = [item for item in catalog(session, excluded) if item["slug"] not in related_slugs]
+    from dataclasses import replace
+    # Full procedures use the regular snapshot/budget path; discovery carries only bounded metadata.
+    options = replace(options, playbook_ids=(), playbook_slugs=tuple(related_slugs))
+    catalog, catalog_flags = catalog_context(session, excluded, question, exclude_slugs=related_slugs)
+    derived["playbook_catalog"] = catalog
+    catalog_flags = [*source_flags, *catalog_flags]
+    sources.extend({"table": "playbook_revisions", "id": revision.id} for revision in related_slugs.values())
 
     guard_state = {"authorization": authorization}
 
     async def guard():
         run_policy.require(session, guard_state["authorization"])
 
+    model = await advisor_manager.gateway.resolve_model(session)
     assembler = ContextAssembler(session, advisor_manager, conversation, options, model, guard=guard,
                                  authorization=authorization)
     schema_hint = "\nJSON 객체만 반환하세요. 스키마: " + json.dumps(Reflection.model_json_schema(), ensure_ascii=False)
     request, package = await assembler.assemble(question, instruction=REFLECTION_PROMPT + schema_hint,
-                                                derived=derived, structured_output=True)
+                                                context_data=derived, record_sources=sources,
+                                                context_flags=catalog_flags, structured_output=True)
     if payload.get("automatic") and not learning(session).enabled:
         return "cancelled", {"state": "consent_revoked"}
+    request.background_job_id = job_id
+    request.background_job_owner = owner
     chunks = []
     async for event in advisor_manager.gateway.stream(session, request, conversation_id=conversation.id):
         if event.type == "delta":
@@ -356,10 +422,15 @@ async def reflect(session: Session, job_id: int, payload: dict) -> tuple[str, di
     taint = set(snapshot.context_categories if snapshot else []) | set(
         (snapshot.payload if snapshot else {}).get("history_categories", [])) | set(
         (snapshot.payload if snapshot else {}).get("document_categories", []))
-    return "completed", record(session, job_id, payload, reflection, sources, taint, related_slugs, message_id)
+    # Lessons depend on every current record and catalog entry actually seen by this call,
+    # including records added since the original consultation.
+    lesson_sources = [*sources, {"table": "context_snapshots", "id": package.snapshot_id}]
+    return "completed", record(session, job_id, payload, reflection, lesson_sources, taint, related_slugs,
+                               message_id, snapshot_id=package.snapshot_id, source_withheld=bool(source_flags))
 
 
-def record(session, job_id, payload, reflection, sources, taint, related, message_id) -> dict:
+def record(session, job_id, payload, reflection, sources, taint, related, message_id, *, snapshot_id=None,
+           source_withheld=False) -> dict:
     """Stage drafts as proposals only. Invalid drafts are skipped with a code, not stored."""
     from app.modules.advisor.proposal_manager import proposal_manager
     from app.modules.agent.inbox_manager import notify
@@ -386,14 +457,16 @@ def record(session, job_id, payload, reflection, sources, taint, related, messag
         except (StaleRevision, ValueError):
             skipped.append("playbook_conflict")
     memories = [] if reflection.nothing_to_learn or message_id is None else [m.model_dump() for m in reflection.memories]
-    _, saved = proposal_manager.record(session, payload["conversation_id"], message_id, [], memories)
+    _, saved = proposal_manager.record(session, payload["conversation_id"], message_id, [], memories,
+        memory_sources=[{"table": "context_snapshots", "id": snapshot_id}] if snapshot_id else None)
     result = {"playbook_revision_ids": revision_ids, "memory_ids": [m.id for m in saved], "skipped": skipped,
-              "nothing_to_learn": reflection.nothing_to_learn}
+              "nothing_to_learn": reflection.nothing_to_learn, "source_withheld": source_withheld}
     if revision_ids or saved or not payload.get("automatic"):
         notify(session, "learning_proposals",
                f"학습 제안 {len(revision_ids) + len(saved)}건" if revision_ids or saved else "이번 상담에서 새로 배울 절차가 없었습니다",
                f"reflection:{job_id}",
-               summary=(f"플레이북 {len(revision_ids)}건, 기억 후보 {len(saved)}건을 검토하세요. 승인하기 전에는 상담에 쓰이지 않습니다."
+               summary=("과거 상담은 공유 제한으로 제외하고 현재 기록만 회고했습니다. " if source_withheld else "") +
+                       (f"플레이북 {len(revision_ids)}건, 기억 후보 {len(saved)}건을 검토하세요. 승인하기 전에는 상담에 쓰이지 않습니다."
                         if revision_ids or saved else "제안된 내용이 없거나 저장 규칙에 맞지 않아 제외되었습니다."),
                links={"job_id": job_id, "conversation_id": payload.get("conversation_id"),
                       "playbook_revision_ids": revision_ids, "memory_ids": [m.id for m in saved]})

@@ -172,6 +172,8 @@ class RunRepository:
                 user.status = "failed"
         self.session.flush()
         self.append_event(run_id, "status", {"status": status}, f"state:{row.revision}")
+        from app.modules.agent.briefing import after_run
+        after_run(self.session, row)
         return row
 
     def respond(self, run_id, request):
@@ -211,6 +213,8 @@ class RunRepository:
                 user.status = "failed"
         self.session.flush()
         self.append_event(run_id, "status", {"status": row.status}, f"cancel:{row.revision}")
+        from app.modules.agent.briefing import after_run
+        after_run(self.session, row)
         return row
 
     def acknowledge_cancel(self, run_id):
@@ -223,6 +227,8 @@ class RunRepository:
                 user.status = "failed"
             self.session.flush()
             self.append_event(run_id, "status", {"status": "cancelled"}, f"cancelled:{row.revision}")
+            from app.modules.agent.briefing import after_run
+            after_run(self.session, row)
         return row
 
     def retry(self, run_id):
@@ -266,6 +272,8 @@ class RunRepository:
                 user.status = "failed"
             self.session.flush()
             self.append_event(row.id, "status", {"status": row.status}, f"recovered:{row.revision}")
+            from app.modules.agent.briefing import after_run
+            after_run(self.session, row)
         return len(rows)
 
     def create_scenario(self, conversation_id, request, *, run_id=None, evidence=None, results=None, unknowns=None):

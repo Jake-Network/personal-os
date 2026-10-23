@@ -6,6 +6,7 @@ version informed an answer. Selection is deterministic: explicit choice first, t
 trigger matches. Sharing policy is checked per revision on every request.
 """
 import re
+import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,6 +36,25 @@ def _eligible(session: Session, excluded) -> list[tuple[Playbook, PlaybookRevisi
 def catalog(session: Session, excluded) -> list[dict]:
     return [{"slug": playbook.slug, "title": revision.title, "summary": revision.summary,
              "triggers": revision.triggers} for playbook, revision in _eligible(session, excluded)]
+
+
+def catalog_context(session: Session, excluded, query: str, *, exclude_slugs=(), max_chars=4000):
+    """Bound discovery metadata and retain the exact revisions offered to the model."""
+    rows = [(p, r) for p, r in _eligible(session, excluded) if p.slug not in exclude_slugs]
+    text = query.casefold()
+    rows.sort(key=lambda pair: (-sum(term.casefold() in text for term in
+        [pair[0].slug, *pair[1].triggers] if len(term) >= 2), pair[0].slug))
+    items = {}
+    for playbook, revision in rows:
+        entry = {"slug": playbook.slug, "title": revision.title, "summary": revision.summary,
+                 "triggers": revision.triggers}
+        candidate = {**items, f"playbook_revisions:{revision.id}": entry}
+        if len(items) < 12 and len(json.dumps(candidate, ensure_ascii=False)) <= max_chars:
+            items = candidate
+    omitted = len(rows) - len(items)
+    flags = ([{"code": "playbook_catalog_omitted", "category": "system", "count": omitted}]
+             if omitted else [])
+    return {"procedural_not_facts": True, "items": items}, flags
 
 
 def select_playbooks(session: Session, query: str, excluded, explicit_ids=(), explicit_slugs=()):

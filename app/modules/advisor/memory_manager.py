@@ -41,9 +41,15 @@ class MemoryManager:
         from app.modules.advisor.memory_history_manager import latest_revision
         from app.modules.context.record_privacy import stamp_references
         prior = latest_revision(session, memory.id)
+        sources = list(prior.source_references) if prior else []
+        message_ref = {"table": "advisor_messages", "id": memory.source_message_id}
+        if memory.source_message_id is not None and not any(
+                ref.get("table") == "advisor_messages" and ref.get("id") == memory.source_message_id
+                for ref in sources):
+            sources.append(message_ref)
         session.add(MemoryRevision(memory_id=memory.id, revision=prior.revision + 1 if prior else 0,
             kind=memory.kind, content=memory.content, status=memory.status, confirmed_at=memory.confirmed_at,
-            source_references=stamp_references(session, [{"table": "advisor_messages", "id": memory.source_message_id}]) if memory.source_message_id else []))
+            source_references=stamp_references(session, sources)))
         audit_log_handler.record(session, "user", "memory.confirm" if confirm else "memory.reject",
                                  f"personal_memories:{memory.id}")
         session.commit()

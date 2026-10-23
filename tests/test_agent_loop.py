@@ -21,7 +21,7 @@ from app.modules.database.model import (
     AdvisorConversation, DecisionJournalEntry, InboxItem, PersonalMemory, PlaybookRevision, PlaybookUsage,
 )
 from app.modules.database.model.advisor_runtime import AdvisorRun
-from app.modules.database.model.review_jobs import BackgroundJob, JobSchedule
+from app.modules.database.model.review_jobs import BackgroundJob, JobSchedule, DecisionReviewRecord
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
 from app.modules.llm.types import StreamEvent
 
@@ -223,7 +223,7 @@ def test_manual_reflection_only_proposes(env):
         assert revision.status == "proposed" and revision.source == "advisor" and revision.proposed_by_job_id == job.id
         # The procedure inherits the origin snapshot's categories as a sharing taint.
         assert "career" in revision.categories
-        assert {ref["table"] for ref in revision.source_references} == {"advisor_messages"}
+        assert {ref["table"] for ref in revision.source_references} == {"advisor_messages", "context_snapshots"}
         memory = session.get(PersonalMemory, job.result["memory_ids"][0])
         assert memory.status == "proposed"
         notice = session.scalar(select(InboxItem).where(InboxItem.kind == "learning_proposals"))
@@ -352,12 +352,15 @@ def test_decision_outcome_reflection_is_queued_only_with_learning(env):
                                         context_snapshot_id=run["result"]["context_snapshot_id"])
         session.add(decision)
         session.flush()
-        after_outcome(session, decision.id, 1)
+        outcome = DecisionReviewRecord(decision_id=decision.id, actual_outcome="합성 결과")
+        session.add(outcome)
+        session.flush()
+        after_outcome(session, decision.id, outcome.id)
         assert session.scalar(select(BackgroundJob.id)) is None
         from app.modules.agent.settings_manager import LEARNING_KEY
         from app.modules.crud import app_setting_handler
         app_setting_handler.set_value(session, LEARNING_KEY, {"enabled": True})
-        after_outcome(session, decision.id, 1)
+        after_outcome(session, decision.id, outcome.id)
         job = session.scalar(select(BackgroundJob))
         assert job.payload["source"] == "decision_outcome" and job.payload["decision_id"] == decision.id
 

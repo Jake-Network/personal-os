@@ -7,6 +7,7 @@ under the authority pinned when the user enabled it. Any change to that authorit
 the schedule; nothing is silently re-authorized or sent with another account or model.
 Missed occurrences are not replayed one by one: only the latest due occurrence runs.
 """
+from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,14 @@ from app.modules.database.model.base import utcnow
 from app.modules.database.model.review_jobs import JobSchedule
 
 KINDS = {"daily_briefing": "day", "weekly_briefing": "week"}
+# These tools provide the evidence behind each dashboard signal. Local-only rows
+# block the same aggregate here as in the consultation context builder.
+SIGNAL_TOOLS = {
+    "expenses": ("get_cashflow_summary",), "goals": ("get_goals",),
+    "interviews": ("get_interview_schedule",), "interviews_soon": ("get_interview_schedule",),
+    "exercise": ("get_health_summary",),
+    "stale_data": ("get_accounts_summary", "get_portfolio_summary", "get_market_data"),
+}
 
 
 def occurrences(now: datetime, local_time: str, cadence: str, weekday: int | None, timezone: str):
@@ -79,9 +88,9 @@ def run(session: Session, schedule: JobSchedule, local_date: date, *, key: str, 
            summary="\n".join(lines), links={"signals": found, "schedule_id": schedule.id})
     if not schedule.options.get("llm_enabled"):
         return {"state": "signals", "signals": found}
-    wanted = set().union(*(briefing_signals.CATEGORIES.get(s["kind"], set()) for s in found))
-    allowed = {str(c) for c in schedule.options.get("categories") or []}
-    categories = sorted(str(c) for c in wanted if not allowed or str(c) in allowed)
+    shared_signals = _shared_signals(session, schedule, found)
+    categories = sorted({str(c) for signal in shared_signals
+                         for c in briefing_signals.CATEGORIES[signal["kind"]]})
     if not categories:
         return {"state": "signals", "signals": found, "model": "no_shared_category"}
     if not _authorized(session, schedule):
@@ -93,17 +102,54 @@ def run(session: Session, schedule: JobSchedule, local_date: date, *, key: str, 
     conversation = AdvisorConversation(title=f"{schedule.name} {local_date.isoformat()}"[:200], origin="schedule")
     session.add(conversation)
     session.flush()
-    body = RunCreate(request_id=key, message=_message(schedule, found), categories=categories,
+    body = RunCreate(request_id=key, message=_message(), categories=categories,
                      playbook_ids=list(schedule.options.get("playbook_ids") or [])[:2], document_search=False)
     created = RunRepository(session).create(conversation.id, body)
     auth = schedule.authorization
     created.provider, created.model, created.account_binding = auth["provider"], schedule.options.get("model"), auth["account_binding"]
     created.authorization = auth
-    created.runtime_metadata = {**(created.runtime_metadata or {}), "single_response": False, "schedule_id": schedule.id}
+    created.runtime_metadata = {**(created.runtime_metadata or {}), "single_response": False, "schedule_id": schedule.id,
+                                "schedule_options": deepcopy(schedule.options), "signal_categories": categories,
+                                "signal_kinds": sorted({signal["kind"] for signal in shared_signals})}
     notify(session, "briefing_ready", f"{schedule.name}을(를) 준비하고 있습니다", f"briefing:{key}",
            summary="상담 화면에서 진행 상황과 결과를 볼 수 있습니다. 제안은 승인하기 전에는 적용되지 않습니다.",
            links={"conversation_id": conversation.id, "run_id": created.id, "schedule_id": schedule.id})
     return {"state": "queued", "signals": found, "conversation_id": conversation.id, "run_id": created.id}
+
+
+def _shared_signals(session: Session, schedule: JobSchedule, signals: list[dict]) -> list[dict]:
+    from app.enums.context_category import ALL_CATEGORIES
+    from app.modules.context.privacy_manager import privacy_manager
+    from app.modules.context.record_privacy import tool_blocked
+    allowed = {str(c) for c in schedule.options.get("categories") or ALL_CATEGORIES}
+    allowed -= {str(c) for c in privacy_manager.get_excluded(session)}
+    return [signal for signal in signals
+            if (required := briefing_signals.CATEGORIES.get(signal["kind"], set()))
+            and {str(c) for c in required} <= allowed
+            and signal["kind"] in SIGNAL_TOOLS
+            and not any(tool_blocked(session, tool) for tool in SIGNAL_TOOLS[signal["kind"]])]
+
+
+def require_run_authorized(session: Session, run: AdvisorRun) -> None:
+    """Revalidate schedule consent at every model boundary, including queued old runs."""
+    metadata = run.runtime_metadata or {}
+    schedule_id = metadata.get("schedule_id")
+    if not schedule_id:
+        return
+    schedule = session.get(JobSchedule, schedule_id, populate_existing=True)
+    kinds = metadata.get("signal_kinds") or []
+    shared = _shared_signals(session, schedule, [{"kind": kind} for kind in kinds]) if schedule else []
+    current_categories = sorted({str(c) for signal in shared for c in briefing_signals.CATEGORIES[signal["kind"]]})
+    if (schedule is None or schedule.kind not in KINDS or not schedule.enabled
+            or not schedule.options.get("llm_enabled") or not schedule.authorization
+            or schedule.authorization != run.authorization
+            or metadata.get("schedule_options") != schedule.options
+            or schedule.options.get("model") != run.model
+            or not kinds or len(shared) != len(kinds)
+            or metadata.get("signal_categories") != current_categories):
+        from app.modules.llm.errors import AdvisorError
+        raise AdvisorError("브리핑 예약의 실행 동의나 공유 범위가 변경되었습니다. 예약 설정을 다시 확인하세요.",
+                           provider_code="run_authorization_changed")
 
 
 def _authorized(session: Session, schedule: JobSchedule) -> bool:
@@ -122,21 +168,29 @@ def _authorized(session: Session, schedule: JobSchedule) -> bool:
     return False
 
 
-def _message(schedule: JobSchedule, found: list[dict]) -> str:
-    # Self-contained: each briefing starts without earlier briefings. Counts only; data comes from context.
-    items = "\n".join(f"- {signal['title']}" for signal in found if briefing_signals.CATEGORIES.get(signal["kind"]))
-    return ("예약된 브리핑입니다. 아래 항목의 현재 상태를 최신 기록으로 확인해 짧게 정리하고, 오늘 할 일을 우선순위대로 제안하세요. "
-            "확인할 근거가 없는 항목은 없다고 밝히고, 실제 변경은 승인 대기 제안으로만 만드세요.\n" + items)
+def _message() -> str:
+    # Dashboard predicates stay local. The fresh, source-checked Context Package
+    # is the only place model-facing facts may come from, including after a delay.
+    return ("예약된 브리핑입니다. 공유가 허용된 현재 기록을 확인해 짧게 정리하고, 오늘 할 일을 우선순위대로 제안하세요. "
+            "확인할 근거가 없는 항목은 없다고 밝히고, 실제 변경은 승인 대기 제안으로만 만드세요.")
 
 
 def after_run(session: Session, run: AdvisorRun) -> None:
-    """Mark the briefing notice ready once its run completes; the caller commits."""
+    """Persist a briefing's actionable or terminal state; repeated hooks are idempotent."""
     schedule_id = (run.runtime_metadata or {}).get("schedule_id")
-    if not schedule_id:
+    notices = {
+        "completed": ("briefing_ready", "브리핑이 준비되었습니다", "결과와 제안을 상담 화면에서 확인하세요.", "info"),
+        "waiting_input": ("briefing_ready", "브리핑에 확인할 내용이 있습니다", "상담 화면에서 질문에 답하면 브리핑을 이어갑니다.", "info"),
+        "blocked": ("job_failed", "브리핑에 확인이 필요합니다", "연결과 공유 범위를 확인한 뒤 상담 화면에서 다시 시도하세요.", "warning"),
+        "failed": ("job_failed", "브리핑을 마치지 못했습니다", "상담 화면에서 상태를 확인하고 다시 시도하세요.", "warning"),
+        "cancelled": ("briefing_ready", "브리핑을 중지했습니다", "예약 설정이 바뀌었거나 사용자가 실행을 중지했습니다.", "info"),
+    }
+    if not schedule_id or run.status not in notices:
         return
-    notify(session, "briefing_ready", "브리핑이 준비되었습니다", f"briefing:{run.request_id}",
-           summary="결과와 제안을 상담 화면에서 확인하세요.",
-           links={"conversation_id": run.conversation_id, "run_id": run.id, "schedule_id": schedule_id})
+    kind, title, summary, severity = notices[run.status]
+    notify(session, kind, title, f"briefing:{run.request_id}", summary=summary, severity=severity,
+           links={"conversation_id": run.conversation_id, "run_id": run.id, "schedule_id": schedule_id,
+                  "run_status": run.status}, reopen_on_change=True)
 
 
 def options_of(body) -> dict:
@@ -144,12 +198,13 @@ def options_of(body) -> dict:
             "categories": sorted(str(c) for c in body.categories), "playbook_ids": body.playbook_ids}
 
 
-def cancel_queued(session: Session, schedule: JobSchedule) -> None:
-    """Pausing also withdraws queued briefing runs that have not started."""
+def cancel_unfinished(session: Session, schedule: JobSchedule) -> None:
+    """Withdraw every unfinished run whose consent predates this schedule edit."""
     from app.modules.advisor.runtime.persistence import RunRepository
     repository = RunRepository(session)
     for run_id in list(session.scalars(select(AdvisorRun.id).where(
-            AdvisorRun.request_id.like(f"briefing:{schedule.id}:%"), AdvisorRun.status == "queued"))):
+            AdvisorRun.request_id.like(f"briefing:{schedule.id}:%"),
+            AdvisorRun.status.not_in(["completed", "cancelled", "failed"])))):
         repository.cancel(run_id)
 
 
