@@ -1,5 +1,4 @@
 """Bounded, resumable consultation graph; all writes remain in app services."""
-import asyncio
 import json
 import re
 import hashlib
@@ -283,7 +282,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                              on_stream=None, command_guard=None, on_data_operations=None,
                              recorded_operations=None, recorded_command_plan=None,
                              recorded_command_query=None, recorded_command_source_ids=None,
-                             run_id=None, run_owner=None, run_generation=None, data_commands_allowed=True):
+                             run_id=None, run_owner=None, run_generation=None, data_commands_allowed=True, on_quote_refresh=None):
     assembler = ContextAssembler(session, manager, conversation, options, model,
                                  guard=guard, current_message_id=current_message_id, authorization=run_authorization, run_id=run_id,
                                  run_owner=run_owner, run_generation=run_generation)
@@ -399,7 +398,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         from app.modules.advisor.command_grounding import legacy_command_grounded
         from app.modules.personal_data.personal_data_manager import RESOURCES
         from app.modules.advisor.pending_commands import resolution_allowed
-        from app.modules.advisor.quote_refresh import split_quote_refresh, refresh_quotes
+        from app.modules.advisor.quote_refresh import split_quote_refresh
         data_query, refresh_requested = split_quote_refresh(state['query'])
         pending = state.get('pending_data_commands')
         command_query = recorded_command_query or (
@@ -563,9 +562,23 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 if command.resource == 'holdings' and candidate['operation'] == 'create':
                     ticker = candidate['values'].get('symbol', candidate['values'].get('ticker'))
                     if isinstance(ticker, str):
-                        bare_ticker = ticker.rsplit(':', 1)[-1]
-                        valid = valid and bool(re.search(r'(?<![A-Za-z0-9.:-])' + re.escape(bare_ticker) +
-                            r'(?![A-Za-z0-9.:-])', own_instruction if pending else own_quote, re.I))
+                        bare_ticker = ticker.rsplit(':', 1)[-1].upper()
+                        matches = list(re.finditer(r'(?<![A-Za-z0-9.:-])(?:(?P<exchange>[A-Za-z][A-Za-z0-9]*):)?' +
+                            re.escape(bare_ticker) + r'(?![A-Za-z0-9.:-])', own_instruction if pending else own_quote, re.I))
+                        exchanges = {match['exchange'].upper() for match in matches if match['exchange']}
+                        if not exchanges:
+                            exchanges = {match['exchange'].upper() for match in re.finditer(
+                                r'(?<![A-Za-z0-9.:-])(?P<exchange>[A-Za-z][A-Za-z0-9]*):' +
+                                re.escape(bare_ticker) + r'(?![A-Za-z0-9.:-])', own_instruction, re.I)}
+                        requested_exchange = ticker.rsplit(':', 1)[0].upper() if ':' in ticker else None
+                        valid = valid and bool(matches) and not (
+                            exchanges and requested_exchange and requested_exchange not in exchanges or
+                            len(exchanges) > 1 and requested_exchange is None)
+                        if valid and len(exchanges) == 1:
+                            fields = {**candidate['values'], 'symbol': next(iter(exchanges)) + ':' + bare_ticker}
+                            fields.pop('ticker', None)
+                            candidate = {**candidate, 'values': fields}
+                direction_candidate = None
                 monetary = {'balance', 'quantity', 'avg_cost', 'amount', 'value', 'monthly_payment', 'delta'}
                 for key, value in candidate['values'].items():
                     if key in monetary and value is not None:
@@ -576,15 +589,18 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                             numbers = numeric_values(own_instruction if pending else own_quote)
                             grounded = supplied in numbers
                             if key == 'delta':
-                                decrease = bool(re.search(r'팔|매도|출금|줄여|줄어|감소|차감|빼', own_instruction))
-                                increase = bool(re.search(r'매수|입금|늘려|늘어|증가|더\s*샀|추가\s*매수', own_instruction))
-                                grounded = grounded or (supplied < 0 and decrease and -supplied in numbers)
-                                if decrease != increase:
-                                    grounded = grounded and (supplied < 0 if decrease else supplied >= 0)
+                                from app.modules.advisor.command_direction import delta_direction, bind_visible_delta_target
+                                direction_candidate = bind_visible_delta_target(session, candidate,
+                                    manager.sharing_exclusions(session, options))
+                                direction = delta_direction(direction_candidate, command.source_quote,
+                                    original_query=command_query, followup=bool(pending)) if direction_candidate else None
+                                grounded = (supplied in numbers or abs(supplied) in numbers)
+                                grounded = grounded and direction is not None and (supplied < 0 if direction < 0 else supplied >= 0)
                             valid = valid and supplied.is_finite() and grounded
                         except InvalidOperation:
                             valid = False
                 if valid:
+                    candidate = direction_candidate or candidate
                     from app.modules.advisor.symbol_resolution import resolve_command_symbol
                     candidate = await resolve_command_symbol(candidate, command_query)
                     await assembler.check()
@@ -664,33 +680,19 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                         recording_allowed=bool(automatic or pending and pending.get('allow_data_recording')))
                 session.commit()
 
-            def refresh_authorization():
-                if command_guard:
-                    command_guard()
-                assembler.validate_sources(working.get('sources', []))
-                session.commit()
-
-            def refresh_write_authorization():
-                if command_guard:
-                    command_guard()
-                assembler.validate_sources(working.get('sources', []))
-
-            refresh_authorization()
+            if command_guard:
+                command_guard()
+            assembler.validate_sources(working.get('sources', []))
             persist_operations()
-            # The finance gateway is synchronous. Keep the lease heartbeat alive;
-            # cancellation waits for the thread before this session can be closed.
-            task = asyncio.create_task(asyncio.to_thread(refresh_quotes, session,
-                excluded=manager.sharing_exclusions(session, options), authorization_check=refresh_authorization,
-                write_authorization_check=refresh_write_authorization))
-            try:
-                refreshed = await asyncio.shield(task)
-            except asyncio.CancelledError:
-                try:
-                    await asyncio.shield(task)
-                except Exception:
-                    pass
-                raise
-            refresh_authorization()
+            if on_quote_refresh is None:
+                raise AdvisorError('시세 갱신 실행 경로가 준비되지 않았습니다.', provider_code='quote_executor_unavailable')
+            # The callback owns its worker-thread session. No graph ORM state or
+            # closure touching it crosses the thread boundary.
+            refreshed = await on_quote_refresh(tuple(working.get('sources', [])))
+            await assembler.check()
+            if command_guard:
+                command_guard()
+            assembler.validate_sources(working.get('sources', []))
             operations[-1] = refreshed
             persist_operations()
         # Fresh assembly after a mutation must not reuse a deleted/old source snapshot.

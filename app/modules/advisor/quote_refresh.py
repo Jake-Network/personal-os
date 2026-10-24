@@ -31,8 +31,12 @@ def quote_refresh_requested(query: str) -> bool:
 
 
 def _sharing_allowed(session, excluded):
-    from app.modules.context.privacy_manager import privacy_manager
-    from app.modules.context.record_privacy import record_allowed
+    from app.modules.context.privacy_manager import privacy_manager, PRIVACY_KEY
+    from app.modules.context.record_privacy import record_allowed, KEY
+    from app.modules.database.model import AppSetting
+    # Refresh policy rows only; never expire/commit unrelated staged quote data.
+    for key in (PRIVACY_KEY, KEY):
+        session.get(AppSetting, key, populate_existing=True)
     categories = {str(value) for value in excluded} | {str(value) for value in privacy_manager.get_excluded(session)}
     return 'investment' not in categories and record_allowed(session, 'holdings')
 
@@ -88,9 +92,11 @@ def refresh_quotes(session, *, excluded=(), authorization_check=None, write_auth
     """Refresh public observations via the finance endpoint's exact policy.
 
     Call after committing CRUD receipts. The existing market manager commits its
-    claim before network I/O and commits quote observations independently; this is
-    deliberately not atomic with local CRUD. ``authorization_check`` must release
-    any execution-fence lock before returning. The caller persists an attempted
+    claim before network I/O and commits the final price/FX batch independently;
+    this is deliberately not atomic with local CRUD. Authorization reads use
+    independent transactions; callbacks must never commit this quote session.
+    ``write_authorization_check`` retains its fence through each result commit.
+    The caller persists an attempted
     receipt before entering and must not repeat ambiguous external completion.
     """
     from app.modules.auth.google_oauth_manager import GoogleOAuthError

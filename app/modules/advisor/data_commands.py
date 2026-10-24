@@ -110,13 +110,15 @@ def _holding_fields(values):
     return fields
 
 
-def _matches(session, resource, selector, *, lock=False):
+def _matches(session, resource, selector, *, lock=False, limit=101):
     model = resource.handler.model
     if model.__tablename__ == "holdings":
         selector = _holding_fields(selector)
     columns = {column.key: column for column in inspect(model).columns}
     if not isinstance(selector, dict) or set(selector) - (SELECTOR_FIELDS & set(columns)):
         raise CommandInputError("조회 대상 필드를 확인해 주세요.")
+    if limit is None and (model.__tablename__ != "holdings" or not selector.get("symbol")):
+        raise CommandInputError("보유 종목의 정확한 티커가 필요합니다.")
     filters = []
     for field, value in selector.items():
         if isinstance(value, (dict, list, bool)) or value is None:
@@ -131,7 +133,7 @@ def _matches(session, resource, selector, *, lock=False):
             filters.append(or_(model.symbol == expected, model.symbol.endswith(":" + expected, autoescape=True)))
         else:
             filters.append(getattr(model, field) == expected)
-    statement = select(model).where(*filters).order_by(model.id).limit(101).execution_options(populate_existing=True)
+    statement = select(model).where(*filters).order_by(model.id).limit(limit).execution_options(populate_existing=True)
     if lock:
         statement = statement.with_for_update()
     return list(session.scalars(statement))
@@ -146,7 +148,9 @@ def _holding_values(session, resource, values, obj, excluded):
         values["symbol"] = obj.symbol
         return values
     identity = {key: values[key] for key in ("symbol", "currency") if values.get(key) is not None}
-    rows = _matches(session, resource, identity)
+    # Hidden matches must not consume the lookup budget before sharing is checked.
+    # This lookup is scoped to one explicit ticker; ordinary reads remain bounded.
+    rows = _matches(session, resource, identity, limit=None)
     identities = {(row.symbol, row.currency) for row in rows if _visible(session, resource, row, excluded)}
     if len(identities) == 1:
         known_symbol, known_currency = next(iter(identities))
@@ -276,6 +280,7 @@ def _validate_values(session, name, resource, values, obj, excluded):
     if not isinstance(values, dict) or not values:
         raise CommandInputError("저장할 필드를 알려주세요.")
     values = dict(values)
+    fractional_delta_quantity = None
     if name == "holdings":
         values = _holding_values(session, resource, values, obj, excluded)
     if "delta" in values:
@@ -296,9 +301,17 @@ def _validate_values(session, name, resource, values, obj, excluded):
                     raise InvalidOperation
                 updated = Decimal(str(getattr(obj, field))) + number
             if field == "quantity":
-                if updated != updated.to_integral_value() or updated < 0:
+                if number != number.to_integral_value() or updated < 0:
                     raise InvalidOperation
-                values[field] = int(updated)
+                if updated == updated.to_integral_value():
+                    values[field] = int(updated)
+                else:
+                    # An integer trade preserves the existing legacy fraction.
+                    # Validate other input fields with an integer placeholder;
+                    # the exact server-calculated total is checked against the
+                    # ORM Numeric scale/range below, before it can be written.
+                    fractional_delta_quantity = updated
+                    values[field] = 0
             else:
                 values[field] = str(updated)
         except (InvalidOperation, ValueError):
@@ -337,6 +350,8 @@ def _validate_values(session, name, resource, values, obj, excluded):
     data, trade_date = split_history_fields(name, body)
     if legacy_quantity:
         data["quantity"] = obj.quantity
+    if fractional_delta_quantity is not None:
+        data["quantity"] = fractional_delta_quantity
     for field, value in data.items():
         column = columns[field]
         if value is None:
@@ -398,9 +413,9 @@ def _execute(session, command, excluded, *, separate_authority=False):
         command = {**command, "values": values}
         if values.get("symbol"):
             identity = {key: values[key] for key in ("symbol", "currency", "account_id") if values.get(key) is not None}
-            matches = _matches(session, resource, identity, lock=True)
-            if matches and not (separate and values.get("account_id") is None):
-                visible_matches = [row for row in matches if _visible(session, resource, row, excluded)]
+            matches = _matches(session, resource, identity, lock=True, limit=None)
+            visible_matches = [row for row in matches if _visible(session, resource, row, excluded)]
+            if visible_matches and not (separate and values.get("account_id") is None):
                 return _result(command, "needs_input", "기존 보유 기록이 있습니다. 같은 계좌의 추가 수량인지, 다른 계좌의 별도 보유분인지 알려주세요.",
                     candidates=[{"id": row.id, "label": row.name or row.symbol, "symbol": row.symbol,
                                  "currency": row.currency, "quantity": _serialized(resource, row)["quantity"]}

@@ -10,6 +10,14 @@ from app.modules.database.legacy_adoption import (
 )
 
 
+@pytest.fixture(autouse=True)
+def synthetic_backup(monkeypatch, tmp_path):
+    # These tests exercise schema changes, not an installed PostgreSQL CLI.
+    from app.modules.database import migration_backup
+    monkeypatch.setattr(migration_backup, 'create_migration_backup',
+        lambda *a, **k: migration_backup.MigrationBackup(tmp_path / 'archive.fernet', tmp_path / 'backup.key'))
+
+
 def legacy_database(postgres_url, revision="0004_portfolio_identity"):
     engine = create_engine(postgres_url)
     with engine.begin() as connection:

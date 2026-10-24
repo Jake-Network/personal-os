@@ -9,6 +9,14 @@ from sqlalchemy.exc import DatabaseError
 from app.modules.database import migration_manager as mm
 
 
+@pytest.fixture(autouse=True)
+def synthetic_backup(monkeypatch, tmp_path):
+    # These tests exercise schema changes, not an installed PostgreSQL CLI.
+    from app.modules.database import migration_backup
+    monkeypatch.setattr(migration_backup, 'create_migration_backup',
+        lambda *a, **k: migration_backup.MigrationBackup(tmp_path / 'archive.fernet', tmp_path / 'backup.key'))
+
+
 def url_for(postgres_database):
     return postgres_database()
 
@@ -56,7 +64,7 @@ def test_older_legacy_database_is_upgraded_with_data(postgres_database):
     plan = mm.plan(url)
     assert (plan.action, plan.stamp) == ("stamp", "0001_baseline")
     backup = mm.apply(url, plan)
-    assert backup is None
+    assert backup.archive.name == "archive.fernet"
     with engine.begin() as c:
         assert Decimal(str(c.execute(text("SELECT balance FROM accounts WHERE id=7")).scalar_one())) == Decimal("1234.5")
         assert c.execute(text("SELECT change_kind FROM manual_value_changes WHERE record_id=7")).scalar_one() == "baseline"

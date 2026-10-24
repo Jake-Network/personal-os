@@ -97,7 +97,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - RDB는 PostgreSQL만 지원한다. 모델 변경에는 Alembic revision을 포함하고 기존 DB의 업그레이드·데이터 보존을 검증한다. `create_all()` 통과는 마이그레이션 검증이 아니다.
 - Docker entrypoint는 DB 준비와 migration 잠금을 기다린 뒤 커밋된 Alembic `head`까지 자동 업그레이드하고, 실패하면 서버를 시작하지 않는다. 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기본 60초), 정비 명령의 자동 적용 우회는 `PERSONAL_OS_AUTO_MIGRATE=0`이다. 기존 설치는 이미지 교체 전에 백업한다. 이력이 없는 기존 DB의 명시적 채택과 알 수 없는 revision 검증을 유지하며 자동 stamp·downgrade하지 않는다. 네이티브 앱 시작은 빈 DB만 초기화하며 기존 DB 업그레이드는 `app.modules.database.migration_manager`와 기존 운영 절차를 따른다.
 - 스키마 불일치를 `alembic stamp head`, 테이블 재생성, 볼륨 삭제로 덮지 않는다. 실제 DB 변경·복원·이미지 전환은 백업과 호환성 확인을 선행한다. 토큰 암호화 키와 개인 데이터 볼륨도 함께 보호한다.
-- **pytest fixture는 격리된 테스트 스키마를 만들고 삭제한다.** 테스트는 `TEST_DATABASE_URL`로 지정한 폐기 가능한 전용 PostgreSQL에서만 실행하고 PostgreSQL만 사용한다. 개인 운영 DB(compose의 `db` 볼륨 포함)를 테스트 대상으로 지정하지 않는다.
+- **pytest fixture는 격리된 테스트 스키마(기본 `personal_test_<uuid>`)를 만들고 삭제한다.** 테스트는 `TEST_DATABASE_URL`로 지정한 폐기 가능한 전용 PostgreSQL에서만 실행하고 PostgreSQL만 사용한다. 개인 운영 DB(compose의 `db` 볼륨 포함)를 테스트 대상으로 지정하지 않는다.
 
 ## 검증
 

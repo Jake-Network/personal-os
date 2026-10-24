@@ -101,6 +101,12 @@ async def process_one(database):
             repo.append_event(run_id, 'data_operations', {'data_operations': operations},
                 f'data_operations:{run.user_message_id}:{receipt_digest}', worker_id=owner, generation=generation)
 
+        async def quote_refresh(sources):
+            from app.modules.advisor.runtime.quote_execution import execute_quote_refresh
+            return await execute_quote_refresh(database.session, run_id=run_id, owner=owner,
+                generation=generation, authorization=auth, sources=sources,
+                options=body.options(), model=run.model)
+
         pulse = asyncio.create_task(heartbeat())
         try:
             await guard()
@@ -114,7 +120,7 @@ async def process_one(database):
                     recorded_command_query=(run.runtime_metadata or {}).get('data_command_query'),
                     recorded_command_source_ids=(run.runtime_metadata or {}).get('data_command_source_ids'),
                     run_id=run_id, run_owner=owner, run_generation=generation,
-                    data_commands_allowed=not bool(metadata.get('schedule_id')))
+                    data_commands_allowed=not bool(metadata.get('schedule_id')), on_quote_refresh=quote_refresh)
                 saved = await graph.aget_state(config)
                 pending = {item.id for task_state in saved.tasks for item in task_state.interrupts}
                 response_id = run.checkpoint.get('question_id')

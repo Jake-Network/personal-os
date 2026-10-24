@@ -81,7 +81,7 @@ DB 준비·잠금 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기�
 
 ```bash
 uv run python -m app.modules.database.migration_manager
-uv run python -m app.modules.database.migration_manager --apply
+uv run python -m app.modules.database.migration_manager --apply --backup-dir /encrypted/migration-backups --backup-key-dir /separate/private/migration-backup-keys
 ```
 
-첫 명령은 읽기 전용 계획입니다. 별도 `pg_dump` 백업과 격리 복원 확인 후 `--apply`로 PostgreSQL을 명시적으로 업그레이드합니다. `stamp head`, 테이블 재생성, 볼륨 삭제로 불일치를 덮지 않습니다. 백업은 [README](../README.md)의 암호화 절차를 따릅니다.
+첫 명령은 애플리케이션 스키마를 바꾸지 않는 계획입니다. 비교용 임시 스키마는 종료 시 롤백합니다. `--apply`는 PostgreSQL 클라이언트의 `pg_dump`로 암호화 복구 지점을 만들고 파일을 검증한 뒤에만 stamp·트리거·upgrade를 수행합니다. 도구 누락·백업 실패 시 DB 변경 전에 중단합니다. `service=` 또는 환경의 `PGSERVICE`는 다른 DB를 선택할 수 있어 거부합니다. 명시적 연결 설정을 사용하고 `PGSERVICE`를 해제하세요. 안전한 libpq 환경 변수로 전달할 수 없는 연결 옵션도 조용히 무시하지 않고 중단합니다. 백업 폴더와 키 폴더는 서로 분리하고 디렉터리 `0700`·파일 `0600` 권한 및 암호화된 저장소를 사용합니다. 기본 백업은 데이터 폴더의 `migration-backups`, 키는 `~/.local/share/personal-os/migration-backup-keys`에 저장합니다. 앱 쓰기를 중지하고 문서·토큰 암호화 키도 별도 보존하며, 실제 전환 전 격리 복원 확인은 계속 수행하세요. Docker 자동 업그레이드는 기존 운영자 백업 절차를 유지합니다. `stamp head`, 테이블 재생성, 볼륨 삭제로 불일치를 덮지 않습니다. 백업은 [README](../README.md)의 암호화 절차를 따릅니다.

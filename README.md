@@ -70,7 +70,7 @@ Settings come from environment variables (see `.env.example`); `.env` is not loa
 Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
 Docker startup upgrades empty and versioned databases to the committed Alembic `head` before starting the server. Database readiness and migration-lock waits are bounded by `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS` (default `60`). Set `PERSONAL_OS_AUTO_MIGRATE=0` for maintenance commands that must bypass this startup step. Databases with tables but no Alembic history, or with a revision unknown to the image, require explicit intervention; startup never stamps or downgrades them. Native `uvicorn` startup initializes empty databases only; existing databases still use the explicit upgrade command:
 `uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
-performs it after a separate PostgreSQL dump and isolated restore check (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
+first creates and verifies an encrypted custom-format `pg_dump`, then performs the change (see [Finance setup](docs/finance.md#database-upgrades)). The native command requires PostgreSQL client tools; a missing/failed dump aborts before stamping, triggers, or upgrades. Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
 it never modifies existing rows.
 
@@ -196,6 +196,15 @@ uv run python scripts/local_backup.py backup --data-dir ./data --settings-file .
 uv run python scripts/local_backup.py restore-check --staging-dir /encrypted/staging --postgres-image personal-os-postgres-vector:17-alpine
 ```
 
+The explicit native migration/adoption `--apply` commands also create their own encrypted recovery point before schema writes. Install PostgreSQL client tools (`pg_dump`) first and stop application writes. Archives default to `PERSONAL_OS_DATA_DIR/migration-backups`; per-backup keys default to `~/.local/share/personal-os/migration-backup-keys` and must be retained separately. Use `--backup-dir` and `--backup-key-dir` to select private directories on encrypted storage (directories `0700`, files `0600`). Backup or filesystem failures abort the migration. Libpq service configuration (`service=` or inherited `PGSERVICE`) is refused because its precedence could select another database; use explicit connection settings and unset `PGSERVICE` before applying. Connection options without a safe libpq environment mapping are also refused. These commands print archive/key paths, never credentials or dump contents. Keep the document files and application token-encryption key as well; a DB dump alone does not restore those files. Docker startup retains the existing operator-managed backup requirement and does not silently install or run `pg_dump`.
+
+To use an automatic migration backup for an isolated restore check, decrypt only into private encrypted staging and then supply that custom dump to the existing backup/restore tooling:
+
+```bash
+umask 077
+uv run python -c 'from pathlib import Path; from cryptography.fernet import Fernet; import sys; Path(sys.argv[3]).write_bytes(Fernet(Path(sys.argv[2]).read_bytes()).decrypt(Path(sys.argv[1]).read_bytes()))' /path/to/archive.pgdump.fernet /separate/path/to/archive.key /encrypted/staging/database.dump
+```
+
 Use a consistent custom-format `pg_dump` captured while writes are stopped. Restoration is checked in a disposable directory/database; it never overwrites the running installation. Bundles include data/documents/keys/settings, Git revision and working-tree status, a source digest, migration-file hashes and data hashes. Retain the restic password and token key separately. Synthetic PostgreSQL restore tests do not establish that a particular user's host storage is encrypted.
 
 ## External model data control
@@ -290,7 +299,7 @@ The API-key and Codex app-server providers exist behind the same interface. They
 ### 웹 검색과 본문 근거
 
 로컬 실행과 개발 Docker에서는 상담 입력의 `웹 검색`을 켜고 별도의 `공개 검색어`를 입력할 수 있습니다.
-검색 제공자는 `PERSONAL_OS_WEB_SEARCH_PROVIDER`로 명시적으로 고르며(기본 `brave`), 실패해도 다른 제공자로 자동 전환하지 않습니다.
+검색 제공자는 `PERSONAL_OS_WEB_SEARCH_PROVIDER`로 명시적으로 고르며(기본 `brave`), 실패해도 다른 제공자로 자동 전환하지 않습니다. `SEARXNG_SECRET`이 없거나 비어 있으면 검색 프로세스를 시작하기 전에 중단하며, 검색 프로필을 사용하지 않는 기본 app/db 구성은 이 값 없이도 실행됩니다.
 
 - **SearXNG(키 없음, 무료):** 로컬에서 실행하는 메타검색 서버입니다. `docker/.env`에 `SEARXNG_SECRET`
   (`python -c "import secrets; print(secrets.token_hex(32))"`)을 채우고 `docker compose --env-file docker/.env -f docker/docker-compose.yml --profile search up -d searxng`로
