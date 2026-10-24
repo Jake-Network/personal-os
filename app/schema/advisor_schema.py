@@ -36,6 +36,7 @@ class MessageItem(BaseModel):
     context_snapshot_id: str | None
     is_final_answer: bool = False
     source_question: str | None = None
+    data_operations: list[dict] = Field(default_factory=list)
     model: str | None
     created_at: datetime
 
@@ -53,6 +54,7 @@ class AskRequest(BaseModel):
     document_ids: list[int] | None = Field(default=None, max_length=5)
     web_search: bool = False
     web_query: str | None = Field(default=None, min_length=1, max_length=300)
+    allow_data_recording: bool = False
 
     @model_validator(mode='after')
     def public_web_query(self):
@@ -72,6 +74,7 @@ class AskRequest(BaseModel):
             exclude=frozenset(self.exclude),
             document_search=self.document_search,
             web_search=self.web_search, web_query=self.web_query,
+            allow_data_recording=self.allow_data_recording,
             document_ids=tuple(self.document_ids) if self.document_ids is not None else None,
             history_since=self.history_since, history_until=self.history_until,
             history_company=self.history_company, history_project=self.history_project, history_decision=self.history_decision,

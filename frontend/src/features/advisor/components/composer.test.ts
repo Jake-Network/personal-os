@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 
 import type { AdvisorSend } from '../hooks/use-advisor-send';
-import { ShareSummary } from './composer';
+import { AutomaticRecordingToggle, ShareSummary } from './composer';
+import { initialDraft } from '../utils/send-logic';
 
 vi.mock('@/components/ui/popover', () => ({
   Popover: ({ children }: { children: ReactNode }) => createElement('div', null, children),
@@ -31,4 +32,15 @@ it('keeps profile sharing read-only and points to the setting that can change it
   expect(profileSwitch).toContain('disabled=""');
   expect(html).toContain('개인 프로필 공유는 기본 공유 설정에서 변경할 수 있습니다.');
   expect(html).toContain('href="/settings/privacy"');
+});
+
+it('shows automatic recording as an explicit disabled-by-default control with its scope', () => {
+  const send = { draft: initialDraft(1, null), updateDraft: () => {}, busy: false };
+  const html = renderToStaticMarkup(createElement(AutomaticRecordingToggle, { send }));
+  expect(html).toContain('자동 기록');
+  expect(html).toContain('aria-checked="false"');
+  expect(html).toContain('말한 실적·잔액·보유량을 기록합니다. 삭제는 직접 요청해야 합니다.');
+  const enabled = renderToStaticMarkup(createElement(AutomaticRecordingToggle, { send: { ...send, draft: { ...send.draft, allowDataRecording: true }, busy: true } }));
+  expect(enabled).toContain('aria-checked="true"');
+  expect(enabled).toContain('disabled=""');
 });

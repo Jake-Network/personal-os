@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getEventStream } from '@/api-client/event-stream';
 import { getGetConversationQueryKey } from '@/api-client/generated/advisor/advisor';
@@ -9,6 +9,7 @@ import type { RunEvent, RunView, WorkspaceView } from '@/api-client/model';
 import { workspaceApi, workspaceKey } from '../api';
 import type { InspectorData } from '../types';
 import { applyRunEvent, type EventCursor } from '../run-events';
+import { invalidateDataOperationQueries, readDataOperations } from '../data-operations';
 
 export const isUnfinished = (status?: RunView['status']) => !!status && !['completed', 'failed', 'cancelled'].includes(status);
 export const isExecuting = (status?: RunView['status']) => !!status && ['queued', 'running', 'cancel_requested'].includes(status);
@@ -30,6 +31,16 @@ export function useWorkspace(conversationId: number | null, observe = true) {
   const [live, setLive] = useState<{ id?: string; revision: number; text: string }>({ revision: 0, text: '' });
   const [context, setContext] = useState<{ id: string; data: InspectorData } | null>(null);
   const [progress, setProgress] = useState<{ id: string; stage: string; message: string } | null>(null);
+  const dataOperations = useMemo(() => readDataOperations(run?.result?.data_operations), [run?.result?.data_operations]);
+  const refreshedOperations = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!run || !dataOperations.length) return;
+    const receiptKey = `${run.id}:${run.answer_revision}:${JSON.stringify(dataOperations.map(op => [op.operation, op.resource, op.status, op.record_id]))}`;
+    if (refreshedOperations.current.has(receiptKey)) return;
+    refreshedOperations.current.add(receiptKey);
+    void invalidateDataOperationQueries(queryClient, dataOperations);
+  }, [run, dataOperations, queryClient]);
 
   useEffect(() => {
     if (!observe || !runId || !executing || conversationId === null) return;

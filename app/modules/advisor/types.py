@@ -23,6 +23,7 @@ class AskOptions:
     history_decision: int | None = None
     web_search: bool = False
     web_query: str | None = None
+    allow_data_recording: bool = False
 
 
 @dataclass

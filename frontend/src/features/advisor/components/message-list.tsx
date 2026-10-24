@@ -24,6 +24,8 @@ import type { ChatMessage } from '../types';
 import { snapshotToInspector, stripBlocks } from '../utils';
 import { MemoryProposalCard, ProposalCard } from './proposal-card';
 import { AnswerActions } from './answer-actions';
+import { readDataOperations } from '../data-operations';
+import { DataOperationResults } from './data-operation-results';
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -111,6 +113,7 @@ export function MessageItem({
           <AnswerActions messageId={m.id} conversationId={conversationId} question={question ?? ''} />
         )}
       </div>
+      {assistant && <DataOperationResults operations={readDataOperations(m.data_operations)} />}
       {m.proposals?.length || m.memoryProposals?.length ? (
         <div className='mt-2 flex flex-col gap-2.5'>
           {m.proposals?.map(p => (

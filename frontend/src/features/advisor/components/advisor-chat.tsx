@@ -30,6 +30,8 @@ import { MessageItem, useDocumentSource } from './message-list';
 import { MemoryProposalCard, ProposalCard } from './proposal-card';
 import { RunStatus } from './run-status';
 import { ScenarioComparison } from './scenario-comparison';
+import { readDataOperations } from '../data-operations';
+import { DataOperationResults } from './data-operation-results';
 
 interface Props {
   conversationId: number | null;
@@ -174,6 +176,8 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   const inlineIds = new Set(messages.flatMap(m => m.proposals?.map(p => p.id) ?? []));
   const pending = (pendingProposals ?? []).filter(p => !inlineIds.has(p.id));
   const runMemories = (Array.isArray(workspace.run?.result?.memory_proposals) ? workspace.run.result.memory_proposals : []) as MemoryProposal[];
+  const runDataOperations = readDataOperations(workspace.run?.result?.data_operations);
+  const operationsInMessage = messages.some(message => message.id === workspace.run?.result?.message_id && readDataOperations(message.data_operations).length > 0);
   const scenarios = (workspace.data?.scenarios ?? [])
     .filter(scenario => (workspace.run?.result?.scenarios as string[] | undefined)?.includes(scenario.id))
     .slice(0, 3);
@@ -242,6 +246,11 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             onRefresh={workspace.refresh}
             onChoose={text => void send.send(text)}
           />
+        )}
+        {!operationsInMessage && runDataOperations.length > 0 && (
+          <div className='mx-auto w-full max-w-[760px]'>
+            <DataOperationResults operations={runDataOperations} />
+          </div>
         )}
         <ScenarioComparison scenarios={scenarios} />
         {(pending.length > 0 || runMemories.length > 0) && (

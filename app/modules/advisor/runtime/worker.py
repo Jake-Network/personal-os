@@ -75,13 +75,28 @@ async def process_one(database):
                 repository.append_event(run_id, 'progress', event, worker_id=owner, generation=generation)
                 observing.commit()
 
+        def command_guard():
+            # The lease fence and local data changes share one short transaction.
+            repo.fence(run_id, owner, generation)
+            authorization.require(session, auth)
+
+        def record_data_operations(operations):
+            owned = repo.fence(run_id, owner, generation)
+            owned.runtime_metadata = {**(owned.runtime_metadata or {}), 'data_operations': operations}
+            # Keep the write receipt visible even when the later answer fails.
+            owned.result = {**(owned.result or {}), 'data_operations': operations}
+            repo.append_event(run_id, 'data_operations', {'data_operations': operations},
+                f'data_operations:{run.user_message_id}', worker_id=owner, generation=generation)
+
         pulse = asyncio.create_task(heartbeat())
         try:
             await guard()
             with run_checkpointer(database, run_id, owner, generation) as checkpointer:
                 graph = build_conversation_graph(session, advisor_manager, conversation, body.options(), run.model,
                     checkpointer=checkpointer, guard=guard, current_message_id=run.user_message_id,
-                    on_progress=progress, run_authorization=auth)
+                    on_progress=progress, run_authorization=auth, command_guard=command_guard,
+                    on_data_operations=record_data_operations,
+                    recorded_operations=(run.runtime_metadata or {}).get('data_operations'))
                 saved = await graph.aget_state(config)
                 pending = {item.id for task_state in saved.tasks for item in task_state.interrupts}
                 response_id = run.checkpoint.get('question_id')
@@ -187,6 +202,7 @@ async def process_one(database):
                 from app.schema.advisor_runtime_schema import ScenarioView
                 scenario_views.append(ScenarioView.model_validate(saved).model_dump(mode='json'))
             result = {'message_id': reply.id, 'context_snapshot_id': snapshot_id, 'answer': answer,
+                'data_operations': state.get('data_operations', (row.runtime_metadata or {}).get('data_operations', [])),
                 'context': state.get('context', {}), 'scenarios': scenarios,
                 'limitations': state.get('limitations', []), 'model_calls': state.get('model_calls', 0),
                 'tool_calls': state.get('tool_calls', 0),

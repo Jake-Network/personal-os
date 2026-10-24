@@ -1,7 +1,8 @@
 """User-entered personal data (v0.1 foundation subset). Every change is audit-logged.
 
-These endpoints are the user's own edits. The advisor has no path to them: its only write
-channel is proposal_manager, which cannot touch financial tables (AC-18).
+These endpoints are the user's own edits. Explicit consultation CRUD uses the separate
+data_commands service with the same schemas/history, a bounded allowlist and a caller-owned
+transaction. Spontaneous advisor proposals remain approval-gated.
 """
 
 from pydantic import BaseModel
