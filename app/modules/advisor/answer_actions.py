@@ -7,28 +7,33 @@ from app.modules.database.model.advisor_runtime import AdvisorRun, AdvisorRunEve
 from app.schema.advisor_schema import MessageItem
 
 
-def _answer_metadata(session: Session, messages: list[AdvisorMessage], *, questions: bool) -> dict[int, str | None]:
+def _answer_metadata(session: Session, messages: list[AdvisorMessage], *, questions: bool,
+                     operation_results: dict | None = None) -> dict[int, str | None]:
     candidates = {m.id: m for m in messages
                   if m.role == 'assistant' and m.status == 'complete' and m.content.strip()}
     if not candidates:
         return {}
     ids = list(candidates)
     question = AdvisorRun.input_payload['message'].as_string() if questions else literal(None)
-    current_answers = select(cast(AdvisorRun.assistant_message_id, String), question).join(
+    receipt = AdvisorRun.result['data_operations'] if operation_results is not None else literal(None)
+    current_answers = select(cast(AdvisorRun.assistant_message_id, String), question, receipt).join(
         AdvisorMessage, and_(AdvisorMessage.id == AdvisorRun.assistant_message_id,
                              AdvisorMessage.conversation_id == AdvisorRun.conversation_id)
     ).where(AdvisorMessage.id.in_(ids))
     # Project just the event's answer ID, never its complete answer/result payload.
     event_message = cast(AdvisorRunEvent.payload['message_id'].as_string(), String)
-    previous_answers = select(event_message, question).select_from(AdvisorRunEvent).join(
+    prior_receipt = AdvisorRunEvent.payload['data_operations'] if operation_results is not None else literal(None)
+    previous_answers = select(event_message, question, prior_receipt).select_from(AdvisorRunEvent).join(
         AdvisorRun, AdvisorRun.id == AdvisorRunEvent.run_id
     ).join(AdvisorMessage, and_(cast(AdvisorMessage.id, String) == event_message,
                                AdvisorMessage.conversation_id == AdvisorRun.conversation_id)
     ).where(AdvisorRunEvent.type == 'done', AdvisorMessage.id.in_(ids))
     metadata = {}
-    for message_id, original_question in session.execute(union_all(current_answers, previous_answers)):
+    for message_id, original_question, operations in session.execute(union_all(current_answers, previous_answers)):
         key = int(message_id)
         metadata[key] = original_question or metadata.get(key)
+        if operation_results is not None and isinstance(operations, list):
+            operation_results[key] = operations
 
     unknown = set(ids) - metadata.keys()
     fallback = {key for key, value in metadata.items() if questions and not value}
@@ -77,9 +82,11 @@ def final_answer_ids(session: Session, messages: list[AdvisorMessage]) -> set[in
 
 
 def message_items(session: Session, messages: list[AdvisorMessage]) -> list[MessageItem]:
-    metadata = _answer_metadata(session, messages, questions=True)
+    operations = {}
+    metadata = _answer_metadata(session, messages, questions=True, operation_results=operations)
     return [MessageItem.model_validate(message).model_copy(update={
-        'is_final_answer': message.id in metadata, 'source_question': metadata.get(message.id)
+        'is_final_answer': message.id in metadata, 'source_question': metadata.get(message.id),
+        'data_operations': operations.get(message.id, []),
     }) for message in messages]
 
 

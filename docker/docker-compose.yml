@@ -81,9 +81,13 @@ services:
     image: searxng/searxng:2026.10.4-d48c4b555
     profiles: ["search"]
     restart: unless-stopped
+    # Validate when this optional service starts, without requiring a search
+    # secret during Compose interpolation for the default app/db profile.
+    entrypoint: ["/bin/sh", "/usr/local/bin/personal-os-search-secret.sh", "/usr/local/searxng/entrypoint.sh"]
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:-}
     volumes:
+      - ./searxng/require-secret.sh:/usr/local/bin/personal-os-search-secret.sh:ro
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
       - searxng_cache:/var/cache/searxng
     ports:

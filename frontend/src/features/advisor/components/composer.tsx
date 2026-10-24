@@ -224,6 +224,26 @@ function HistoryScope({ send }: { send: AdvisorSend }) {
   );
 }
 
+export function AutomaticRecordingToggle({ send }: { send: Pick<AdvisorSend, 'draft' | 'updateDraft' | 'busy'> }) {
+  return (
+    <div className='flex items-start gap-2 rounded-md px-2 py-1'>
+      <Switch
+        id='automatic-data-recording'
+        checked={send.draft.allowDataRecording}
+        disabled={send.busy}
+        onCheckedChange={value => send.updateDraft({ allowDataRecording: value })}
+        aria-describedby='automatic-data-recording-description'
+      />
+      <Label htmlFor='automatic-data-recording' className='flex-1 leading-snug'>
+        자동 기록
+        <span id='automatic-data-recording-description' className='mt-1 block text-2xs font-normal text-faint'>
+          말한 실적·잔액·보유량을 기록합니다. 삭제는 직접 요청해야 합니다.
+        </span>
+      </Label>
+    </div>
+  );
+}
+
 export function Composer({
   send,
   compact,
@@ -301,6 +321,7 @@ export function Composer({
                     더보기
                   </PopoverTrigger>
                   <PopoverContent className='flex flex-col items-start gap-2'>
+                    <AutomaticRecordingToggle send={send} />
                     <DocumentPicker send={send} />
                     <HistoryScope send={send} />
                     <button
@@ -336,6 +357,7 @@ export function Composer({
               <span className='rounded border px-2 py-0.5'>과거 경험 범위 지정</span>
             )}
             {draft.webSearch && <span className='rounded border px-2 py-0.5'>웹 검색 사용</span>}
+            {draft.allowDataRecording && <span className='rounded border border-primary/30 bg-accent px-2 py-0.5 text-accent-foreground'>자동 기록 켜짐</span>}
           </div>
         )}
         {draft.webSearch && !waiting && (

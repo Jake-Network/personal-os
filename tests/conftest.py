@@ -215,3 +215,11 @@ def seeded(session):
         session.add(CashflowEntry(occurred_on=d.replace(day=5), kind="expense", amount=Decimal("2000000")))
     session.commit()
     return session
+
+
+@pytest.fixture(autouse=True)
+def isolated_symbol_directory(monkeypatch):
+    """Legacy domain tests never contact a live public listing service."""
+    from app.modules.portfolio.symbol_directory import symbol_directory
+    monkeypatch.setattr(symbol_directory, 'resolve', lambda symbol, currency='USD': {
+        'status': 'unavailable', 'symbol': None, 'candidates': [], 'source': 'nasdaq_trader', 'as_of': None})

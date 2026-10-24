@@ -1,6 +1,6 @@
 /** Builds data-entry forms from the backend's pydantic schemas (via /openapi.json), so the two never drift. */
 
-export type FieldKind = 'text' | 'longtext' | 'decimal' | 'integer' | 'boolean' | 'date' | 'datetime' | 'enum';
+export type FieldKind = 'text' | 'longtext' | 'decimal' | 'integer' | 'duration' | 'boolean' | 'date' | 'datetime' | 'enum';
 
 export interface FieldSpec {
   name: string;
@@ -34,6 +34,7 @@ function kindOf(name: string, variants: JsonSchema[]): Pick<FieldSpec, 'kind' | 
   if (enumVariant) return { kind: 'enum', options: enumVariant.enum };
   const types = variants.map(v => v.type);
   const formats = variants.map(v => v.format);
+  if (formats.includes('duration-seconds')) return { kind: 'duration' };
   if (formats.includes('date')) return { kind: 'date' };
   if (formats.includes('date-time')) return { kind: 'datetime' };
   if (types.includes('boolean')) return { kind: 'boolean' };

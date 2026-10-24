@@ -1,5 +1,6 @@
 import type { CalendarItem, CalendarSelection, CalendarTone } from '@/components/calendar/calendar-utils';
 import { money } from '@/lib/utils/format';
+import { formatDuration } from '@/lib/utils/duration';
 import { addDays, compareKeys, todayKey, zonedInstant, zonedMidnight } from '@/lib/utils/zoned';
 
 import type { Row } from '@/features/personal-data/api/resource-api';
@@ -117,7 +118,7 @@ export const SOURCES: Record<SourceId, CalendarSource> = {
     toItems: rows =>
       rows.flatMap(r =>
         str(r.performed_on)
-          ? [{ key: `workout-logs:${r.id}`, title: `${r.activity} ${r.duration_minutes}분`, start: r.performed_on as string, allDay: true, tone: 'workout', detail: r.intensity ? enumLabel(r.intensity) : undefined } satisfies CalendarItem]
+          ? [{ key: `workout-logs:${r.id}`, title: `${r.activity} ${formatDuration(r.duration_seconds)}`, start: r.performed_on as string, allDay: true, tone: 'workout', detail: r.intensity ? enumLabel(r.intensity) : undefined } satisfies CalendarItem]
           : [],
       ),
     defaults: singleDay('performed_on', '운동일'),

@@ -1,5 +1,7 @@
 """One server-owned run at a time; subscriptions never own or cancel inference."""
 import asyncio
+import hashlib
+import json
 import logging
 from contextlib import suppress
 from uuid import uuid4
@@ -77,14 +79,48 @@ async def process_one(database):
                 repository.append_event(run_id, 'progress', event, worker_id=owner, generation=generation)
                 observing.commit()
 
+        def command_guard():
+            # The lease fence and local data changes share one short transaction.
+            owned = repo.fence(run_id, owner, generation)
+            authorization.require(session, auth)
+            from app.modules.agent.briefing import require_run_authorized
+            require_run_authorized(session, owned)
+
+        def record_data_operations(operations, *, command_plan, command_query, source_message_ids,
+                                   recording_allowed=False):
+            owned = repo.fence(run_id, owner, generation)
+            owned.runtime_metadata = {**(owned.runtime_metadata or {}), 'data_operations': operations,
+                'data_command_plan': command_plan, 'data_command_query': command_query,
+                'data_command_source_ids': source_message_ids,
+                'data_command_validation_version': 2,
+                'data_command_recording_allowed': recording_allowed}
+            # Keep the write receipt visible even when the later answer fails.
+            owned.result = {**(owned.result or {}), 'data_operations': operations}
+            receipt_digest = hashlib.sha256(json.dumps(operations, sort_keys=True,
+                ensure_ascii=False, default=str).encode()).hexdigest()[:20]
+            repo.append_event(run_id, 'data_operations', {'data_operations': operations},
+                f'data_operations:{run.user_message_id}:{receipt_digest}', worker_id=owner, generation=generation)
+
+        async def quote_refresh(sources):
+            from app.modules.advisor.runtime.quote_execution import execute_quote_refresh
+            return await execute_quote_refresh(database.session, run_id=run_id, owner=owner,
+                generation=generation, authorization=auth, sources=sources,
+                options=body.options(), model=run.model)
+
         pulse = asyncio.create_task(heartbeat())
         try:
             await guard()
             with run_checkpointer(database, run_id, owner, generation) as checkpointer:
                 graph = build_conversation_graph(session, advisor_manager, conversation, body.options(), run.model,
                     checkpointer=checkpointer, guard=guard, current_message_id=run.user_message_id,
-                    on_progress=progress, run_authorization=auth, run_id=run_id,
-                    run_owner=owner, run_generation=generation)
+                    on_progress=progress, run_authorization=auth, command_guard=command_guard,
+                    on_data_operations=record_data_operations,
+                    recorded_operations=(run.runtime_metadata or {}).get('data_operations'),
+                    recorded_command_plan=(run.runtime_metadata or {}).get('data_command_plan'),
+                    recorded_command_query=(run.runtime_metadata or {}).get('data_command_query'),
+                    recorded_command_source_ids=(run.runtime_metadata or {}).get('data_command_source_ids'),
+                    run_id=run_id, run_owner=owner, run_generation=generation,
+                    data_commands_allowed=not bool(metadata.get('schedule_id')), on_quote_refresh=quote_refresh)
                 saved = await graph.aget_state(config)
                 pending = {item.id for task_state in saved.tasks for item in task_state.interrupts}
                 response_id = run.checkpoint.get('question_id')
@@ -125,9 +161,14 @@ async def process_one(database):
                         if not previous_analysis:
                             previous_analysis = needs_analysis(initial_state(
                                 previous.input_payload.get('message', ''), previous.depth))
+                    from app.modules.advisor.commands.pending import find_pending_commands
+                    pending = find_pending_commands(session, conversation_id=run.conversation_id,
+                        message_id=run.user_message_id, query=body.message,
+                        excluded=advisor_manager.sharing_exclusions(session, body.options())) if not saved.values else None
                     value = None if saved.values else initial_state(body.message, body.depth,
                         single_response=bool(metadata.get('single_response')), selected_scenario=selected,
-                        explicit_scenario=body.scenario_id is not None, previous_analysis=previous_analysis)
+                        explicit_scenario=body.scenario_id is not None, previous_analysis=previous_analysis,
+                        pending_data_commands=pending)
                 with tracing_context(enabled=False):
                     task = asyncio.create_task(graph.ainvoke(value, config, durability='sync'))
                 # A failed heartbeat (including cancel/lock) also interrupts an in-flight provider request.
@@ -191,6 +232,7 @@ async def process_one(database):
                 from app.schema.advisor_runtime_schema import ScenarioView
                 scenario_views.append(ScenarioView.model_validate(saved).model_dump(mode='json'))
             result = {'message_id': reply.id, 'context_snapshot_id': snapshot_id, 'answer': answer,
+                'data_operations': state.get('data_operations', (row.runtime_metadata or {}).get('data_operations', [])),
                 'context': state.get('context', {}), 'scenarios': scenarios,
                 'limitations': state.get('limitations', []), 'model_calls': state.get('model_calls', 0),
                 'tool_calls': state.get('tool_calls', 0),

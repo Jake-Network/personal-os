@@ -93,4 +93,6 @@ export interface ChatMessage {
   proposals?: ProposalItem[];
   memoryProposals?: MemoryProposal[];
   document_citations?: DocumentCitation[];
+  /** Server execution receipts; also returned on saved messages after reconnect. */
+  data_operations?: unknown;
 }

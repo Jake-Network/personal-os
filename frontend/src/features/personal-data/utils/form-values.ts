@@ -1,4 +1,5 @@
 import { addDays, fromZonedInput, toZonedInput, zonedDayKey, zonedMidnight } from '@/lib/utils/zoned';
+import { durationInput, durationSeconds } from '@/lib/utils/duration';
 
 import type { FieldSpec } from './schema-fields';
 
@@ -20,6 +21,7 @@ export function initialValues(fields: FieldSpec[], current?: Record<string, unkn
       const v = current?.[f.name] !== undefined ? current[f.name] : f.defaultValue;
       if (f.kind === 'boolean') return [f.name, Boolean(v)];
       if (v === null || v === undefined) return [f.name, ''];
+      if (f.kind === 'duration') return [f.name, durationInput(Number(v))];
       if (f.kind === 'datetime') return [f.name, toZonedInput(String(v))];
       return [f.name, String(v)];
     }),
@@ -53,6 +55,10 @@ export function toPayload(fields: FieldSpec[], values: FormValues): Record<strin
   const out: Record<string, unknown> = {};
   for (const f of fields) {
     const v = values[f.name];
+    if (f.kind === 'duration') {
+      out[f.name] = durationSeconds(String(v ?? ''));
+      continue;
+    }
     if (f.kind === 'boolean') {
       out[f.name] = Boolean(v);
       continue;

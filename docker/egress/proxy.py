@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ALLOWED_HOSTS = frozenset({
     "accounts.google.com", "oauth2.googleapis.com", "sheets.googleapis.com",
     "www.googleapis.com", "auth.openai.com", "api.openai.com", "chatgpt.com",
+    "www.nasdaqtrader.com",
 })
 
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 import { dateOnly, dateTime, money, plain } from '@/lib/utils/format';
+import { formatDuration } from '@/lib/utils/duration';
 import { cn } from '@/lib/utils';
 
 import type { Row } from '../api/resource-api';
@@ -28,7 +29,7 @@ const NUMERIC_FIELDS = new Set([
   'rate',
   'weight',
   'interest_rate',
-  'duration_minutes',
+  'duration_seconds',
   'estimate_minutes',
   'current_value',
   'target_value',
@@ -37,6 +38,7 @@ const NUMERIC_FIELDS = new Set([
 export function cellText(row: Row, col: string, field?: FieldSpec): string {
   const v = row[col];
   if (v === null || v === undefined || v === '') return '—';
+  if (col === 'duration_seconds') return formatDuration(v);
   if (MONEY_FIELDS.has(col)) return money(v as string, (row.currency as string) ?? 'KRW');
   if (field?.kind === 'enum') return enumLabel(v);
   if (field?.kind === 'boolean') return v ? '예' : '아니오';

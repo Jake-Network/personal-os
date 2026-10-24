@@ -49,7 +49,7 @@ export const RESOURCES: ResourceMeta[] = [
     group: '일정·목표',
     columns: ['title', 'category', 'horizon', 'current_value', 'target_value', 'target_date', 'status'],
   },
-  { name: 'workout-logs', label: '운동 기록', group: '건강', columns: ['performed_on', 'activity', 'duration_minutes', 'intensity'] },
+  { name: 'workout-logs', label: '운동 기록', group: '건강', columns: ['performed_on', 'activity', 'duration_seconds', 'intensity'] },
 ];
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -110,6 +110,7 @@ export const FIELD_LABEL: Record<string, string> = {
   performed_on: '날짜',
   activity: '운동',
   duration_minutes: '시간(분)',
+  duration_seconds: '운동 시간',
   intensity: '강도',
 };
 

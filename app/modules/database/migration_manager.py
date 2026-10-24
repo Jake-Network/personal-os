@@ -1,16 +1,15 @@
 """Explicit, user-run migration of an existing database to the Alembic head.
 
 Native app startup leaves an existing database unchanged; Docker's entrypoint upgrades it
-automatically. This command supports explicit inspection and migration after an operator-managed pg_dump backup:
+automatically. This command supports explicit inspection and migration with an automatic encrypted pg_dump backup before any schema write:
 
     uv run python -m app.modules.database.migration_manager            # show the plan (read-only)
-    uv run python -m app.modules.database.migration_manager --apply    # migrate after verifying a pg_dump backup
+    uv run python -m app.modules.database.migration_manager --apply    # back up, then migrate (requires pg_dump)
 
 A database created by `create_all` has no `alembic_version` table. Its tables and columns are
 compared with the schema of every revision (built in a rollback-only PostgreSQL schema); only an exact match
 is stamped, after which the append-only triggers that `create_all` never installs are added and the
-remaining migrations run. Without an exact match nothing is changed. Existing rows are never
-rewritten: migrations only add tables, columns, indexes, triggers and backfilled history rows.
+remaining migrations run. Without an exact match nothing is changed. Existing data changes are limited to the explicit, versioned migration contracts; planning never writes the application schema.
 """
 
 import argparse
@@ -53,9 +52,13 @@ def schema_of(engine: Engine | Connection) -> Schema:
         with engine.connect() as connection:
             return schema_of(connection)
     schema = inspection_schema(engine)
-    insp = inspect(engine)
-    return {t: frozenset(c["name"] for c in insp.get_columns(t, schema=schema))
-            for t in insp.get_table_names(schema=schema) if t != "alembic_version"}
+    tables = {table: set() for table in inspect(engine).get_table_names(schema=schema)
+              if table != "alembic_version"}
+    for table, column in engine.execute(text("SELECT table_name,column_name FROM information_schema.columns "
+            "WHERE table_schema=:schema"), {'schema': schema}):
+        if table in tables:
+            tables[table].add(column)
+    return {table: frozenset(columns) for table, columns in tables.items()}
 
 
 @cache
@@ -73,6 +76,53 @@ def schema_at(revision: str, url: str) -> Schema:
         engine.dispose()
 
 
+def _revision_schemas(connection, script):
+    """Execute each migration once, projecting away unrelated sibling branches.
+
+    The planner compares table/column shapes. Capturing each step's column delta
+    lets a branch's shape be reconstructed from its ancestors even though the
+    one scratch schema has also traversed earlier independent sibling branches.
+    """
+    from app.modules.database.legacy_adoption import migration_config, reference_connection
+    revisions = list(script.walk_revisions())
+    results, deltas, ancestors, processed = {}, {}, {}, []
+    with reference_connection(connection) as scratch:
+        config = migration_config(scratch)
+        previous = {}
+        for revision in reversed(revisions):
+            command.upgrade(config, revision.revision)
+            observed = schema_of(scratch)
+            changes = {}
+            for table in previous.keys() | observed.keys():
+                if table not in observed:
+                    changes[table] = None
+                elif table not in previous or observed[table] != previous[table]:
+                    changes[table] = (observed[table] - previous.get(table, frozenset()),
+                                      previous.get(table, frozenset()) - observed[table])
+            deltas[revision.revision] = changes
+            parents = []
+            for value in (revision.down_revision, revision.dependencies):
+                parents.extend((value,) if isinstance(value, str) else value or ())
+            lineage = {revision.revision}
+            for parent in parents:
+                lineage.update(ancestors[parent])
+            ancestors[revision.revision] = lineage
+            processed.append(revision.revision)
+            expected = {}
+            for key in processed:
+                if key not in lineage:
+                    continue
+                for table, change in deltas[key].items():
+                    if change is None:
+                        expected.pop(table, None)
+                    else:
+                        added, removed = change
+                        expected[table] = (expected.get(table, frozenset()) | added) - removed
+            results[revision.revision] = expected
+            previous = observed
+    return results
+
+
 def plan(url: str) -> MigrationPlan:
     config = alembic_config(url)
     script = ScriptDirectory.from_config(config)
@@ -83,24 +133,25 @@ def plan(url: str) -> MigrationPlan:
             from app.modules.database.legacy_adoption import inspection_schema
             current = MigrationContext.configure(conn, opts={
                 "version_table_schema": inspection_schema(conn)}).get_current_revision()
-        tables = schema_of(engine)
+            tables = schema_of(conn)
+            result = MigrationPlan(current=current, head=head)
+            if current is not None or not tables:
+                return result
+            shapes = _revision_schemas(conn, script)
+            closest = None
+            for revision in script.walk_revisions():  # newest exact match wins
+                expected = shapes[revision.revision]
+                if expected == tables:
+                    result.stamp = revision.revision
+                    return result
+                diff = schema_differences(expected, tables)
+                if closest is None or len(diff) < closest[0]:
+                    closest = (len(diff), revision.revision, diff)
+            assert closest is not None
+            result.differences = [f"closest revision {closest[1]}:"] + closest[2]
+            return result
     finally:
         engine.dispose()
-    result = MigrationPlan(current=current, head=head)
-    if current is not None or not tables:
-        return result
-    closest: tuple[int, str, list[str]] | None = None
-    for rev in script.walk_revisions():  # newest first
-        expected = schema_at(rev.revision, url)
-        if expected == tables:
-            result.stamp = rev.revision
-            return result
-        diff = schema_differences(expected, tables)
-        if closest is None or len(diff) < closest[0]:
-            closest = (len(diff), rev.revision, diff)
-    assert closest is not None
-    result.differences = [f"closest revision {closest[1]}:"] + closest[2]
-    return result
 
 
 def ensure_append_only_triggers(engine: Engine) -> None:
@@ -118,11 +169,13 @@ def ensure_append_only_triggers(engine: Engine) -> None:
                     FOR EACH ROW EXECUTE FUNCTION {function}()"""))
 
 
-def apply(url: str, migration_plan: MigrationPlan) -> None:
+def apply(url: str, migration_plan: MigrationPlan, *, backup_dir=None, backup_key_dir=None):
     if migration_plan.action == "refuse":
         raise RuntimeError(migration_plan.describe())
     if migration_plan.action == "none":
         return None
+    from app.modules.database.migration_backup import create_migration_backup
+    backup = create_migration_backup(url, backup_dir=backup_dir, key_dir=backup_key_dir)
     config = alembic_config(url)
     if migration_plan.stamp:
         command.stamp(config, migration_plan.stamp)
@@ -132,7 +185,7 @@ def apply(url: str, migration_plan: MigrationPlan) -> None:
         finally:
             engine.dispose()
     command.upgrade(config, "head")
-    return None
+    return backup
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -141,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--apply", action="store_true", help="perform the plan (default: only show it)")
     parser.add_argument("--database-url", default=None)
+    parser.add_argument("--backup-dir", default=None, help="private encrypted backup directory")
+    parser.add_argument("--backup-key-dir", default=None, help="private key directory outside the backups")
     args = parser.parse_args(argv)
     args.database_url = args.database_url or settings.resolved_database_url
     migration_plan = plan(args.database_url)
@@ -148,7 +203,12 @@ def main(argv: list[str] | None = None) -> int:
     if migration_plan.action == "refuse":
         return 1
     if args.apply:
-        apply(args.database_url, migration_plan)
+        try:
+            backup = apply(args.database_url, migration_plan, backup_dir=args.backup_dir, backup_key_dir=args.backup_key_dir)
+        except RuntimeError as error:
+            parser.exit(1, f"{error}\n")
+        if backup:
+            print(f"Encrypted backup: {backup.archive}\nBackup key (retain separately): {backup.key_file}")
         print(f"Done: database is at {migration_plan.head}.")
     elif migration_plan.action != "none":
         print("Run again with --apply to perform it.")

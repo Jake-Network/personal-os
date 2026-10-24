@@ -17,8 +17,8 @@ def test_empty_dashboard_has_incomplete_checklist(session):
 
 def test_old_workout_counts_but_future_workout_does_not(session):
     session.add_all([
-        WorkoutLog(performed_on=date(2026, 1, 1), activity='walk', duration_minutes=20),
-        WorkoutLog(performed_on=date(2026, 10, 21), activity='walk', duration_minutes=20),
+        WorkoutLog(performed_on=date(2026, 1, 1), activity='walk', duration_seconds=1200),
+        WorkoutLog(performed_on=date(2026, 10, 21), activity='walk', duration_seconds=1200),
     ])
     session.commit()
     result = dashboard_manager.summary(session, NOW)
@@ -59,12 +59,12 @@ def test_workout_recent_window_uses_app_today(session, monkeypatch):
     from dataclasses import replace
     monkeypatch.setattr('app.modules.context.context_tool_manager.settings', replace(settings, timezone='Asia/Tokyo'))
     monkeypatch.setattr('app.modules.dashboard.dashboard_manager.settings', replace(settings, timezone='Asia/Tokyo'))
-    session.add(WorkoutLog(performed_on=date(2026, 10, 14), activity='walk', duration_minutes=20))
+    session.add(WorkoutLog(performed_on=date(2026, 10, 14), activity='walk', duration_seconds=1200))
     session.commit()
     # Tokyo is already Oct 21: Oct 14 is outside today plus preceding six days.
     result = dashboard_manager.summary(session, datetime(2026, 10, 20, 15, tzinfo=UTC))
     assert {'kind': 'exercise', 'count': 1} in result['signals']
-    session.add(WorkoutLog(performed_on=date(2026, 10, 21), activity='walk', duration_minutes=20))
+    session.add(WorkoutLog(performed_on=date(2026, 10, 21), activity='walk', duration_seconds=1200))
     session.commit()
     assert not dashboard_manager.summary(session, datetime(2026, 10, 20, 15, tzinfo=UTC))['signals']
 

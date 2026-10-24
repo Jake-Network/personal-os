@@ -7,6 +7,11 @@ import { SOURCES } from './calendar-sources';
 describe('calendar sources', () => {
   afterEach(() => setDisplayTimeZone(undefined));
 
+  it('shows workout hours and seconds without rounding', () => {
+    const [item] = SOURCES['workout-logs'].toItems([{ id: 1, activity: '달리기', performed_on: '2026-10-24', duration_seconds: 5432 }], { today: '2026-10-24' });
+    expect(item.title).toBe('달리기 1시간 30분 32초');
+  });
+
   it('turns a picked day range into an all-day event over local midnights', () => {
     setDisplayTimeZone('Asia/Seoul');
     expect(SOURCES['calendar-events'].defaults({ kind: 'days', start: '2026-10-17', end: '2026-10-18' }).values).toEqual({

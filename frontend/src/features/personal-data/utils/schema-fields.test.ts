@@ -39,6 +39,21 @@ describe('schemaFields', () => {
   it('rejects unknown resources', () => {
     expect(() => schemaFields(spec, 'nope')).toThrow('알 수 없는 리소스');
   });
+
+  it('uses the server duration format for hours, minutes and seconds entry', () => {
+    const workoutSpec: OpenApiSpec = {
+      paths: { '/api/data/workout-logs': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/WorkoutLogCreate' } } } } } } },
+      components: { schemas: { WorkoutLogCreate: { required: ['duration_seconds'], properties: { duration_seconds: { type: 'integer', format: 'duration-seconds' } } } } },
+    };
+    const fields = schemaFields(workoutSpec, 'workout-logs');
+    expect(fields[0].kind).toBe('duration');
+    expect(initialValues(fields, { duration_seconds: 5432 })).toEqual({ duration_seconds: '1:30:32' });
+    expect(toPayload(fields, { duration_seconds: '1:30:32' })).toEqual({ duration_seconds: 5432 });
+    expect(toPayload(fields, { duration_seconds: '::45' })).toEqual({ duration_seconds: 45 });
+    for (const value of ['', '0:0:0', '-1:30:0', '0:60:0', '0:0:60', '0:0:1.5', '2501999792984:0:0']) {
+      expect(() => toPayload(fields, { duration_seconds: value })).toThrow('운동 시간');
+    }
+  });
 });
 
 describe('form values', () => {

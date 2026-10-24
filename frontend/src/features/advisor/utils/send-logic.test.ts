@@ -42,6 +42,16 @@ describe('advisor send logic', () => {
     expect(documentOptionsOf({ ...initialDraft(null, null), webSearch: false, webQuery: '비공개' }).web_query).toBeNull();
   });
 
+  it('requires explicit automatic recording opt-in and resets it for another conversation', () => {
+    const fresh = initialDraft(12, null);
+    expect(fresh.allowDataRecording).toBe(false);
+    expect(documentOptionsOf(fresh).allow_data_recording).toBe(false);
+    expect(documentOptionsOf({ ...fresh, allowDataRecording: true }).allow_data_recording).toBe(true);
+    expect(initialDraft(13, null).allowDataRecording).toBe(false);
+    const previous = { conversationId: 12, body: { message: '오늘 10km 뛰었어', request_id: 'old', allow_data_recording: false } as RunCreate };
+    expect(planRunRequest(previous, { ...previous.body, request_id: 'new', allow_data_recording: true } as RunCreate, 12)).toEqual({ action: 'reconcile' });
+  });
+
   it('reuses an uncertain request only when nothing the user controls changed', () => {
     const previous = { conversationId: 5, body: { message: 'q', request_id: 'old', exclude: [], depth: 'auto', parent_revision: 1 } as RunCreate };
     const same = { ...previous.body, request_id: 'new', parent_revision: 2 } as RunCreate;

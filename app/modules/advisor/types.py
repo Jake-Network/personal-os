@@ -23,6 +23,7 @@ class AskOptions:
     history_decision: int | None = None
     web_search: bool = False
     web_query: str | None = None
+    allow_data_recording: bool = False
     playbook_ids: tuple[int, ...] = ()  # explicit choice; trigger matching applies only without one
     playbook_slugs: tuple[str, ...] = ()  # `/slug` in the message, or slugs the plan chose
 

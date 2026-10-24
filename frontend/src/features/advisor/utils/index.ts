@@ -2,6 +2,19 @@ import type { Category, SnapshotResponse } from '@/api-client/model';
 
 import type { InspectorData } from '../types';
 
+export function readInspectorData(value: unknown): InspectorData | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const data = value as Partial<InspectorData>;
+  // A saved data operation is published before answer evidence exists. Missing
+  // evidence must stay absent rather than becoming a misleading empty inspector.
+  if (!Array.isArray(data.categories) || !Array.isArray(data.excluded_categories) ||
+      !Array.isArray(data.record_references) || !Array.isArray(data.data_quality_flags) ||
+      !data.source_updated_at || typeof data.source_updated_at !== 'object' ||
+      Array.isArray(data.source_updated_at) || typeof data.context_reused !== 'boolean' ||
+      (data.context_snapshot_id !== null && typeof data.context_snapshot_id !== 'string')) return undefined;
+  return data as InspectorData;
+}
+
 /** A revision refresh must not change retry identity; user-controlled payload fields must. */
 export function sameRunIntent(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
   const intent = (body: Record<string, unknown>) =>

@@ -241,9 +241,25 @@ class TaskItem(_Item, TaskCreate):
 class WorkoutLogCreate(BaseModel):
     performed_on: date
     activity: str
-    duration_minutes: int = Field(gt=0)
+    duration_seconds: int = Field(gt=0, le=9_007_199_254_740_991, strict=True,
+                                  json_schema_extra={"format": "duration-seconds"})
     intensity: Literal["easy", "moderate", "hard"] | None = None
     notes: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_minutes(cls, value):
+        if not isinstance(value, dict) or "duration_minutes" not in value:
+            return value
+        data = dict(value)
+        minutes = data.pop("duration_minutes")
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes <= 0:
+            raise ValueError("운동 시간(분)은 양의 정수여야 합니다")
+        seconds = minutes * 60
+        if "duration_seconds" in data and data["duration_seconds"] != seconds:
+            raise ValueError("운동 시간의 분과 초 입력이 일치하지 않습니다")
+        data.setdefault("duration_seconds", seconds)
+        return data
 
 
 class WorkoutLogItem(_Item, WorkoutLogCreate):

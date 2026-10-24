@@ -1,0 +1,5 @@
+# Collapse regenerated files in GitHub diffs; regenerate them instead of editing by hand.
+frontend/src/api-client/generated/** linguist-generated=true
+frontend/src/api-client/model/** linguist-generated=true
+frontend/yarn.lock linguist-generated=true
+uv.lock linguist-generated=true

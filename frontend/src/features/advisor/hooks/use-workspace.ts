@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getEventStream } from '@/api-client/event-stream';
 import { getGetConversationQueryKey } from '@/api-client/generated/advisor/advisor';
@@ -11,6 +11,8 @@ import type { RunEvent, RunView, WorkspaceView } from '@/api-client/model';
 import { workspaceApi, workspaceKey } from '../api';
 import type { InspectorData } from '../types';
 import { applyRunEvent, type EventCursor } from '../run-events';
+import { invalidateDataOperationQueries, readDataOperations } from '../data-operations';
+import { readInspectorData } from '../utils';
 
 export const isUnfinished = (status?: RunView['status']) => !!status && !['completed', 'failed', 'cancelled'].includes(status);
 export const isExecuting = (status?: RunView['status']) => !!status && ['queued', 'running', 'cancel_requested'].includes(status);
@@ -32,6 +34,16 @@ export function useWorkspace(conversationId: number | null, observe = true) {
   const [live, setLive] = useState<{ id?: string; revision: number; text: string }>({ revision: 0, text: '' });
   const [context, setContext] = useState<{ id: string; data: InspectorData } | null>(null);
   const [progress, setProgress] = useState<{ id: string; stage: string; message: string } | null>(null);
+  const dataOperations = useMemo(() => readDataOperations(run?.result?.data_operations), [run?.result?.data_operations]);
+  const refreshedOperations = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!run || !dataOperations.length) return;
+    const receiptKey = `${run.id}:${run.answer_revision}:${JSON.stringify(dataOperations.map(op => [op.operation, op.resource, op.status, op.record_id]))}`;
+    if (refreshedOperations.current.has(receiptKey)) return;
+    refreshedOperations.current.add(receiptKey);
+    void invalidateDataOperationQueries(queryClient, dataOperations);
+  }, [run, dataOperations, queryClient]);
 
   useEffect(() => {
     if (!observe || !runId || !executing || conversationId === null) return;
@@ -58,7 +70,8 @@ export function useWorkspace(conversationId: number | null, observe = true) {
                 message: typeof event.payload.message === 'string' ? event.payload.message : '',
               });
             } else if (event.type === 'context') {
-              setContext({ id: runId, data: event.payload as unknown as InspectorData });
+              const data = readInspectorData(event.payload);
+              if (data) setContext({ id: runId, data });
             } else if (event.type === 'delta') {
               setLive({ id: runId, revision: cursor.answerRevision, text: cursor.text });
             } else {
@@ -104,7 +117,7 @@ export function useWorkspace(conversationId: number | null, observe = true) {
     save,
     progress: progress && progress.id === runId ? progress.stage : '',
     progressMessage: progress && progress.id === runId ? progress.message : '',
-    context: context && context.id === runId ? context.data : (run?.result?.context as InspectorData | undefined),
+    context: context && context.id === runId ? context.data : readInspectorData(run?.result?.context),
     liveText: live.id === runId && live.revision === run?.answer_revision ? live.text : '',
     reconnecting: connection.id === runId && connection.reconnecting,
   };

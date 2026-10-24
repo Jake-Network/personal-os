@@ -70,7 +70,7 @@ Settings come from environment variables (see `.env.example`); `.env` is not loa
 Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
 Docker startup upgrades empty and versioned databases to the committed Alembic `head` before starting the server. Database readiness and migration-lock waits are bounded by `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS` (default `60`). Set `PERSONAL_OS_AUTO_MIGRATE=0` for maintenance commands that must bypass this startup step. Databases with tables but no Alembic history, or with a revision unknown to the image, require explicit intervention; startup never stamps or downgrades them. Native `uvicorn` startup initializes empty databases only; existing databases still use the explicit upgrade command:
 `uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
-performs it after a separate PostgreSQL dump and isolated restore check (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
+first creates and verifies an encrypted custom-format `pg_dump`, then performs the change (see [Finance setup](docs/finance.md#database-upgrades)). The native command requires PostgreSQL client tools; a missing/failed dump aborts before stamping, triggers, or upgrades. Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
 it never modifies existing rows.
 
@@ -97,9 +97,21 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 | 알림 | `/inbox` | 브리핑·학습 제안·예약 중지·실패 알림 (이 기기에서만 표시) |
 | 설정 | `/settings/*` | AI 연결, AI가 아는 나, 상담 방식, 데이터 공유, 시세 연결, 자동 작업(정기 회고·브리핑), 보안·백업, 화면 |
 
+운동 기록의 소요 시간은 시간·분·초를 각각 입력하며, 초 단위로 저장합니다. 기존 분 단위 기록은 마이그레이션에서 초로 변환해 보존하며 목록·달력·상담 요약에서도 초를 반올림하지 않습니다. API의 새 입력 필드는 `duration_seconds`이며, 기존 `duration_minutes` 입력은 호환을 위해 정수 분으로만 받습니다.
+
 달력(통합 달력과 각 탭의 달력 보기)에서 날짜를 누르거나 여러 날을 끌면 그 날짜로 항목을 추가하고, 주 보기에서 시간대를 끌면 시작·종료 시각이 채워집니다. 날짜 경계와 표시는 `PERSONAL_OS_TIMEZONE` 기준입니다. 종일 일정은 첫날 자정부터 마지막 날 다음 자정까지의 반열린 구간으로 저장합니다(`calendar_events.all_day`, migration `0014_calendar_all_day`). 상담에서는 종일 일정의 제목만 변경 제안할 수 있으며 날짜·시각 변경은 달력에서 직접 합니다. 종일 일정은 시간 일정의 충돌 계산에서 제외합니다. 이전 경로(`/data/*`, `/memory`, `/reviews`, `/timeline`, `/jobs`, `/finance/records`)는 새 경로로 이동합니다.
 
 ## 지속되는 상담 워크스페이스
+
+상담에서 “오늘 10km를 45분 37초에 뛰었어. 기록해줘”, “급여 통장 잔액을 300만원으로 수정해줘”, “어제 중복 운동 기록 삭제해줘”처럼 개인 데이터 조회·추가·수정·삭제를 요청할 수 있습니다. 운동·계좌·보유 주식·부채·기타 자산·가계부·예정 지출·지원 현황·면접·커리어 기준·일정·할 일·목표를 지원합니다. 대상이 여러 개이거나 필수 정보가 빠지면 저장하지 않고 확인을 요청합니다. 금액·수량은 서버에서 검증하며, 변경 전후 이력과 원본 메시지의 실행 영수증을 남깁니다. 상담에서는 티커·통화·수량으로 보유 사실을 먼저 저장합니다. 미국 종목의 거래소는 공개 종목 목록으로 자동 확인하며, 조회 실패·미등록·여러 후보가 있으면 보유 사실을 보존하고 시세 연결 대기로 구분합니다. 평균 매입가는 원가로 보존하며 현재 시세로 쓰지 않습니다. 상담에서는 시세·환율을 임의의 값으로 바꾸거나 Google에 수량·원가·잔액을 보내지 않습니다.
+
+같은 티커라도 다른 계좌의 별도 보유분이라고 지정하면 수량·평균 매입가를 독립된 보유 기록으로 저장합니다. 계좌명이 없어도 계좌 미지정인 별도 보유분으로 남기며, 기존 보유분에 합산하거나 가짜 현금 계좌를 만들지 않습니다.
+
+“최신 현재가 시세 갱신해줘”는 기존 재무 화면의 시세 갱신 경로를 사용합니다. 보유 기록 저장과 별도로 Google 연결 필요·조회 간격 제한·계산 대기·부분 성공을 표시하며, 완료 여부가 불명확한 외부 요청을 자동 반복하지 않습니다.
+
+확인 질문에 “응 이렇게 해줘”, “원화로 해줘”처럼 답하면 같은 대화의 미완료 저장 항목을 이어서 실행합니다. 이미 저장된 항목은 반복하지 않습니다. 원래 지정한 수량·원가 등을 바꾸려면 정정할 값을 명시해야 합니다. 미완료 요청은 같은 대화의 최근 24시간 범위에서만 이어받으며, 새 주제나 완료된 저장 요청이 사이에 있거나 출처·공유 권한이 바뀌면 이어받지 않습니다.
+
+입력창의 `더보기 → 자동 기록`을 켜면 해당 대화에서 자신의 완료한 운동·현재 계좌 잔액·주식 보유량을 말하는 것만으로 기록할 수 있습니다. 기본은 꺼짐이며 대화를 바꾸면 초기화됩니다. 계획·가정·인용·다른 사람의 실적은 자동 기록 대상이 아니고 삭제는 직접 요청해야 합니다. 기존 상담 제안과 장기 기억은 승인 절차를 유지합니다. 상담에는 각 작업의 저장·조회·확인 필요·실패 결과를 따로 표시하며, 답변 생성이 실패해도 이미 저장된 작업은 유지합니다. 재시도해도 같은 메시지의 저장 작업을 반복하지 않습니다. 자동 기록 옵션을 켠 컨텍스트 미리보기는 저장하지 않습니다.
 
 `/advisor`에서 질문을 보내면 서버가 분석을 실행하고 대화와 오른쪽 근거 패널(`근거`·`비교`·`제안` 탭)에 저장된 상태를 표시합니다. 다른 화면으로 이동하거나 브라우저를 닫아도 **서버가 실행 중이면** 분석을 계속합니다. 다시 열면 완료된 답변 또는 같은 확인 질문을 불러옵니다. 앱 전체에서 한 번에 하나의 분석을 실행하며, 각 상담에는 확인 질문 대기·확인 필요 상태를 포함해 미종결 실행을 하나만 둡니다. 분석 중에도 다음 질문의 초안은 작성할 수 있습니다.
 
@@ -182,6 +194,15 @@ export RESTIC_REPOSITORY=/absolute/local/encrypted-backups
 export RESTIC_PASSWORD_FILE=/absolute/private/restic-password
 uv run python scripts/local_backup.py backup --data-dir ./data --settings-file .env --postgres-dump /path/to/database.dump --staging-dir /encrypted/staging --confirm-app-stopped --init
 uv run python scripts/local_backup.py restore-check --staging-dir /encrypted/staging --postgres-image personal-os-postgres-vector:17-alpine
+```
+
+The explicit native migration/adoption `--apply` commands also create their own encrypted recovery point before schema writes. Install PostgreSQL client tools (`pg_dump`) first and stop application writes. Archives default to `PERSONAL_OS_DATA_DIR/migration-backups`; per-backup keys default to `~/.local/share/personal-os/migration-backup-keys` and must be retained separately. Use `--backup-dir` and `--backup-key-dir` to select private directories on encrypted storage (directories `0700`, files `0600`). Backup or filesystem failures abort the migration. Libpq service configuration (`service=` or inherited `PGSERVICE`) is refused because its precedence could select another database; use explicit connection settings and unset `PGSERVICE` before applying. Connection options without a safe libpq environment mapping are also refused. These commands print archive/key paths, never credentials or dump contents. Keep the document files and application token-encryption key as well; a DB dump alone does not restore those files. Docker startup retains the existing operator-managed backup requirement and does not silently install or run `pg_dump`.
+
+To use an automatic migration backup for an isolated restore check, decrypt only into private encrypted staging and then supply that custom dump to the existing backup/restore tooling:
+
+```bash
+umask 077
+uv run python -c 'from pathlib import Path; from cryptography.fernet import Fernet; import sys; Path(sys.argv[3]).write_bytes(Fernet(Path(sys.argv[2]).read_bytes()).decrypt(Path(sys.argv[1]).read_bytes()))' /path/to/archive.pgdump.fernet /separate/path/to/archive.key /encrypted/staging/database.dump
 ```
 
 Use a consistent custom-format `pg_dump` captured while writes are stopped. Restoration is checked in a disposable directory/database; it never overwrites the running installation. Bundles include data/documents/keys/settings, Git revision and working-tree status, a source digest, migration-file hashes and data hashes. Retain the restic password and token key separately. Synthetic PostgreSQL restore tests do not establish that a particular user's host storage is encrypted.
@@ -278,7 +299,7 @@ The API-key and Codex app-server providers exist behind the same interface. They
 ### 웹 검색과 본문 근거
 
 로컬 실행과 개발 Docker에서는 상담 입력의 `웹 검색`을 켜고 별도의 `공개 검색어`를 입력할 수 있습니다.
-검색 제공자는 `PERSONAL_OS_WEB_SEARCH_PROVIDER`로 명시적으로 고르며(기본 `brave`), 실패해도 다른 제공자로 자동 전환하지 않습니다.
+검색 제공자는 `PERSONAL_OS_WEB_SEARCH_PROVIDER`로 명시적으로 고르며(기본 `brave`), 실패해도 다른 제공자로 자동 전환하지 않습니다. `SEARXNG_SECRET`이 없거나 비어 있으면 검색 프로세스를 시작하기 전에 중단하며, 검색 프로필을 사용하지 않는 기본 app/db 구성은 이 값 없이도 실행됩니다.
 
 - **SearXNG(키 없음, 무료):** 로컬에서 실행하는 메타검색 서버입니다. `docker/.env`에 `SEARXNG_SECRET`
   (`python -c "import secrets; print(secrets.token_hex(32))"`)을 채우고 `docker compose --env-file docker/.env -f docker/docker-compose.yml --profile search up -d searxng`로

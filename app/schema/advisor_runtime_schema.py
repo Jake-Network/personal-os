@@ -93,6 +93,7 @@ class RunResult(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     model_calls: int = 0
     tool_calls: int = 0
+    data_operations: list[dict] = Field(default_factory=list)
     playbooks: list[PlaybookUseView] = Field(default_factory=list)
 
 class RunView(BaseModel):

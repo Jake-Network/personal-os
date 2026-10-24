@@ -20,6 +20,20 @@ from app.modules.portfolio.quotes_sheet import QuotesSheet, quote_rows
 from app.modules.portfolio.valuation import parse_decimal
 
 
+class _ResultAuthorizationLost(Exception):
+    def __init__(self, error):
+        self.error = error
+
+
+def _authorize_result(session, check):
+    if check:
+        try:
+            check()
+        except Exception as error:
+            session.rollback()
+            raise _ResultAuthorizationLost(error) from error
+
+
 def _account_key(identity):
     return hashlib.sha256(identity.encode()).hexdigest()
 
@@ -149,7 +163,21 @@ def _lock_refresh_result(session, principal, identity, spreadsheet_id, attempt_a
         raise ValueError("Quotes connection changed during retrieval")
 
 
-def refresh(session, client=None):
+def refresh(session, client=None, *, symbol_authorization_check=None, symbol_write_authorization_check=None, symbol_excluded=()):
+    from app.modules.portfolio.symbol_resolution import qualify_positions
+    resolutions = qualify_positions(session, authorization_check=symbol_authorization_check,
+                                   write_authorization_check=symbol_write_authorization_check,
+                                   excluded=symbol_excluded)
+    try:
+        result = _refresh(session, client, result_authorization_check=symbol_write_authorization_check)
+    except _ResultAuthorizationLost as error:
+        raise error.error
+    if resolutions:
+        result['symbol_resolutions'] = resolutions
+    return result
+
+
+def _refresh(session, client=None, *, result_authorization_check=None):
     settings = session.get(MarketSettings, 1)
     if settings is None:
         return {
@@ -232,6 +260,7 @@ def refresh(session, client=None):
             c + "KRW" for c in currencies if c != "KRW"
         }:
             gateway.provision(spreadsheet_id, symbols, currencies)
+            _authorize_result(session, result_authorization_check)
             _lock_refresh_result(session, principal, gateway.source_identity, spreadsheet_id, now)
             settings.last_error = (
                 "시세 수식 계산 대기 중입니다. 다음 갱신에서 확인합니다."
@@ -239,6 +268,7 @@ def refresh(session, client=None):
             session.commit()
             return {"refresh_state": "waiting", "warning": settings.last_error, "refresh_after_seconds": 300}
         # Serialize the result commit with replacement, after all network calls.
+        _authorize_result(session, result_authorization_check)
         _lock_refresh_result(session, principal, gateway.source_identity, spreadsheet_id, now)
         by_symbol = {r[0]: r for r in quotes if r}
         failures = []
@@ -353,8 +383,12 @@ def refresh(session, client=None):
             settings.last_success_at = now
         settings.last_error = "; ".join(failures) if failures else None
         session.commit()
+    except _ResultAuthorizationLost as error:
+        session.rollback()
+        raise error.error
     except Exception:
         session.rollback()
+        _authorize_result(session, result_authorization_check)
         warning = (
             "시세 조회 실패: 이전 관측값을 보존했습니다. 연결과 시트 상태를 확인하세요."
         )

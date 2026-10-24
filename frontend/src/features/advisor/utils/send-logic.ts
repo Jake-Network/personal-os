@@ -9,6 +9,7 @@ export interface DraftOptions {
   documentIds: number[] | null;
   webSearch: boolean;
   webQuery: string;
+  allowDataRecording: boolean;
   depth: 'auto' | 'deep';
   historyCompany: string;
   historyProject: string;
@@ -25,6 +26,7 @@ export function initialDraft(conversationId: number | null, documentParam: strin
     documentIds: conversationId === null && Number.isSafeInteger(id) && id > 0 ? [id] : null,
     webSearch: false,
     webQuery: '',
+    allowDataRecording: false,
     depth: 'auto',
     historyCompany: '',
     historyProject: '',
@@ -42,6 +44,7 @@ export function documentOptionsOf(d: DraftOptions) {
     history_decision: d.historyDecision ? Number(d.historyDecision) : null,
     web_search: d.webSearch,
     web_query: d.webSearch ? d.webQuery.trim() : null,
+    allow_data_recording: d.allowDataRecording,
   };
 }
 

@@ -58,6 +58,7 @@ class ContextAssembler:
         self.last_context = {}
         self.last_history = []
         self.baseline_snapshot_id = None
+        self.data_operations = []
         # Playbook catalog entries offered earlier in this run (persisted by the graph state).
         self.run_catalog_refs = []
         self.memory_store = ConfirmedMemoryStore(session,
@@ -195,8 +196,8 @@ class ContextAssembler:
                 if row is None:
                     raise AdvisorError('비교 기준 근거가 삭제되었습니다.', provider_code='source_policy_changed')
                 package = to_package(row, True)
-            if (sources or summary is not None or history_source_ids or context_data or record_sources or context_flags
-                    or self.run_catalog_refs):
+            if (sources or summary is not None or history_source_ids or self.data_operations
+                    or context_data or record_sources or context_flags or self.run_catalog_refs):
                 from app.modules.context.snapshots import content_hash, to_package
                 from app.modules.database.model import ContextSnapshot
                 snapshot_id = str(uuid.uuid4())
@@ -218,7 +219,37 @@ class ContextAssembler:
                     catalog = {**catalog, 'items': dict(catalog.get('items', {}))}
                     payload['data']['playbook_catalog'] = catalog
                 refs = list(package.record_references)
+                categories = list(package.categories)
                 from app.modules.context.record_privacy import stamp_references
+                if self.data_operations:
+                    from app.modules.personal_data.personal_data_manager import RESOURCES
+                    from app.modules.context.record_privacy import RECORD_CATEGORY
+                    from app.modules.context.source_policy import source_allowed
+                    excluded = self.manager.sharing_exclusions(self.session, options)
+                    safe_operations = []
+                    for operation in self.data_operations:
+                        resource = RESOURCES.get(operation.get('resource'))
+                        table = resource.handler.model.__tablename__ if resource else None
+                        category = RECORD_CATEGORY.get(table)
+                        evidence = list(operation.get('record_refs', []))
+                        if operation.get('record_ref') and operation.get('operation') != 'delete':
+                            evidence.append(operation['record_ref'])
+                        evidence.extend({'table': table, 'id': item['id']} for item in operation.get('candidates', []) if table)
+                        has_data = bool(operation.get('record') or operation.get('records') or operation.get('candidates'))
+                        if has_data and (category in excluded or not source_allowed(self.session, evidence, excluded)):
+                            safe_operations.append({key: operation[key] for key in ('operation', 'resource', 'status') if key in operation} |
+                                {'message': '이 작업 결과의 상세 기록은 삭제되었거나 상담 공유에서 제외되었습니다.'})
+                            continue
+                        safe_operations.append(operation)
+                        refs.extend(stamp_references(self.session, evidence))
+                        # A pending command/clarifying answer can contain private input
+                        # even before a row exists. Preserve its category for later sharing checks.
+                        if category and category not in excluded and category not in categories:
+                            categories.append(category)
+                        if category and category not in excluded:
+                            payload['history_categories'] = list(dict.fromkeys([
+                                *payload.get('history_categories', []), category]))
+                    payload['data'] = {**payload.get('data', {}), 'advisor_data_operations': safe_operations}
                 extra_refs = list(record_sources)
                 if not source_allowed(self.session, extra_refs,
                         self.manager.sharing_exclusions(self.session, options),
@@ -316,7 +347,7 @@ class ContextAssembler:
                     # Kept beside the evidence (never in the sent payload), marked so history checks skip it.
                     refs.extend({**ref, 'role': 'catalog'} for ref in stamp_references(self.session, catalog_refs))
                 row = ContextSnapshot(id=snapshot_id, conversation_id=self.conversation.id,
-                    context_categories=package.categories, excluded_categories=package.excluded_categories,
+                    context_categories=categories, excluded_categories=package.excluded_categories,
                     record_references=refs, source_updated_at=package.source_updated_at,
                     data_quality_flags=payload.get('data_quality_flags', package.data_quality_flags), payload=payload, content_hash=content_hash(payload))
                 self.session.add(row)

@@ -465,15 +465,17 @@ def get_health_summary(ctx: ToolContext, days: int = 28) -> ToolResult:
     last = ctx.session.scalar(select(WorkoutLog).where(WorkoutLog.performed_on <= today)
                               .order_by(WorkoutLog.performed_on.desc(), WorkoutLog.id.desc()).limit(1))
     evidence = logs + ([last] if last is not None and last not in logs else [])
-    total = sum(l.duration_minutes for l in logs)
+    total = sum(l.duration_seconds for l in logs)
     return ToolResult(
         data={
             "window_days": days,
             "sessions": len(logs),
-            "total_minutes": total,
+            "total_seconds": total,
+            "total_minutes": total / 60,
             "last_session_on": iso_or_none(last.performed_on) if last else None,
             "recent": [{"ref": f"workout_logs:{l.id}", "on": l.performed_on.isoformat(), "activity": l.activity,
-                        "minutes": l.duration_minutes, "intensity": l.intensity} for l in logs[-10:]],
+                        "seconds": l.duration_seconds, "minutes": l.duration_seconds / 60,
+                        "intensity": l.intensity} for l in logs[-10:]],
         },
         refs=[record_ref("workout_logs", l) for l in evidence],
         source_updated_at=latest_of(*(l.updated_at for l in evidence)),
