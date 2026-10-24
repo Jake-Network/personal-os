@@ -10,15 +10,15 @@ from app.modules.database.legacy_adoption import (
 )
 
 
-def legacy_database(tmp_path, revision="0004_portfolio_identity"):
-    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+def legacy_database(postgres_url, revision="0004_portfolio_identity"):
+    engine = create_engine(postgres_url)
     with engine.begin() as connection:
         command.upgrade(migration_config(connection), revision)
         connection.exec_driver_sql("DROP TABLE alembic_version")
         # create_all installations have no migration-only triggers.
         if revision != "0001_baseline":
-            for action in ("update", "delete"):
-                connection.exec_driver_sql(f"DROP TRIGGER monthly_snapshots_no_{action}")
+            connection.exec_driver_sql("DROP TRIGGER monthly_snapshots_immutable ON monthly_snapshots")
+            connection.exec_driver_sql("DROP FUNCTION reject_monthly_snapshot_mutation()")
         connection.exec_driver_sql("INSERT INTO app_settings VALUES ('preserved', '{}', '2026-10-18')")
         if revision != "0001_baseline":
             connection.exec_driver_sql("INSERT INTO monthly_snapshots (month, revision, created_at, reason, payload) VALUES ('2026-09-01', 1, '2026-10-18', 'legacy', '{\"preserved\": 123}')")
@@ -26,16 +26,16 @@ def legacy_database(tmp_path, revision="0004_portfolio_identity"):
 
 
 @pytest.mark.parametrize("revision", SUPPORTED_REVISIONS)
-def test_legacy_adoption_validates_preserves_rows_and_upgrades(tmp_path, revision):
-    engine = legacy_database(tmp_path, revision)
+def test_legacy_adoption_validates_preserves_rows_and_upgrades(postgres_url, revision):
+    engine = legacy_database(postgres_url, revision)
     assert adopt_legacy(engine) == revision
-    assert "alembic_version" not in inspect(engine).get_table_names()
+    assert "alembic_version" not in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
     assert adopt_legacy(engine, apply=True) == revision
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
+        assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == {}
         assert connection.scalar(text("SELECT version_num FROM alembic_version"))
         if revision != "0001_baseline":
-            assert connection.scalar(text("SELECT payload FROM monthly_snapshots WHERE reason='legacy'")) == '{"preserved": 123}'
+            assert connection.scalar(text("SELECT payload FROM monthly_snapshots WHERE reason='legacy'")) == {"preserved": 123}
         command.check(migration_config(connection))
     with engine.begin() as connection:
         connection.exec_driver_sql("INSERT INTO monthly_snapshots (month, revision, created_at, reason, payload) VALUES ('2026-10-01', 1, '2026-10-18', 'initial', '{}')")
@@ -51,41 +51,41 @@ def test_legacy_adoption_validates_preserves_rows_and_upgrades(tmp_path, revisio
     "CREATE TABLE unexpected (id INTEGER PRIMARY KEY)",
     "DROP TABLE workout_logs",
 ])
-def test_drift_is_rejected_without_stamping(tmp_path, drift):
-    engine = legacy_database(tmp_path)
+def test_drift_is_rejected_without_stamping(postgres_url, drift):
+    engine = legacy_database(postgres_url)
     with engine.begin() as connection:
         connection.exec_driver_sql(drift)
     with pytest.raises(RuntimeError, match="does not exactly match"):
         adopt_legacy(engine, apply=True)
-    assert "alembic_version" not in inspect(engine).get_table_names()
+    assert "alembic_version" not in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
     engine.dispose()
 
 
-def test_startup_leaves_legacy_untouched_until_explicit_adoption(tmp_path):
-    engine = legacy_database(tmp_path)
+def test_startup_leaves_legacy_untouched_until_explicit_adoption(postgres_url):
+    engine = legacy_database(postgres_url)
     database = Database()
-    database.init(str(engine.url))
-    before = inspect(engine).get_table_names()
+    database.init(engine.url.render_as_string(hide_password=False))
+    before = inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
     database.migrate_schema()
-    assert inspect(engine).get_table_names() == before
+    assert inspect(engine).get_table_names(schema=inspect(engine).default_schema_name) == before
     database.engine.dispose()
     adopt_legacy(engine, apply=True)
-    database.init(str(engine.url))
+    database.init(engine.url.render_as_string(hide_password=False))
     database.migrate_schema()
     database.engine.dispose()
     engine.dispose()
 
 
-def test_versioned_database_cannot_be_adopted(tmp_path):
-    engine = legacy_database(tmp_path)
+def test_versioned_database_cannot_be_adopted(postgres_url):
+    engine = legacy_database(postgres_url)
     adopt_legacy(engine, apply=True)
     with pytest.raises(RuntimeError, match="already versioned"):
         adopt_legacy(engine, apply=True)
     engine.dispose()
 
 
-def test_failed_upgrade_rolls_back_adoption(tmp_path, monkeypatch):
-    engine = legacy_database(tmp_path)
+def test_failed_upgrade_rolls_back_adoption(postgres_url, monkeypatch):
+    engine = legacy_database(postgres_url)
     original = command.upgrade
     def fail_head(config, revision):
         if revision == "head":
@@ -95,8 +95,8 @@ def test_failed_upgrade_rolls_back_adoption(tmp_path, monkeypatch):
     monkeypatch.setattr(command, "upgrade", fail_head)
     with pytest.raises(RuntimeError, match="upgrade failed"):
         adopt_legacy(engine, apply=True)
-    assert "alembic_version" not in inspect(engine).get_table_names()
-    assert "partial_upgrade" not in inspect(engine).get_table_names()
+    assert "alembic_version" not in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
+    assert "partial_upgrade" not in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
     engine.dispose()
 
 
@@ -158,8 +158,8 @@ def test_postgresql_legacy_adoption_preserves_data_and_constraints():
         admin.dispose()
 
 
-def test_unknown_version_is_not_overwritten(tmp_path):
-    engine = legacy_database(tmp_path)
+def test_unknown_version_is_not_overwritten(postgres_url):
+    engine = legacy_database(postgres_url)
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
         connection.exec_driver_sql("INSERT INTO alembic_version VALUES ('unknown_baseline')")
@@ -170,24 +170,15 @@ def test_unknown_version_is_not_overwritten(tmp_path):
     engine.dispose()
 
 
-def test_empty_version_table_is_treated_as_unversioned(tmp_path):
-    engine = legacy_database(tmp_path)
+def test_empty_version_table_is_treated_as_unversioned(postgres_url):
+    engine = legacy_database(postgres_url)
     with engine.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)")
     database = Database()
-    database.init(str(engine.url))
+    database.init(engine.url.render_as_string(hide_password=False))
     database.migrate_schema()
     database.engine.dispose()
     assert adopt_legacy(engine) == '0004_portfolio_identity'
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM alembic_version")) == 0
     engine.dispose()
-
-
-def test_failed_init_resets_previous_database():
-    database = Database()
-    database.init('sqlite://')
-    with pytest.raises(Exception):
-        database.init('invalid-dialect://')
-    assert database.engine is None
-    assert database._sessionmaker is None

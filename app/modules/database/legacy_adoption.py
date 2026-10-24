@@ -21,14 +21,12 @@ def migration_config(connection):
     config = Config(str(root / "alembic.ini"))
     config.set_main_option("script_location", str(root / "migrations"))
     config.attributes["connection"] = connection
-    if connection.dialect.name == "postgresql":
-        config.attributes["version_table_schema"] = connection.exec_driver_sql("SELECT current_schema()").scalar_one()
+    config.attributes["version_table_schema"] = connection.exec_driver_sql("SELECT current_schema()").scalar_one()
     return config
 
 
 def inspection_schema(connection):
-    return (connection.exec_driver_sql("SELECT current_schema()").scalar_one()
-            if connection.dialect.name == "postgresql" else None)
+    return connection.exec_driver_sql("SELECT current_schema()").scalar_one()
 
 
 def has_unversioned_tables(connection):
@@ -82,27 +80,17 @@ def schema_signature(connection):
 
 @contextmanager
 def reference_connection(connection):
-    if connection.dialect.name == "sqlite":
-        engine = create_engine("sqlite://")
-        try:
-            with engine.begin() as scratch:
-                yield scratch
-        finally:
-            engine.dispose()
-    elif connection.dialect.name == "postgresql":
-        # A private, rollback-only schema preserves PostgreSQL's exact types.
-        transaction = connection.begin_nested()
-        previous_path = connection.exec_driver_sql("SHOW search_path").scalar_one()
-        schema = "legacy_check_" + uuid4().hex
-        try:
-            connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
-            connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
-            yield connection
-        finally:
-            transaction.rollback()
-            connection.execute(text("SELECT set_config('search_path', :path, true)"), {"path": previous_path})
-    else:
-        raise RuntimeError("Legacy adoption supports only SQLite and PostgreSQL")
+    # A private, rollback-only schema preserves PostgreSQL's exact types.
+    transaction = connection.begin_nested()
+    previous_path = connection.exec_driver_sql("SHOW search_path").scalar_one()
+    schema = "legacy_check_" + uuid4().hex
+    try:
+        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+        connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}", public')
+        yield connection
+    finally:
+        transaction.rollback()
+        connection.execute(text("SELECT set_config('search_path', :path, true)"), {"path": previous_path})
 
 
 def validate_legacy(connection):
@@ -121,9 +109,6 @@ def validate_legacy(connection):
 def adopt_legacy(engine, *, apply=False):
     """Return matching revision; writes occur only on explicit apply, atomically."""
     with engine.begin() as connection:
-        if connection.dialect.name == "sqlite":
-            # sqlite3's legacy transaction mode otherwise auto-commits initial DDL.
-            connection.exec_driver_sql("BEGIN")
         revision = validate_legacy(connection)
         if apply:
             from app.modules.database.collation import check_collations

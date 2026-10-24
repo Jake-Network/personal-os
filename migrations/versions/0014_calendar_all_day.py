@@ -20,5 +20,4 @@ def upgrade():
 
 
 def downgrade():
-    with op.batch_alter_table("calendar_events") as batch:
-        batch.drop_column("all_day")
+    op.drop_column("calendar_events", "all_day")

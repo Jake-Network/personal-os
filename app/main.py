@@ -51,8 +51,10 @@ async def lifespan(_app: FastAPI):
         db.migrate_schema()
     from app.modules.security.session_manager import revoke_all
     from app.modules.database.model import Base
-    tables = set(inspect(db.engine).get_table_names())
-    checkpoint_tables = {'checkpoints', 'writes'} if db.engine.dialect.name == 'sqlite' else {
+    from app.modules.database.legacy_adoption import inspection_schema
+    with db.engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names(schema=inspection_schema(connection)))
+    checkpoint_tables = {
         'checkpoints', 'checkpoint_blobs', 'checkpoint_writes', 'checkpoint_migrations'}
     _app.state.security_schema_ready = (set(Base.metadata.tables) | checkpoint_tables).issubset(tables)
     if _app.state.security_schema_ready:

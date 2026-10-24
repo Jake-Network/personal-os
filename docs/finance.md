@@ -82,4 +82,4 @@ uv run python -m app.modules.database.migration_manager
 uv run python -m app.modules.database.migration_manager --apply
 ```
 
-첫 명령은 읽기 전용 계획입니다. `--apply`는 SQLite 파일을 백업하고 명시적으로 업그레이드합니다. PostgreSQL은 별도 `pg_dump` 백업과 격리 복원 확인을 먼저 수행하세요. `stamp head`, 테이블 재생성, 볼륨 삭제로 불일치를 덮지 않습니다. 백업은 [README](../README.md)의 암호화 절차를 따릅니다.
+첫 명령은 읽기 전용 계획입니다. 별도 `pg_dump` 백업과 격리 복원 확인 후 `--apply`로 PostgreSQL을 명시적으로 업그레이드합니다. `stamp head`, 테이블 재생성, 볼륨 삭제로 불일치를 덮지 않습니다. 백업은 [README](../README.md)의 암호화 절차를 따릅니다.

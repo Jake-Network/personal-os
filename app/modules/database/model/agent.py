@@ -26,7 +26,7 @@ class PlaybookRevision(Base):
         UniqueConstraint("playbook_id", "revision", name="uq_playbook_revision"),
         # At most one approved revision per playbook, even under concurrent approvals.
         Index("uq_playbook_active_revision", "playbook_id", unique=True,
-              sqlite_where=text("status = 'active'"), postgresql_where=text("status = 'active'")),
+              postgresql_where=text("status = 'active'")),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     playbook_id: Mapped[int] = mapped_column(ForeignKey("playbooks.id", ondelete="CASCADE"), index=True)

@@ -91,7 +91,7 @@ RECORD_CATEGORY = {
 
 
 def invalidate_deleted_source(session, table, record_id):
-    """Permanently taint captured evidence before an identity may be reused by SQLite."""
+    """Permanently taint captured evidence before its source record is deleted."""
     from sqlalchemy import select, update
     from app.modules.database.model import ContextSnapshot, AdvisorMessage, MemoryRevision
     identities = {(table, str(record_id))}

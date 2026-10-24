@@ -8,9 +8,8 @@ from sqlalchemy import MetaData, create_engine, event, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 
 
-def test_review_revision_backfills_provenance_and_preserves_old_snapshot_ids(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'review.db'}")
-    event.listen(engine, 'connect', lambda conn, rec: conn.execute('PRAGMA foreign_keys=ON'))
+def test_review_revision_backfills_provenance_and_preserves_old_snapshot_ids(tmp_path, postgres_url):
+    engine = create_engine(postgres_url)
     config = Config('alembic.ini')
     now = datetime.now(UTC)
     with engine.begin() as connection:
@@ -25,6 +24,10 @@ def test_review_revision_backfills_provenance_and_preserves_old_snapshot_ids(tmp
             status='ready', embedding_model='model', embedding_dimensions=3, created_at=now, updated_at=now))
         for ident in (6, 7):
             connection.execute(chunks.insert().values(id=ident, version_id=1, ordinal=0, text='original excerpt', embedding=[1,0,0]))
+        # Explicit fixture IDs must advance the PostgreSQL sequence just as normal inserts do.
+        connection.execute(text("SELECT setval(pg_get_serial_sequence('document_chunks', 'id'), 7)"))
+        # Explicit fixture IDs must advance the PostgreSQL sequence just as normal inserts do.
+        connection.execute(text("SELECT setval(pg_get_serial_sequence('document_chunks', 'id'), 7)"))
         payloads = {
             'direct': {'data': {'search_documents': {'citations': [{'document_id': 1, 'version_id': 1, 'ref': 'document_chunks:7', 'text': 'original excerpt'}]}}},
             'derived': {'document_dependencies': [{'document_id': 1, 'version_id': 1}]},
@@ -45,7 +48,7 @@ def test_review_revision_backfills_provenance_and_preserves_old_snapshot_ids(tmp
             with connection.begin_nested():
                 connection.execute(chunks.insert().values(version_id=1, ordinal=1, text='duplicate', embedding=[1,0,0]))
         command.downgrade(config, '6581e3048ce0')
-        assert not inspect(connection).has_table('context_document_references')
+        assert not inspect(connection).has_table('context_document_references', schema=inspect(connection).default_schema_name)
         command.upgrade(config, 'head')
         command.check(config)
     engine.dispose()

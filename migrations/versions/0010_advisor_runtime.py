@@ -47,7 +47,7 @@ def upgrade():
     op.create_index("ix_advisor_runs_status", "advisor_runs", ["status"])
     condition = sa.text("status NOT IN ('completed','cancelled','failed')")
     op.create_index("uq_advisor_active_conversation", "advisor_runs", ["conversation_id"],
-                    unique=True, sqlite_where=condition, postgresql_where=condition)
+                    unique=True, postgresql_where=condition)
     op.create_table("advisor_run_events",
         sa.Column("id", sa.Integer(), primary_key=True), fk("run_id", "advisor_runs.id"),
         sa.Column("seq", sa.Integer(), nullable=False), sa.Column("event_key", sa.String(200), nullable=False),

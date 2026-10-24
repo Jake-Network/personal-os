@@ -50,20 +50,13 @@ def upgrade():
     if rows:
         op.bulk_insert(changes, rows)
 
-    dialect = bind.dialect.name
-    if dialect == "postgresql":
-        op.execute("""CREATE FUNCTION reject_manual_value_change_mutation() RETURNS trigger
-            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Manual value history is append-only'; END; $$""")
-        op.execute(f"""CREATE TRIGGER manual_value_changes_immutable BEFORE UPDATE OR DELETE
-            ON {TABLE} FOR EACH ROW EXECUTE FUNCTION reject_manual_value_change_mutation()""")
-    elif dialect == "sqlite":
-        for action in ("UPDATE", "DELETE"):
-            op.execute(f"""CREATE TRIGGER manual_value_changes_no_{action.lower()} BEFORE {action}
-                ON {TABLE} BEGIN SELECT RAISE(ABORT, 'Manual value history is append-only'); END""")
+    op.execute("""CREATE FUNCTION reject_manual_value_change_mutation() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Manual value history is append-only'; END; $$""")
+    op.execute(f"""CREATE TRIGGER manual_value_changes_immutable BEFORE UPDATE OR DELETE
+        ON {TABLE} FOR EACH ROW EXECUTE FUNCTION reject_manual_value_change_mutation()""")
 
 
 def downgrade():
     op.drop_index("ix_manual_value_changes_record", table_name=TABLE)
     op.drop_table(TABLE)
-    if op.get_bind().dialect.name == "postgresql":
-        op.execute("DROP FUNCTION reject_manual_value_change_mutation()")
+    op.execute("DROP FUNCTION reject_manual_value_change_mutation()")

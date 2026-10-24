@@ -1,18 +1,15 @@
 """Durable HTTP commands and the real graph/worker against a migrated synthetic DB."""
 import asyncio
 import json
-import os
 from collections import deque
 from contextlib import suppress
 from datetime import timedelta
-from uuid import uuid4
 
 import pytest
 from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import select, text
 
 from app.modules.database.database import Database, get_session
 from app.modules.database.migration_manager import alembic_config
@@ -50,24 +47,13 @@ class ScriptedProvider:
 
 
 @pytest.fixture
-def runtime_env(tmp_path, monkeypatch):
+def runtime_env(postgres_url, monkeypatch):
     from app.modules.llm import transfer_policy
     from app.router import advisor_runtime_router
 
     database = Database()
-    url = f"sqlite:///{tmp_path / 'runtime.db'}"
-    admin = None
-    schema = None
-    configured = os.environ.get('TEST_DATABASE_URL', '')
-    if configured.startswith('postgresql'):
-        admin = create_engine(configured)
-        schema = 'runtime_test_' + uuid4().hex
-        with admin.begin() as connection:
-            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-        url = make_url(configured).update_query_dict({'options': f'-csearch_path={schema},public'}).render_as_string(hide_password=False)
+    url = postgres_url
     migration = alembic_config(url)
-    if schema is not None:
-        migration.attributes['version_table_schema'] = schema
     command.upgrade(migration, "head")
     database.init(url)
     provider = ScriptedProvider()
@@ -91,10 +77,6 @@ def runtime_env(tmp_path, monkeypatch):
             yield client, database, provider
     finally:
         database.engine.dispose()
-        if admin is not None:
-            with admin.begin() as connection:
-                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-            admin.dispose()
 
 
 def create(client, request_id="first"):
@@ -563,7 +545,7 @@ def test_heartbeat_continues_while_async_retrievers_yield_after_snapshot_flush(r
         return row
 
     async def yield_past_heartbeat(assembler, query, package, options, history):
-        # A real file-backed SQLite transaction must release snapshot DML before
+        # Snapshot DML must commit before
         # yielding here, so the worker's independent heartbeat can take its lock.
         timing["waiting"] = True
         try:

@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import sqlite3
 import subprocess
 import tarfile
 import tempfile
@@ -71,23 +70,8 @@ def backup(args) -> None:
         bundle = stage / "bundle"
         shutil.copytree(source, bundle / "data", symlinks=False)
         shutil.copy2(settings, bundle / "settings.env")
-        if args.sqlite:
-            original = Path(args.sqlite).resolve()
-            relative = original.relative_to(source)
-            # SQLite's backup API captures a transactionally consistent database, including WAL.
-            destination = bundle / "data" / relative
-            destination.unlink(missing_ok=True)
-            with sqlite3.connect(f"file:{original}?mode=ro", uri=True) as src, sqlite3.connect(destination) as dst:
-                src.backup(dst)
-            for suffix in ("-wal", "-shm"):
-                Path(str(destination) + suffix).unlink(missing_ok=True)
-            kind = "sqlite"
-        elif args.postgres_dump:
-            shutil.copy2(args.postgres_dump, bundle / "database.dump")
-            kind = "postgresql"
-        else:
-            raise ValueError("Supply --sqlite or --postgres-dump")
-        manifest(bundle, kind)
+        shutil.copy2(args.postgres_dump, bundle / "database.dump")
+        manifest(bundle, "postgresql")
         archive = stage / "personal-os.tar"
         with tarfile.open(archive, "w") as tar:
             tar.add(bundle, arcname="bundle")
@@ -114,38 +98,26 @@ def restore_check(args) -> None:
             path = (bundle / name).resolve()
             if bundle.resolve() not in path.parents or not path.is_file() or digest(path) != expected:
                 raise ValueError("Backup content does not match its manifest")
-        if metadata["database_kind"] == "sqlite":
-            databases = []
-            for path in (bundle / "data").rglob("*"):
-                if path.is_file():
-                    with path.open("rb") as stream:
-                        if stream.read(16) == b"SQLite format 3\x00":
-                            databases.append(path)
-            if not databases:
-                raise ValueError("No SQLite database found in restored backup")
-            for database in databases:
-                with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
-                    if connection.execute("PRAGMA integrity_check").fetchone() != ("ok",):
-                        raise ValueError("Restored SQLite database failed integrity check")
-        elif metadata["database_kind"] == "postgresql":
-            if not args.postgres_image:
-                raise ValueError("PostgreSQL backups require --postgres-image to validate in an isolated container")
-            name = "personal-os-restore-" + os.urandom(8).hex()
-            try:
-                run("docker", "run", "--detach", "--rm", "--network", "none", "--name", name,
-                    "-e", "POSTGRES_HOST_AUTH_METHOD=trust", args.postgres_image)
-                import time
-                for _ in range(60):
-                    if subprocess.run(["docker", "exec", name, "pg_isready", "-U", "postgres"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                        break
-                    time.sleep(0.5)
-                else:
-                    raise ValueError("Disposable PostgreSQL did not become ready")
-                with (bundle / "database.dump").open("rb") as stream:
-                    run("docker", "exec", "-i", name, "pg_restore", "--exit-on-error", "--no-owner", "-U", "postgres", "-d", "postgres", stdin=stream)
-                run("docker", "exec", name, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT version_num FROM alembic_version")
-            finally:
-                subprocess.run(["docker", "rm", "--force", "--volumes", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if metadata["database_kind"] != "postgresql":
+            raise ValueError("Unsupported database kind in backup")
+        if not args.postgres_image:
+            raise ValueError("PostgreSQL backups require --postgres-image to validate in an isolated container")
+        name = "personal-os-restore-" + os.urandom(8).hex()
+        try:
+            run("docker", "run", "--detach", "--rm", "--network", "none", "--name", name,
+                "-e", "POSTGRES_HOST_AUTH_METHOD=trust", args.postgres_image)
+            import time
+            for _ in range(60):
+                if subprocess.run(["docker", "exec", name, "pg_isready", "-U", "postgres"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                    break
+                time.sleep(0.5)
+            else:
+                raise ValueError("Disposable PostgreSQL did not become ready")
+            with (bundle / "database.dump").open("rb") as stream:
+                run("docker", "exec", "-i", name, "pg_restore", "--exit-on-error", "--no-owner", "-U", "postgres", "-d", "postgres", stdin=stream)
+            run("docker", "exec", name, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", "SELECT version_num FROM alembic_version")
+        finally:
+            subprocess.run(["docker", "rm", "--force", "--volumes", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(json.dumps({"restored": True, "database": metadata["database_kind"], "verified_files": len(metadata["files"]), "operating_database_modified": False}))
 
 
@@ -157,9 +129,7 @@ def main() -> None:
     create.add_argument("--settings-file", required=True)
     create.add_argument("--staging-dir", required=True)
     create.add_argument("--confirm-app-stopped", action="store_true")
-    database = create.add_mutually_exclusive_group(required=True)
-    database.add_argument("--sqlite")
-    database.add_argument("--postgres-dump")
+    create.add_argument("--postgres-dump", required=True)
     create.add_argument("--init", action="store_true")
     check = sub.add_parser("restore-check")
     check.add_argument("--snapshot", default="latest")

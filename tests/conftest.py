@@ -44,8 +44,9 @@ class ExplodingProvider(FakeProvider):
         yield
 
 
-# Set to run the suite against PostgreSQL, e.g. the compose DB (a dedicated test database: tables are dropped).
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
+# The configured database must be disposable. Each test owns fresh schemas;
+# fixtures never drop tables from the configured database's existing schemas.
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 
 @contextmanager
@@ -55,13 +56,11 @@ def migrated_database_url(tmp_path, name):
     from sqlalchemy import create_engine, make_url, text
     from app.modules.database.migration_manager import alembic_config
     if not TEST_DATABASE_URL.startswith("postgresql"):
-        url = "sqlite:///" + str(tmp_path / (name + ".db"))
-        command.upgrade(alembic_config(url), "head")
-        yield url
-        return
+        pytest.fail("Set TEST_DATABASE_URL to a disposable PostgreSQL database")
     schema = name + "_" + uuid4().hex
     admin = create_engine(TEST_DATABASE_URL)
     with admin.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
         connection.execute(text('CREATE SCHEMA "' + schema + '"'))
     url = make_url(TEST_DATABASE_URL).update_query_dict(
         {"options": "-csearch_path=" + schema + ",public"}).render_as_string(hide_password=False)
@@ -77,15 +76,49 @@ def migrated_database_url(tmp_path, name):
 
 
 @pytest.fixture
-def session(request, tmp_path):
-    url = TEST_DATABASE_URL
-    if url in {'sqlite://', 'sqlite:///:memory:'} and {'client', 'locked_client'} & set(request.fixturenames):
-        # HTTP subscribers, authentication checks and the server worker own separate
-        # transactions. Sharing one StaticPool connection can roll back another
-        # coroutine's uncommitted evidence; use independent disposable connections.
-        url = f"sqlite:///{tmp_path / 'api.db'}"
-    db.init(url)
-    Base.metadata.drop_all(db.engine)
+def postgres_database():
+    from uuid import uuid4
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+
+    if not TEST_DATABASE_URL:
+        pytest.fail("Set TEST_DATABASE_URL to a disposable PostgreSQL database")
+    configured = make_url(TEST_DATABASE_URL)
+    if configured.get_backend_name() != "postgresql":
+        pytest.fail("TEST_DATABASE_URL must use PostgreSQL")
+    admin = create_engine(configured)
+    schemas = []
+    with admin.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
+
+    def create():
+        schema = "personal_test_" + uuid4().hex
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        schemas.append(schema)
+        return configured.update_query_dict({
+            "options": f"-csearch_path={schema},public",
+        }).render_as_string(hide_password=False)
+
+    try:
+        yield create
+    finally:
+        if db.engine is not None:
+            db.engine.dispose()
+        with admin.begin() as connection:
+            for schema in reversed(schemas):
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+@pytest.fixture
+def postgres_url(postgres_database):
+    return postgres_database()
+
+
+@pytest.fixture
+def session(postgres_url):
+    db.init(postgres_url)
     db.create_schema()
     with db.session() as s:
         yield s
@@ -109,12 +142,13 @@ def checkpoint_schema(session):
     import importlib
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
 
     # Official saver tables belong to explicit migrations, outside ORM create_all.
     # Only this disposable test fixture installs them; application startup never does.
     with db.engine.begin() as connection:
-        if "checkpoints" not in inspect(connection).get_table_names():
+        schema = connection.execute(text("SELECT current_schema()")).scalar_one()
+        if "checkpoints" not in inspect(connection).get_table_names(schema=schema):
             with Operations.context(MigrationContext.configure(connection)):
                 importlib.import_module("migrations.versions.0011_advisor_checkpoints").upgrade()
                 importlib.import_module("migrations.versions.0016_checkpoint_task_path").upgrade()

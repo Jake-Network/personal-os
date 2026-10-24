@@ -1,22 +1,19 @@
 """Explicit, user-run migration of an existing database to the Alembic head.
 
 Native app startup leaves an existing database unchanged; Docker's entrypoint upgrades it
-automatically. This command supports explicit inspection, backup and migration:
+automatically. This command supports explicit inspection and migration after an operator-managed pg_dump backup:
 
     uv run python -m app.modules.database.migration_manager            # show the plan (read-only)
-    uv run python -m app.modules.database.migration_manager --apply    # back up (SQLite), then migrate
+    uv run python -m app.modules.database.migration_manager --apply    # migrate after verifying a pg_dump backup
 
 A database created by `create_all` has no `alembic_version` table. Its tables and columns are
-compared with the schema of every revision (built in a temporary SQLite file); only an exact match
+compared with the schema of every revision (built in a rollback-only PostgreSQL schema); only an exact match
 is stamped, after which the append-only triggers that `create_all` never installs are added and the
 remaining migrations run. Without an exact match nothing is changed. Existing rows are never
 rewritten: migrations only add tables, columns, indexes, triggers and backfilled history rows.
 """
 
 import argparse
-import shutil
-import tempfile
-from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
 
@@ -25,7 +22,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Connection, Engine
 
 from app.modules.database.schema_diff import schema_differences
 from app.modules.database.types import MigrationPlan, Schema
@@ -35,36 +32,45 @@ ROOT = Path(__file__).resolve().parents[3]
 # Append-only tables guarded by triggers in migrations 0002 and 0005 (same names, so downgrades work).
 APPEND_ONLY = {
     "monthly_snapshots": ("reject_monthly_snapshot_mutation", "monthly_snapshots_immutable",
-                          "monthly_snapshots_no_", "Monthly snapshots are append-only"),
+                          "Monthly snapshots are append-only"),
     "manual_value_changes": ("reject_manual_value_change_mutation", "manual_value_changes_immutable",
-                             "manual_value_changes_no_", "Manual value history is append-only"),
+                             "Manual value history is append-only"),
 }
 
 
 def alembic_config(url: str) -> Config:
+    from app.modules.database.database import validate_database_url
+    validate_database_url(url)
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "migrations"))
     config.attributes["database_url"] = url
     return config
 
 
-def schema_of(engine: Engine) -> Schema:
+def schema_of(engine: Engine | Connection) -> Schema:
+    from app.modules.database.legacy_adoption import inspection_schema
+    if isinstance(engine, Engine):
+        with engine.connect() as connection:
+            return schema_of(connection)
+    schema = inspection_schema(engine)
     insp = inspect(engine)
-    return {t: frozenset(c["name"] for c in insp.get_columns(t))
-            for t in insp.get_table_names() if t != "alembic_version"}
+    return {t: frozenset(c["name"] for c in insp.get_columns(t, schema=schema))
+            for t in insp.get_table_names(schema=schema) if t != "alembic_version"}
 
 
 @cache
-def schema_at(revision: str) -> Schema:
-    """Tables and columns after upgrading an empty database to `revision`."""
-    with tempfile.TemporaryDirectory() as tmp:
-        url = f"sqlite:///{Path(tmp) / 'probe.db'}"
-        command.upgrade(alembic_config(url), revision)
-        engine = create_engine(url)
-        try:
-            return schema_of(engine)
-        finally:
-            engine.dispose()
+def schema_at(revision: str, url: str) -> Schema:
+    """Inspect a revision in a private PostgreSQL schema rolled back on exit."""
+    from app.modules.database.legacy_adoption import migration_config, reference_connection
+
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            with reference_connection(connection) as scratch:
+                command.upgrade(migration_config(scratch), revision)
+                return schema_of(scratch)
+    finally:
+        engine.dispose()
 
 
 def plan(url: str) -> MigrationPlan:
@@ -74,7 +80,9 @@ def plan(url: str) -> MigrationPlan:
     engine = create_engine(url)
     try:
         with engine.connect() as conn:
-            current = MigrationContext.configure(conn).get_current_revision()
+            from app.modules.database.legacy_adoption import inspection_schema
+            current = MigrationContext.configure(conn, opts={
+                "version_table_schema": inspection_schema(conn)}).get_current_revision()
         tables = schema_of(engine)
     finally:
         engine.dispose()
@@ -83,7 +91,7 @@ def plan(url: str) -> MigrationPlan:
         return result
     closest: tuple[int, str, list[str]] | None = None
     for rev in script.walk_revisions():  # newest first
-        expected = schema_at(rev.revision)
+        expected = schema_at(rev.revision, url)
         if expected == tables:
             result.stamp = rev.revision
             return result
@@ -95,42 +103,26 @@ def plan(url: str) -> MigrationPlan:
     return result
 
 
-def backup_sqlite(url: str, now: datetime | None = None) -> Path | None:
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "sqlite" or parsed.database in (None, "", ":memory:"):
-        return None
-    source = Path(parsed.database)
-    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
-    target = source.with_name(f"{source.name}.bak-{stamp}")
-    shutil.copy2(source, target)
-    return target
-
-
 def ensure_append_only_triggers(engine: Engine) -> None:
-    tables = set(inspect(engine).get_table_names())
+    from app.modules.database.legacy_adoption import inspection_schema
     with engine.begin() as conn:
-        for table, (function, pg_trigger, sqlite_prefix, message) in APPEND_ONLY.items():
+        tables = set(inspect(conn).get_table_names(schema=inspection_schema(conn)))
+        for table, (function, pg_trigger, message) in APPEND_ONLY.items():
             if table not in tables:
                 continue
-            if engine.dialect.name == "sqlite":
-                for action in ("UPDATE", "DELETE"):
-                    conn.execute(text(f"""CREATE TRIGGER IF NOT EXISTS {sqlite_prefix}{action.lower()}
-                        BEFORE {action} ON {table} BEGIN SELECT RAISE(ABORT, '{message}'); END"""))
-            elif engine.dialect.name == "postgresql":
-                exists = conn.execute(text("SELECT 1 FROM pg_trigger WHERE tgname = :n"), {"n": pg_trigger}).first()
-                if not exists:
-                    conn.execute(text(f"""CREATE OR REPLACE FUNCTION {function}() RETURNS trigger
-                        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '{message}'; END; $$"""))
-                    conn.execute(text(f"""CREATE TRIGGER {pg_trigger} BEFORE UPDATE OR DELETE ON {table}
-                        FOR EACH ROW EXECUTE FUNCTION {function}()"""))
+            exists = conn.execute(text("SELECT 1 FROM pg_trigger WHERE tgname = :n AND tgrelid = to_regclass(:table)"), {"n": pg_trigger, "table": table}).first()
+            if not exists:
+                conn.execute(text(f"""CREATE OR REPLACE FUNCTION {function}() RETURNS trigger
+                    LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '{message}'; END; $$"""))
+                conn.execute(text(f"""CREATE TRIGGER {pg_trigger} BEFORE UPDATE OR DELETE ON {table}
+                    FOR EACH ROW EXECUTE FUNCTION {function}()"""))
 
 
-def apply(url: str, migration_plan: MigrationPlan) -> Path | None:
+def apply(url: str, migration_plan: MigrationPlan) -> None:
     if migration_plan.action == "refuse":
         raise RuntimeError(migration_plan.describe())
     if migration_plan.action == "none":
         return None
-    backup = backup_sqlite(url)
     config = alembic_config(url)
     if migration_plan.stamp:
         command.stamp(config, migration_plan.stamp)
@@ -140,7 +132,7 @@ def apply(url: str, migration_plan: MigrationPlan) -> Path | None:
         finally:
             engine.dispose()
     command.upgrade(config, "head")
-    return backup
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -148,16 +140,15 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--apply", action="store_true", help="perform the plan (default: only show it)")
-    parser.add_argument("--database-url", default=settings.resolved_database_url)
+    parser.add_argument("--database-url", default=None)
     args = parser.parse_args(argv)
+    args.database_url = args.database_url or settings.resolved_database_url
     migration_plan = plan(args.database_url)
     print(migration_plan.describe())
     if migration_plan.action == "refuse":
         return 1
     if args.apply:
-        backup = apply(args.database_url, migration_plan)
-        if backup:
-            print(f"Backup: {backup}")
+        apply(args.database_url, migration_plan)
         print(f"Done: database is at {migration_plan.head}.")
     elif migration_plan.action != "none":
         print("Run again with --apply to perform it.")

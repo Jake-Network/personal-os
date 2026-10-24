@@ -74,7 +74,6 @@ def authenticate(session: Session, password: str) -> str:
 
 def _serialize_owner_access(session: Session) -> None:
     # Both password verification and global revocation own the same row lock.
-    # An UPDATE also obtains a SQLite write lock, where SELECT FOR UPDATE is ignored.
     session.execute(update(AppOwner).where(AppOwner.id == 1).values(
         failed_attempts=AppOwner.failed_attempts))
 

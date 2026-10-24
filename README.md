@@ -16,18 +16,19 @@ cd frontend && corepack yarn install && corepack yarn dev # FE runs on the host,
 - Before starting the server, the container waits for the database, acquires a migration lock, and upgrades it to the image's Alembic `head`. A failed migration prevents server startup. Back up an existing installation before deploying a newer image.
 - Volumes: `db_data` (PostgreSQL) and `app_data` (generated token-encryption key, `0600`). `down -v` deletes both.
 - Ports bind to `127.0.0.1` only. If you change `API_PORT`, the OAuth redirect follows it (`http://127.0.0.1:${API_PORT}/auth/callback`).
-- Never point tests at the compose DB (or any personal database): the suite drops tables. See [Tests](#tests).
+- Never point tests at the compose DB (or any personal database): fixtures create and remove isolated schemas. See [Tests](#tests).
 
-## Run natively (SQLite)
+## Run natively (PostgreSQL)
 
 ```bash
 uv sync
+export DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:5432/personal_os
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log # port must equal OAUTH_CALLBACK_PORT
 ```
 
 ### Tests
 
-Tests run only on a disposable PostgreSQL container, separate from the operating DB, and never on SQLite:
+Tests require `TEST_DATABASE_URL` pointing to a disposable PostgreSQL container, separate from the operating DB. Each test creates and removes its own schema:
 
 ```bash
 docker run -d --rm --name personal-os-test-pg -e POSTGRES_USER=personal_os -e POSTGRES_PASSWORD=personal_os \
@@ -69,7 +70,7 @@ Settings come from environment variables (see `.env.example`); `.env` is not loa
 Calendar words such as 오늘 / 이번 주 / 다음 달 resolve in `PERSONAL_OS_TIMEZONE` (default `Asia/Seoul`).
 Docker startup upgrades empty and versioned databases to the committed Alembic `head` before starting the server. Database readiness and migration-lock waits are bounded by `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS` (default `60`). Set `PERSONAL_OS_AUTO_MIGRATE=0` for maintenance commands that must bypass this startup step. Databases with tables but no Alembic history, or with a revision unknown to the image, require explicit intervention; startup never stamps or downgrades them. Native `uvicorn` startup initializes empty databases only; existing databases still use the explicit upgrade command:
 `uv run python -m app.modules.database.migration_manager` shows the plan (read-only) and `--apply`
-performs it, after backing up a SQLite file (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
+performs it after a separate PostgreSQL dump and isolated restore check (see [Finance setup](docs/finance.md#database-upgrades)). Migration `0005_manual_value_history` adds an append-only log of
 manual balance / quantity / average-cost edits and backfills one `baseline` row per existing value;
 it never modifies existing rows.
 
@@ -79,7 +80,7 @@ Financial figures distinguish net worth, investable assets, cash and cash equiva
 *spendable liquidity* (cash-kind accounts marked liquid). Cash runway uses spendable liquidity only
 and is reported as unavailable when the last three full months of expenses are not all recorded.
 
-CI (`.github/workflows/ci.yml`, Linux) runs pytest on a PostgreSQL service (plus Alembic
+CI (`.github/workflows/ci.yml`, Linux) runs pytest on PostgreSQL (plus Alembic
 upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), Vitest and build.
 
 ## 화면 구성
@@ -168,7 +169,7 @@ Only the nginx entry gateway publishes `127.0.0.1:5173`. Next.js, backend, Postg
 
 Security updates must include the runtime images as well as `uv.lock` and `frontend/yarn.lock`. Python is pinned in `.python-version`, Node in `frontend/.node-version`, and the Dockerfiles pin patched runtime releases. CI audits both dependency locks; those package audits do not scan container OS packages. Use a current `uv` release (the Docker build uses 0.13.5) to install the pinned Python version. After backing up an existing installation and stopping application writes as described above, build replacement images with `docker compose --env-file docker/.env -f docker/compose.production.yml build --pull`, pull the pinned embeddings image with `docker compose --env-file docker/.env -f docker/compose.production.yml pull embeddings`, then start the stack with `docker compose --env-file docker/.env -f docker/compose.production.yml up -d`. A restart alone keeps the old image and its old dependencies. Verify the running versions after replacement; updating source files does not patch existing containers.
 
-Checkpoint deserialization restricts object reconstruction to safe built-in types and explicitly allowlisted schema types. Revision `0016_checkpoint_task_path` adds the patched SQLite saver's pending-task path column while preserving existing checkpoint bytes and pending writes; PostgreSQL already has this column. The single head `0017_merge_agent_security` joins this revision with `0016_agent_playbooks_inbox`, preserving installations on either branch. Apply the migration before running the updated backend; runtime saver setup never creates or alters tables.
+Checkpoint deserialization restricts object reconstruction to safe built-in types and explicitly allowlisted schema types. PostgreSQL checkpoint tables preserve pending-task paths and writes. Runtime saver setup never creates or alters tables; schema changes belong to Alembic.
 
 The frontend selectively resolves Tailwind 3's `postcss-selector-parser` dependency to the patched 7.x release, `fast-uri` to 3.1.9, and Orval's nested `undici` to the patched 7.30.1 release. Yarn reports upstream range/pin mismatches for these security overrides; API generation and the application build validate compatibility. Keep the overrides until upstream dependencies provide patched releases without them.
 
@@ -179,11 +180,11 @@ Install restic separately. Stop the application and workers first, keep the pass
 ```bash
 export RESTIC_REPOSITORY=/absolute/local/encrypted-backups
 export RESTIC_PASSWORD_FILE=/absolute/private/restic-password
-uv run python scripts/local_backup.py backup --data-dir ./data --settings-file .env --sqlite ./data/personal_os.db --staging-dir /encrypted/staging --confirm-app-stopped --init
-uv run python scripts/local_backup.py restore-check --staging-dir /encrypted/staging
+uv run python scripts/local_backup.py backup --data-dir ./data --settings-file .env --postgres-dump /path/to/database.dump --staging-dir /encrypted/staging --confirm-app-stopped --init
+uv run python scripts/local_backup.py restore-check --staging-dir /encrypted/staging --postgres-image personal-os-postgres-vector:17-alpine
 ```
 
-For PostgreSQL supply `--postgres-dump /path/to/database.dump` instead of `--sqlite`, using a consistent custom-format `pg_dump` captured while writes are stopped. Add `--postgres-image personal-os-postgres-vector:17-alpine` to restore-check. Restoration is checked in a disposable directory/database; it never overwrites the running installation. Bundles include data/documents/keys/settings, Git revision and working-tree status, a source digest, migration-file hashes and data hashes. Retain the restic password and token key separately. Synthetic SQLite and PostgreSQL restore tests do not establish that a particular user's host storage is encrypted.
+Use a consistent custom-format `pg_dump` captured while writes are stopped. Restoration is checked in a disposable directory/database; it never overwrites the running installation. Bundles include data/documents/keys/settings, Git revision and working-tree status, a source digest, migration-file hashes and data hashes. Retain the restic password and token key separately. Synthetic PostgreSQL restore tests do not establish that a particular user's host storage is encrypted.
 
 ## External model data control
 

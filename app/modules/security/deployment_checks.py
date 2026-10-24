@@ -14,7 +14,9 @@ def local_service_host(host: str | None, service: str) -> bool:
 
 def validate_local_services(database_url: str, embedding_url: str):
     database = urlsplit(database_url)
-    if not database.scheme.startswith("sqlite") and not local_service_host(database.hostname, "db"):
+    from app.modules.database.database import validate_database_url
+    validate_database_url(database_url)
+    if not local_service_host(database.hostname, "db"):
         raise ValueError("Production database must use the local db service or loopback address")
     embedding = urlsplit(embedding_url)
     if embedding.scheme not in {"http", "https"} or not local_service_host(embedding.hostname, "embeddings"):

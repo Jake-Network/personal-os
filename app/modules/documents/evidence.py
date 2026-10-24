@@ -65,14 +65,9 @@ def _purge_runtime_copies(session, snapshot_ids):
     from app.modules.advisor.runtime.checkpoints import delete_run_checkpoints
     from app.modules.database.model import ConversationSummary
 
-    if session.bind.dialect.name == 'sqlite':
-        refs = func.json_each(ConversationSummary.source_references).table_valued('value').alias('summary_source')
-        table = func.json_extract(refs.c.value, '$.table')
-        key = func.json_extract(refs.c.value, '$.id')
-    else:
-        refs = func.json_array_elements(ConversationSummary.source_references).table_valued('value').alias('summary_source')
-        table = refs.c.value.op('->>')('table')
-        key = refs.c.value.op('->>')('id')
+    refs = func.json_array_elements(ConversationSummary.source_references).table_valued('value').alias('summary_source')
+    table = refs.c.value.op('->>')('table')
+    key = refs.c.value.op('->>')('id')
     source_match = exists(select(1).select_from(refs).join(AdvisorMessage,
         AdvisorMessage.id == cast(key, Integer)).where(table == 'advisor_messages',
             AdvisorMessage.context_snapshot_id.in_(snapshot_ids)))

@@ -49,7 +49,7 @@ def upgrade():
     op.create_index("ix_playbook_revisions_status", "playbook_revisions", ["status"])
     active = sa.text("status = 'active'")
     op.create_index("uq_playbook_active_revision", "playbook_revisions", ["playbook_id"],
-                    unique=True, sqlite_where=active, postgresql_where=active)
+                    unique=True, postgresql_where=active)
     op.create_table("playbook_usages",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("revision_id", sa.Integer(), sa.ForeignKey("playbook_revisions.id", ondelete="CASCADE"), nullable=False),
@@ -70,7 +70,7 @@ def upgrade():
         timestamp("created_at"), timestamp("read_at", nullable=True))
     op.create_index("ix_inbox_items_status", "inbox_items", ["status"])
 
-    # ADD COLUMN with constant defaults is additive on SQLite and PostgreSQL; no table rebuild.
+    # ADD COLUMN with constant defaults is additive on PostgreSQL; no table rebuild.
     op.add_column("job_schedules", sa.Column("kind", sa.String(32), nullable=False,
                                              server_default="period_review"))
     op.add_column("job_schedules", sa.Column("local_time", sa.String(5), nullable=True))

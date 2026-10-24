@@ -200,14 +200,14 @@ class ProposalManager:
         """Atomically move pending → `status` inside the caller's transaction.
 
         A conditional UPDATE (… WHERE status = 'pending') is the concurrency control: of two
-        concurrent approvals exactly one matches the row, the other waits on the row/DB write lock
+        concurrent approvals exactly one matches the row, the other waits on the row lock
         and then matches nothing. A check-then-write would let both read `pending` and apply twice.
         If applying fails, the caller rolls back and the proposal is pending again.
         """
         try:
             claimed = proposed_action_handler.transition(session, proposal_id, "pending", status,
                                                          {"decided_at": datetime.now(UTC)})
-        except OperationalError as exc:  # SQLite: the other approval holds the write lock past the timeout
+        except OperationalError as exc:  # A concurrent decision can hold the row lock past the timeout
             session.rollback()
             raise ProposalError("proposal is being decided by another request") from exc
         proposal = proposed_action_handler.get(session, proposal_id)

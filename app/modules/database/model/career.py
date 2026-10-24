@@ -9,7 +9,6 @@ from app.modules.database.model.base import Base, UTCDateTime, utcnow
 
 class CareerRecord(Base):
     __tablename__ = "career_records"
-    __table_args__ = {"sqlite_autoincrement": True}
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(24))
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("career_records.id", ondelete="RESTRICT"))

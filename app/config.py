@@ -66,7 +66,12 @@ class Settings:
 
     @property
     def resolved_database_url(self) -> str:
-        return self.database_url or f"sqlite:///{self.data_dir / 'personal_os.db'}"
+        from app.modules.database.database import validate_database_url
+
+        if not self.database_url:
+            raise ValueError("DATABASE_URL is required; configure a PostgreSQL database")
+        validate_database_url(self.database_url)
+        return self.database_url
 
 
 settings = Settings()

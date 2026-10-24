@@ -2,6 +2,7 @@
 from datetime import timedelta
 from uuid import uuid4
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from fastapi import HTTPException
 from app.modules.database.model import AdvisorConversation, AdvisorMessage
 from app.modules.database.model.advisor_runtime import AdvisorRun, AdvisorRunEvent, AdvisorRunResponse, AdvisorScenario, AdvisorWorkspace, AdvisorRuntimeLock
@@ -19,10 +20,6 @@ def llm_job_running(session, now):
 
 def take_runtime_gate(session):
     """Serialize every model-calling claimer on one coordination row."""
-    if session.bind.dialect.name == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert
     session.execute(insert(AdvisorRuntimeLock).values(id=1, generation=0).on_conflict_do_nothing())
     session.execute(update(AdvisorRuntimeLock).where(AdvisorRuntimeLock.id == 1)
                     .values(generation=AdvisorRuntimeLock.generation + 1))
@@ -49,7 +46,7 @@ class RunRepository:
             raise HTTPException(404, "상담을 찾을 수 없습니다.")
 
     def _lock(self, run_id):
-        # An UPDATE fences concurrent response/cancel/event writers on SQLite and PostgreSQL.
+        # An UPDATE fences concurrent response/cancel/event writers on the run row.
         found = self.session.execute(update(AdvisorRun).where(AdvisorRun.id == run_id)
             .values(revision=AdvisorRun.revision).returning(AdvisorRun.id)).scalar_one_or_none()
         if found is None:

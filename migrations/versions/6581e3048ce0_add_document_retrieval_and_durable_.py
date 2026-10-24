@@ -12,8 +12,7 @@ down_revision = '0004_portfolio_identity'
 branch_labels = None
 depends_on = None
 def upgrade():
-    if op.get_bind().dialect.name == "postgresql":
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     op.create_table('documents',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=200), nullable=False),
@@ -28,7 +27,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['application_id'], ['job_applications.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['goal_id'], ['goals.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id'),
-    sqlite_autoincrement=True
     )
     op.create_table('document_versions',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -45,7 +43,6 @@ def upgrade():
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['document_id'], ['documents.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
-    sqlite_autoincrement=True
     )
     op.create_index(op.f('ix_document_versions_document_id'), 'document_versions', ['document_id'], unique=False)
     op.create_index(op.f('ix_document_versions_status'), 'document_versions', ['status'], unique=False)
@@ -56,10 +53,9 @@ def upgrade():
     sa.Column('page', sa.Integer(), nullable=True),
     sa.Column('section', sa.String(length=200), nullable=True),
     sa.Column('text', sa.Text(), nullable=False),
-    sa.Column('embedding', Vector().with_variant(sa.JSON(), 'sqlite'), nullable=False),
+    sa.Column('embedding', Vector(), nullable=False),
     sa.ForeignKeyConstraint(['version_id'], ['document_versions.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
-    sqlite_autoincrement=True
     )
     op.create_index(op.f('ix_document_chunks_version_id'), 'document_chunks', ['version_id'], unique=False)
 def downgrade():

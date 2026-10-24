@@ -326,8 +326,8 @@ class ContextAssembler:
                 package = to_package(row, False)
             if self.current_message_id is not None:
                 history.messages = [m for m in history.messages if m.id != self.current_message_id]
-            # Async LangChain callbacks may yield. Release SQLite's snapshot write
-            # lock before them so the independent lease heartbeat can proceed.
+            # Async LangChain callbacks may yield. Commit snapshot writes before
+            # them so independent runtime transactions can proceed.
             # Every source is revalidated again at the final gateway boundary.
             self.session.commit()
             await self.validate_interfaces(query, package, options, history)

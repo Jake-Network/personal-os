@@ -14,11 +14,7 @@ def utcnow() -> datetime:
 
 
 class UTCDateTime(TypeDecorator):
-    """Timezone-aware UTC datetimes on every backend.
-
-    SQLite drops tzinfo, which would serialize timestamps without an offset and make
-    clients read them as local time.
-    """
+    """Normalize timestamps to timezone-aware UTC at the storage boundary."""
 
     impl = DateTime(timezone=True)
     cache_ok = True

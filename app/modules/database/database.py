@@ -4,14 +4,18 @@ from collections.abc import Iterator
 from alembic import command
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, event, inspect
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.modules.database.model import Base
 
 logger = logging.getLogger(__name__)
+
+
+def validate_database_url(url: str | URL) -> None:
+    if make_url(url).get_backend_name() != "postgresql":
+        raise ValueError("Only PostgreSQL is supported")
 
 
 class Database:
@@ -22,25 +26,22 @@ class Database:
         self._sessionmaker: sessionmaker[Session] | None = None
 
     def init(self, url: str) -> Engine:
+        validate_database_url(url)
         if self.engine is not None:
             self.engine.dispose()
         self.engine = None
         self._sessionmaker = None
-        kwargs: dict = {}
-        if url.startswith("sqlite"):
-            kwargs["connect_args"] = {"check_same_thread": False}
-            if url in ("sqlite://", "sqlite:///:memory:"):
-                kwargs["poolclass"] = StaticPool
-        self.engine = create_engine(url, **kwargs)
-        if url.startswith("sqlite"):
-            event.listen(self.engine, "connect", lambda conn, _rec: conn.execute("PRAGMA foreign_keys=ON"))
+        self.engine = create_engine(url)
         self._sessionmaker = sessionmaker(bind=self.engine, expire_on_commit=False)
         return self.engine
 
     def create_schema(self) -> None:
         """Create model tables for isolated tests; runtime uses migrations."""
         assert self.engine is not None, "Database.init() not called"
-        Base.metadata.create_all(self.engine)
+        from app.modules.database.legacy_adoption import inspection_schema
+        with self.engine.begin() as connection:
+            schema = inspection_schema(connection)
+            Base.metadata.create_all(connection.execution_options(schema_translate_map={None: schema}))
 
     def migrate_schema(self) -> None:
         """Build an empty database from the committed migrations; use an existing one as it is.
@@ -54,8 +55,6 @@ class Database:
 
         try:
             with self.engine.begin() as connection:
-                if connection.dialect.name == "sqlite":
-                    connection.exec_driver_sql("BEGIN")
                 check_collations(connection)
                 tables = set(inspect(connection).get_table_names(schema=inspection_schema(connection)))
                 config = migration_config(connection)

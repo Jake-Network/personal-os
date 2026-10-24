@@ -233,19 +233,19 @@ def test_market_refresh_requires_live_consent_and_deduplicates_bucket(session, m
     assert session.scalar(select(BackgroundJob).order_by(BackgroundJob.id.desc())).status == 'cancelled'
 
 
-def test_review_migration_preserves_legacy_outcome_and_unknown_time():
+def test_review_migration_preserves_legacy_outcome_and_unknown_time(postgres_url):
     from alembic import command
     from sqlalchemy import create_engine, inspect, text
     from app.modules.database.legacy_adoption import migration_config
 
-    engine = create_engine('sqlite://')
+    engine = create_engine(postgres_url)
     with engine.begin() as connection:
         config = migration_config(connection)
         command.upgrade(config, '0007_document_job_attempts')
         connection.execute(text("INSERT INTO decision_journal (title,decided_at,alternatives,choice,rationale,actual_outcome) VALUES ('synthetic','2026-01-01','[]','A','B','preserved')"))
         command.upgrade(config, '0008_reviews_jobs')
         assert connection.execute(text('SELECT actual_outcome, reviewed_at FROM decision_reviews')).one() == ('preserved', None)
-        assert 'job_schedules' in inspect(connection).get_table_names()
+        assert 'job_schedules' in inspect(connection).get_table_names(schema=inspect(connection).default_schema_name)
         command.downgrade(config, '0007_document_job_attempts')
         assert connection.execute(text('SELECT actual_outcome FROM decision_journal')).scalar() == 'preserved'
     engine.dispose()

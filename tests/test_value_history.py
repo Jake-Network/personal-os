@@ -69,9 +69,9 @@ def test_holding_average_cost_history_preserves_twelve_decimal_places(client):
                                       ("update", Decimal(before), Decimal(after))]
 
 
-def test_history_precision_migration_preserves_rows_and_immutability(tmp_path):
+def test_history_precision_migration_preserves_rows_and_immutability(tmp_path, postgres_url):
     config = Config("alembic.ini")
-    url = f"sqlite:///{tmp_path / 'precision.db'}"
+    url = postgres_url
     config.attributes["database_url"] = url
     command.upgrade(config, "0011_advisor_checkpoints")
     engine = create_engine(url)
@@ -126,15 +126,15 @@ def test_history_rows_cannot_be_rewritten_through_the_orm(client, session):
         session.commit()
 
 
-def test_migration_backfills_baselines_without_touching_existing_rows(tmp_path):
+def test_migration_backfills_baselines_without_touching_existing_rows(tmp_path, postgres_url):
     config = Config("alembic.ini")
-    url = f"sqlite:///{tmp_path / 'existing.db'}"
+    url = postgres_url
     config.attributes["database_url"] = url
     command.upgrade(config, "0004_portfolio_identity")
     engine = create_engine(url)
     with engine.begin() as c:
         c.execute(text("""INSERT INTO accounts (id, name, kind, currency, balance, balance_as_of, is_liquid,
-            created_at, updated_at) VALUES (1, 'a', 'checking', 'KRW', 1234.5678, '2026-09-30', 1,
+            created_at, updated_at) VALUES (1, 'a', 'checking', 'KRW', 1234.5678, '2026-09-30', true,
             '2026-09-30', '2026-09-30')"""))
         c.execute(text("""INSERT INTO holdings (id, symbol, asset_class, currency, quantity, avg_cost,
             created_at, updated_at) VALUES (1, 'AAPL', 'equity', 'USD', 3.12345678, NULL,

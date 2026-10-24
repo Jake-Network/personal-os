@@ -8,15 +8,11 @@ import pytest
 from app.modules.advisor import proposal_manager as pm
 from app.modules.database import db
 from app.modules.database.model import AdvisorConversation, AuditLog, Base, CalendarEvent, ProposedAction, Task
-from tests.conftest import TEST_DATABASE_URL
 
 
 @pytest.fixture
-def shared_db(tmp_path):
-    # Real concurrency needs separate connections: a file DB, or PostgreSQL when configured.
-    url = TEST_DATABASE_URL if TEST_DATABASE_URL.startswith("postgresql") else f"sqlite:///{tmp_path / 'race.db'}"
-    db.init(url)
-    Base.metadata.drop_all(db.engine)
+def shared_db(postgres_url):
+    db.init(postgres_url)
     db.create_schema()
     with db.session() as s:
         proposal = ProposedAction(action="create_task", payload={"title": "한 번만 실행"}, status="pending")

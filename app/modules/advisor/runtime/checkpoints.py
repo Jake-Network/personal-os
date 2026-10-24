@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from langgraph.checkpoint.sqlite import SqliteSaver
 from psycopg.rows import dict_row
 from sqlalchemy import inspect, text, bindparam
 
@@ -24,52 +23,6 @@ class CheckpointSchemaMissing(RuntimeError):
 
 
 _successful_node_writes = ContextVar("successful_checkpoint_node_writes", default=False)
-
-
-class _SqliteSaver(SqliteSaver):
-    def __init__(self, conn, binding):
-        # Checkpoint bytes are not authority to import/reconstruct arbitrary
-        # Python objects, even if an attacker gains write access to the DB.
-        super().__init__(conn, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
-        self.binding = binding
-
-    def setup(self):
-        # The official saver normally auto-creates its tables here. Runtime only
-        # validates; Alembic owns every schema change.
-        for table, columns in {
-            "checkpoints": "thread_id,checkpoint_ns,checkpoint_id,parent_checkpoint_id,type,checkpoint,metadata",
-            "writes": "thread_id,checkpoint_ns,checkpoint_id,task_id,task_path,idx,channel,type,value",
-        }.items():
-            self.conn.execute(f"SELECT {columns} FROM {table} LIMIT 0")
-
-    @contextmanager
-    def cursor(self, transaction=True):
-        with self.lock:
-            self.setup()
-            cur = self.conn.cursor()
-            try:
-                if transaction:
-                    cur.execute(
-                        "UPDATE advisor_runs SET lease_generation=lease_generation "
-                        "WHERE id=? AND lease_owner=? AND lease_generation=? "
-                        "AND status='running' AND lease_until > ?",
-                        (*self.binding, datetime.now(UTC).replace(tzinfo=None).isoformat(" ")),
-                    )
-                    if cur.rowcount != 1:
-                        raise CheckpointLeaseLost("상담 실행 소유권이 변경되거나 만료되었습니다.")
-                yield cur
-                if transaction:
-                    if _successful_node_writes.get():
-                        cur.execute("UPDATE advisor_runs SET runtime_metadata="
-                            "json_set(runtime_metadata,'$.model_inflight',json('false')) WHERE id=?",
-                            (self.binding[0],))
-                    self.conn.commit()
-            except BaseException:
-                if transaction:
-                    self.conn.rollback()
-                raise
-            finally:
-                cur.close()
 
 
 class _PostgresSaver(PostgresSaver):
@@ -166,15 +119,18 @@ class RunCheckpointer(BaseCheckpointSaver):
 @contextmanager
 def create_checkpointer(engine, run_id: str, owner: str, generation: int):
     """Use an existing engine without creating a database or running saver setup."""
-    required = {"checkpoints", "writes"} if engine.dialect.name == "sqlite" else {
+    required = {
         "checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations"}
-    if not required.issubset(inspect(engine).get_table_names()):
+    from app.modules.database.legacy_adoption import inspection_schema
+    with engine.connect() as connection:
+        existing = set(inspect(connection).get_table_names(schema=inspection_schema(connection)))
+    if not required.issubset(existing):
         raise CheckpointSchemaMissing("체크포인트 스키마 업그레이드가 필요합니다.")
     connection = engine.raw_connection()
     try:
         raw = connection.driver_connection
         binding = (run_id, owner, generation)
-        saver = _SqliteSaver(raw, binding) if engine.dialect.name == "sqlite" else _PostgresSaver(raw, binding)
+        saver = _PostgresSaver(raw, binding)
         yield RunCheckpointer(saver, run_id)
     finally:
         connection.close()
@@ -188,9 +144,11 @@ def delete_run_checkpoints(session, run_ids):
     """Delete derived graph data within the caller's authorized deletion transaction."""
     if not run_ids:
         return
-    tables = ("checkpoints", "writes") if session.bind.dialect.name == "sqlite" else (
+    tables = (
         "checkpoints", "checkpoint_blobs", "checkpoint_writes")
-    existing = set(inspect(session.connection()).get_table_names())
+    from app.modules.database.legacy_adoption import inspection_schema
+    connection = session.connection()
+    existing = set(inspect(connection).get_table_names(schema=inspection_schema(connection)))
     for table in tables:
         if table in existing:
             statement = text(f"DELETE FROM {table} WHERE thread_id IN :ids").bindparams(bindparam("ids", expanding=True))

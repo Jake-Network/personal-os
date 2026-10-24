@@ -66,18 +66,18 @@ def test_timeline_derived_from_original_changes(session):
     assert manager.timeline(session).total == 0
 
 
-def test_career_migration_preserves_legacy_rows(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'career-migration.sqlite'}")
+def test_career_migration_preserves_legacy_rows(tmp_path, postgres_url):
+    engine = create_engine(postgres_url)
     cfg = Config("alembic.ini")
     with engine.begin() as connection:
         cfg.attributes["connection"] = connection
         command.upgrade(cfg, "0007_document_job_attempts")
         connection.execute(text("INSERT INTO personal_memories (kind, content, status, source, created_at) VALUES ('profile', 'synthetic legacy fact', 'confirmed', 'user', '2024-01-01')"))
         command.upgrade(cfg, "0008_career_records")
-        assert "career_records" in inspect(connection).get_table_names()
+        assert "career_records" in inspect(connection).get_table_names(schema=inspect(connection).default_schema_name)
         assert connection.scalar(text("SELECT content FROM personal_memories")) == "synthetic legacy fact"
         command.downgrade(cfg, "0007_document_job_attempts")
-        assert "career_records" not in inspect(connection).get_table_names()
+        assert "career_records" not in inspect(connection).get_table_names(schema=inspect(connection).default_schema_name)
         assert connection.scalar(text("SELECT COUNT(*) FROM personal_memories")) == 1
     engine.dispose()
 

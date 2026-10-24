@@ -75,7 +75,7 @@ def test_purge_removes_derived_runtime_copies_and_keeps_unrelated_chat(session, 
     assert run.status == 'cancelled' and run.lease_generation > previous_generation
     assert run.result is None and run.checkpoint == {} and run.clarification is None
     assert run.runtime_metadata == {'evidence_purged': True}
-    checkpoint_tables = ('checkpoints', 'writes') if session.bind.dialect.name == 'sqlite' else (
+    checkpoint_tables = (
         'checkpoints', 'checkpoint_writes', 'checkpoint_blobs')
     for table in checkpoint_tables:
         assert not session.execute(text(f'SELECT * FROM {table} WHERE thread_id=:id'), {'id': run.id}).all()
