@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { flagText } from '@/lib/labels';
 import { dateOnly, dateTime, dayLabel, moneyShort, relative, timeOnly } from '@/lib/utils/format';
+import { formatDuration } from '@/lib/utils/duration';
 import { cn } from '@/lib/utils';
 import { addDays, todayKey, zonedDayKey } from '@/lib/utils/zoned';
 
@@ -370,7 +371,7 @@ export function DashboardView() {
               <Link href='/plan/workouts' className='flex items-center gap-2 py-2 text-ui hover:underline'>
                 {health?.sessions ? (
                   <>
-                    최근 4주 {health.sessions}회 · {health.total_minutes}분 · 마지막 {relative(health.last_session_on)}
+                    최근 4주 {health.sessions}회 · {formatDuration(health.total_seconds)} · 마지막 {relative(health.last_session_on)}
                   </>
                 ) : (
                   <span className='text-muted-foreground'>최근 4주 동안 운동 기록이 없습니다</span>

@@ -21,4 +21,17 @@ describe('account valuation feedback', () => {
     expect(render(true)).toContain('사용 가능');
     expect(render()).toContain('확인 필요');
   });
+
+  it('shows the reason and next action without requiring the warning to be opened', () => {
+    const stale = renderToStaticMarkup(createElement(AccountValuationStatus, {
+      line: { ...line, issues: ['Stale balance/quantity'] }, pending: false, failed: false,
+    }));
+    expect(stale).toContain('잔액·수량 기준일이 오래됨');
+    expect(stale).toContain('잔고 그대로 맞음');
+    const missingFx = renderToStaticMarkup(createElement(AccountValuationStatus, {
+      line: { ...line, issues: ['Missing or invalid FX evidence'] }, pending: false, failed: false,
+    }));
+    expect(missingFx).toContain('원화 환율 없음');
+    expect(missingFx).not.toContain('잔고 그대로 맞음');
+  });
 });

@@ -10,6 +10,7 @@ import { Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
 import { Button } from '@/components/ui/button';
 import { dayLabel } from '@/lib/utils/format';
+import { formatDuration } from '@/lib/utils/duration';
 import { addDays, compareKeys, todayKey } from '@/lib/utils/zoned';
 
 import { RecordSheet } from '@/features/personal-data/components/record-sheet';
@@ -30,7 +31,7 @@ export function WorkoutsView({ recordId }: { recordId: number | null }) {
 
   const sorted = useMemo(() => [...(logs.data ?? [])].sort((a, b) => String(b.performed_on).localeCompare(String(a.performed_on))), [logs.data]);
   const recent = sorted.filter(l => compareKeys(String(l.performed_on), addDays(today, -28)) >= 0);
-  const minutes = recent.reduce((sum, l) => sum + Number(l.duration_minutes ?? 0), 0);
+  const seconds = recent.reduce((sum, l) => sum + Number(l.duration_seconds ?? 0), 0);
   const editing = selected === null ? null : (logs.data?.find(l => l.id === selected) ?? null);
 
   return (
@@ -41,7 +42,7 @@ export function WorkoutsView({ recordId }: { recordId: number | null }) {
         </Button>
         {logs.data && logs.data.length > 0 && (
           <span className='text-ui text-muted-foreground'>
-            최근 4주 {recent.length}회 · {minutes}분
+            최근 4주 {recent.length}회 · {formatDuration(seconds)}
           </span>
         )}
         <div className='ml-auto'>
@@ -74,7 +75,7 @@ export function WorkoutsView({ recordId }: { recordId: number | null }) {
                     <button type='button' className='min-w-0 flex-1 text-left hover:underline' onClick={() => setSelected(l.id)}>
                       {String(l.activity)}
                     </button>
-                    <span className='text-ui tabular-nums text-muted-foreground'>{String(l.duration_minutes)}분</span>
+                    <span className='text-ui tabular-nums text-muted-foreground'>{formatDuration(l.duration_seconds)}</span>
                     {l.intensity ? <span className='w-12 text-right text-xs text-faint'>{enumLabel(l.intensity)}</span> : <span className='w-12' />}
                   </li>
                 ))}

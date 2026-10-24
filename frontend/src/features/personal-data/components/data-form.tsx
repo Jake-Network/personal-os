@@ -19,6 +19,7 @@ import { ALL_DAY, type FormValues, hasAllDay, initialValues, toggleAllDayValue, 
 import type { FieldSpec } from '../utils/schema-fields';
 import type { RecordOption } from '../utils/record-options';
 import { hasRecordChoices, RecordSelect } from './record-select';
+import { DurationInput } from './duration-input';
 
 export type FieldSuggestions = Record<string, string[] | { dependsOn: string; options: Record<string, string[]> }>;
 
@@ -130,6 +131,14 @@ export function DataForm({
                       onBlur={field.onBlur}
                       onChange={field.onChange}
                     />
+                  )}
+                />
+              ) : f.kind === 'duration' ? (
+                <Controller
+                  name={f.name}
+                  control={control}
+                  render={({ field }) => (
+                    <DurationInput id={id} ref={field.ref} label={labels?.[f.name] ?? fieldLabel(f.name)} value={String(field.value ?? '')} onChange={field.onChange} onBlur={field.onBlur} />
                   )}
                 />
               ) : f.kind === 'enum' ? (

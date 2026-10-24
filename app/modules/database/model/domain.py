@@ -7,7 +7,7 @@ not modelled: nothing that must never reach an LLM is stored here in the first p
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event, false
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.database.model.base import Base, UTCDateTime, utcnow
@@ -206,6 +206,6 @@ class WorkoutLog(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     performed_on: Mapped[date] = mapped_column(Date)
     activity: Mapped[str] = mapped_column(String(80))
-    duration_minutes: Mapped[int] = mapped_column(Integer)
+    duration_seconds: Mapped[int] = mapped_column(BigInteger)
     intensity: Mapped[str | None] = mapped_column(String(16))  # easy | moderate | hard
     notes: Mapped[str | None] = mapped_column(String(300))

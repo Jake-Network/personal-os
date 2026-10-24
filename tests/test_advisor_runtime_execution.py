@@ -116,7 +116,7 @@ def test_running_followup_sends_saved_workout_and_respects_health_exclusion(runt
     performed_on = date.today() - timedelta(days=2)
     with database.session() as session:
         workout = WorkoutLog(performed_on=performed_on, activity="합성 마라톤 10km",
-                             duration_minutes=50, intensity="moderate")
+                             duration_seconds=3000, intensity="moderate")
         session.add(workout)
         session.commit()
         workout_id = workout.id
@@ -141,7 +141,7 @@ def test_running_followup_sends_saved_workout_and_respects_health_exclusion(runt
         package = json.loads(context['content'].split('\n', 1)[1])
         recent = package['data']['get_health_summary']['recent']
         assert recent == [{'ref': f'workout_logs:{workout_id}', 'on': performed_on.isoformat(),
-                           'activity': '합성 마라톤 10km', 'minutes': 50, 'intensity': 'moderate'}]
+                           'activity': '합성 마라톤 10km', 'seconds': 3000, 'minutes': 50, 'intensity': 'moderate'}]
 
     restricted = consult('running-private', '내가 토요일에 10km를 어떻게 훈련했지?', exclude=['health'])
     for request in restricted:
