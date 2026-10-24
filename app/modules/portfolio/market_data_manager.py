@@ -149,7 +149,18 @@ def _lock_refresh_result(session, principal, identity, spreadsheet_id, attempt_a
         raise ValueError("Quotes connection changed during retrieval")
 
 
-def refresh(session, client=None):
+def refresh(session, client=None, *, symbol_authorization_check=None, symbol_write_authorization_check=None, symbol_excluded=()):
+    from app.modules.portfolio.symbol_resolution import qualify_positions
+    resolutions = qualify_positions(session, authorization_check=symbol_authorization_check,
+                                   write_authorization_check=symbol_write_authorization_check,
+                                   excluded=symbol_excluded)
+    result = _refresh(session, client)
+    if resolutions:
+        result['symbol_resolutions'] = resolutions
+    return result
+
+
+def _refresh(session, client=None):
     settings = session.get(MarketSettings, 1)
     if settings is None:
         return {

@@ -62,7 +62,7 @@ def operation_authorized(query: str, operation: str) -> bool:
 
 _WRITE_SCOPES = {
     'accounts': r'계좌|통장|잔액|잔고',
-    'holdings': r'주식|보유\s*종목|종목|포트폴리오',
+    'holdings': r'주식|보유\s*(?:종목|분|량)|종목|포트폴리오|티커|ticker',
     'liabilities': r'부채|대출|빚',
     'other-assets': r'기타\s*자산|부동산|자동차',
     'cashflow-entries': r'가계부|현금흐름|지출|수입',
@@ -86,6 +86,10 @@ def _write_scopes(text):
     matches = [(match.start(), match.end(), name) for name, pattern in _WRITE_SCOPES.items()
                for match in re.finditer(pattern, text)]
     scopes = {name for _, _, name in matches}
+    if re.search(r'(?:[A-Z][A-Z0-9.:-]*.*\d+\s*주)|(?:보유분|티커|ticker|주식|종목)', text, re.I):
+        scopes.add('holdings')
+        if re.search(r'(?:다른|별도|새로운?)\s*계좌|계좌(?:가|는)?\s*(?:서로\s*)?(?:다르|다른|달라)', text):
+            scopes.discard('accounts')
     # Compound domain names are more specific than a noun within that name.
     if 'planned-expenses' in scopes and not re.search(r'가계부|현금흐름', text):
         scopes.discard('cashflow-entries')
@@ -94,7 +98,7 @@ def _write_scopes(text):
     if 'goals' in scopes and re.search(r'(?:운동|러닝|달리기|수영|훈련)\s*목표', text):
         scopes.discard('workout-logs')
     matches = sorted(item for item in matches if item[2] in scopes)
-    if len(scopes) > 1:
+    if len(scopes) > 1 and matches:
         # A nearby statement about another domain is not a list of targets.
         # Explicit conjunctions still support "계좌와 주식 목록을 모두 저장".
         last_start, _, last_scope = matches[-1]

@@ -14,9 +14,9 @@ from app.schema.holdings_schema import HoldingInput
 
 
 @pytest.fixture
-def quote_session(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'quotes.db'}")
-    Base.metadata.create_all(engine)
+def quote_session(tmp_path, postgres_url):
+    engine = create_engine(postgres_url)
+    Base.metadata.create_all(engine, checkfirst=False)
     with Session(engine) as session:
         yield session
     engine.dispose()

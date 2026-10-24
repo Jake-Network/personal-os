@@ -21,9 +21,12 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Switch } from '@/components/ui/switch';
 import { dateTime } from '@/lib/utils/format';
 
+import { BRIEFING_KINDS, BriefingSchedules } from './briefing-schedules';
+
 interface Schedule {
   id: number;
   name: string;
+  kind?: string;
   cadence: string;
   enabled: boolean;
   next_run_at: string;
@@ -36,13 +39,24 @@ export interface Job {
   attempts: number;
   max_attempts: number;
   last_error: string | null;
-  result: { review_id?: number } | null;
+  result: { review_id?: number; state?: string; playbook_revision_ids?: number[]; memory_ids?: number[] } | null;
   created_at: string;
   completed_at: string | null;
 }
 
 export const CADENCE_LABEL: Record<string, string> = { month: '매월', quarter: '분기마다', year: '매년' };
-const KIND_LABEL: Record<string, string> = { period_review: '기간 회고 초안', market_quote_refresh: '시세 갱신' };
+const KIND_LABEL: Record<string, string> = { period_review: '기간 회고 초안', market_quote_refresh: '시세 갱신', advisor_reflection: '상담에서 배우기' };
+const JOB_ERROR: Record<string, string> = {
+  interrupted: '앱이 실행 중 멈춰 AI 호출 결과가 확실하지 않습니다. 중복 호출을 막기 위해 자동으로 다시 실행하지 않았습니다.',
+  attempts_exhausted: '재시도 한도에 도달했습니다.',
+  invalid_structured_output: 'AI 응답 형식을 확인하지 못했습니다.',
+  run_authorization_changed: 'AI 연결이나 앱 잠금 상태가 바뀌었습니다.',
+};
+const CANCELLED: Record<string, string> = {
+  consent_revoked: '허용 해제로 취소',
+  authorization_changed: '연결·잠금 변경으로 취소',
+  source_deleted: '원본 상담이 삭제되어 취소',
+};
 const STATUS: Record<string, { label: string; tone: NonNullable<BadgeProps['variant']> }> = {
   pending: { label: '대기', tone: 'default' },
   running: { label: '실행 중', tone: 'accent' },
@@ -117,6 +131,7 @@ export function JobsView() {
   const [adding, setAdding] = useState(false);
   const quoteConsent = useQuery({ queryKey: ['quote-refresh-consent'], queryFn: () => customInstance<{ enabled: boolean }>({ url: '/api/jobs/quote-refresh' }) });
   const schedules = useQuery({ queryKey: ['job-schedules'], queryFn: () => customInstance<Schedule[]>({ url: '/api/jobs/schedules' }) });
+  const reviewSchedules = schedules.data?.filter(s => !BRIEFING_KINDS.includes(s.kind ?? 'period_review'));
   const jobs = useQuery({ queryKey: jobsKey, queryFn: () => customInstance<Job[]>({ url: '/api/jobs' }), refetchInterval: 15000 });
   const refreshJobs = () => cache.invalidateQueries({ queryKey: jobsKey });
 
@@ -162,7 +177,7 @@ export function JobsView() {
 
       <Section
         title='정기 회고'
-        count={schedules.data?.length}
+        count={reviewSchedules?.length}
         info={<p>완료된 달·분기·연도의 경력·결정·월말 재무 기록을 모아 회고 초안을 만듭니다. 외부 AI를 호출하지 않으며, 앱이 꺼져 있던 동안의 작업은 다시 켤 때 순서대로 처리합니다.</p>}
         actions={
           <Button size='sm' onClick={() => setAdding(true)}>
@@ -170,9 +185,9 @@ export function JobsView() {
           </Button>
         }>
         <QueryStatus pending={schedules.isPending} error={schedules.error} retry={schedules.refetch} label='정기 회고' rows={2} />
-        {schedules.data?.length === 0 && <p className='py-2 text-ui text-muted-foreground'>등록한 정기 회고가 없습니다.</p>}
+        {reviewSchedules?.length === 0 && <p className='py-2 text-ui text-muted-foreground'>등록한 정기 회고가 없습니다.</p>}
         <ul className='divide-y'>
-          {schedules.data?.map(s => (
+          {reviewSchedules?.map(s => (
             <li key={s.id} className='flex items-center gap-3 py-2'>
               <div className='flex-1'>
                 <p className='font-medium'>{s.name}</p>
@@ -186,18 +201,27 @@ export function JobsView() {
         </ul>
       </Section>
 
+      <BriefingSchedules />
+
       <Section title='실행 내역'>
         <QueryStatus pending={jobs.isPending} error={jobs.error} retry={jobs.refetch} label='실행 내역' />
         {jobs.data?.length === 0 && <EmptyState>아직 실행된 작업이 없습니다.</EmptyState>}
         <ul className='divide-y'>
           {jobs.data?.map(job => {
-            const status = job.enabled ? (STATUS[job.status] ?? { label: job.status, tone: 'default' as const }) : { label: '실행 허용 안 됨', tone: 'warning' as const };
+            const base = STATUS[job.status] ?? { label: job.status, tone: 'default' as const };
+            const cancelled = job.status === 'cancelled' && job.result?.state ? { ...base, label: CANCELLED[job.result.state] ?? base.label } : base;
+            const status = job.enabled ? cancelled : { label: '실행 허용 안 됨', tone: 'warning' as const };
             return (
               <li key={job.id} className='flex flex-wrap items-center gap-x-3 gap-y-1 py-2'>
                 <span className='font-medium'>{KIND_LABEL[job.kind] ?? '작업'}</span>
                 <Badge variant={status.tone}>{status.label}</Badge>
                 <span className='text-xs text-muted-foreground'>{dateTime(job.completed_at ?? job.created_at)}</span>
                 {job.status === 'failed' && <span className='text-xs text-muted-foreground'>시도 {job.attempts}/{job.max_attempts}</span>}
+                {!!(job.result?.playbook_revision_ids?.length || job.result?.memory_ids?.length) && (
+                  <Link className='text-ui text-primary hover:underline' href='/approvals'>
+                    제안 검토
+                  </Link>
+                )}
                 {job.result?.review_id && (
                   <Link className='text-ui text-primary hover:underline' href='/reflect/reviews'>
                     회고 초안 보기
@@ -208,7 +232,9 @@ export function JobsView() {
                     다시 시도
                   </Button>
                 )}
-                {job.last_error && <p className='w-full text-xs text-destructive'>{job.last_error}</p>}
+                {job.last_error && job.status !== 'cancelled' && (
+                  <p className='w-full text-xs text-destructive'>{JOB_ERROR[job.last_error] ?? '작업을 완료하지 못했습니다.'}</p>
+                )}
               </li>
             );
           })}

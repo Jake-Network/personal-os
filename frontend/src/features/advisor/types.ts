@@ -32,6 +32,8 @@ export interface InspectorData {
   route?: RouteInfo;
   document_citations?: DocumentCitation[];
   web_sources?: WebSource[];
+  /** Approved procedures sent with this request (preview) or used by this answer (snapshot). */
+  playbooks?: InspectorPlaybook[];
   context_snapshot_id: string | null;
   context_reused: boolean;
   categories: string[];
@@ -44,6 +46,13 @@ export interface InspectorData {
   history_withheld_categories?: string[];
   /** The model that wrote the answer, when the panel shows a saved answer's data. */
   model?: string | null;
+}
+
+export interface InspectorPlaybook {
+  ref: string;
+  playbook_id: number | null;
+  slug: string | null;
+  title: string | null;
 }
 
 export interface WebSource {

@@ -20,6 +20,8 @@ export interface RunCreate {
   web_search?: boolean;
   web_query?: string | null;
   allow_data_recording?: boolean;
+  /** @maxItems 2 */
+  playbook_ids?: number[];
   history_since?: string | null;
   history_until?: string | null;
   history_company?: string | null;

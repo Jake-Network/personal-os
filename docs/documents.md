@@ -126,14 +126,14 @@ ALTER DATABASE personal_os REFRESH COLLATION VERSION;
 
 ```sh
 uv sync
-uv run pytest -q
+TEST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:15437/rag_test uv run pytest -q
 cd frontend
 corepack yarn typecheck
 corepack yarn lint
 corepack yarn test
 ```
 
-PostgreSQL 전용 검증은 반드시 폐기 가능한 테스트 DB를 사용합니다. 전체 테스트의 공통 fixture는 테이블을 삭제하므로 애플리케이션 DB를 지정하면 안 됩니다.
+모든 백엔드 검증은 PostgreSQL의 폐기 가능한 테스트 DB를 사용합니다. 전체 테스트의 공통 fixture는 격리된 스키마를 만들고 삭제하므로 애플리케이션 DB를 지정하면 안 됩니다.
 
 ```sh
 TEST_DATABASE_URL=postgresql+psycopg://user:password@127.0.0.1:15437/rag_test \

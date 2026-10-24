@@ -69,4 +69,11 @@ class JobSchedule(Base):
     cadence: Mapped[str] = mapped_column(String(16))
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     next_run_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    # period_review | daily_briefing | weekly_briefing
+    kind: Mapped[str] = mapped_column(String(32), default="period_review")
+    local_time: Mapped[str | None] = mapped_column(String(5))  # HH:MM in PERSONAL_OS_TIMEZONE
+    options: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Run authority pinned when the user enabled model use; never refreshed silently.
+    authorization: Mapped[dict | None] = mapped_column(JSON)
+    paused_reason: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

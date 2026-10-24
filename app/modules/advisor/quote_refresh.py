@@ -84,7 +84,7 @@ class _GuardedQuotes:
         return result
 
 
-def refresh_quotes(session, *, excluded=(), authorization_check=None, client=None) -> dict:
+def refresh_quotes(session, *, excluded=(), authorization_check=None, write_authorization_check=None, client=None) -> dict:
     """Refresh public observations via the finance endpoint's exact policy.
 
     Call after committing CRUD receipts. The existing market manager commits its
@@ -105,7 +105,8 @@ def refresh_quotes(session, *, excluded=(), authorization_check=None, client=Non
                 'message': '보유 종목의 공유가 제한되어 상담에서 시세를 갱신하지 않았습니다.'}
     guarded = _GuardedQuotes(session, client, authorization_check, excluded)
     try:
-        result = refresh(session, guarded)
+        result = refresh(session, guarded, symbol_authorization_check=authorization_check,
+                         symbol_write_authorization_check=write_authorization_check, symbol_excluded=excluded)
     except (ValueError, GoogleOAuthError):
         session.rollback()
         result = {'refresh_state': 'failed',

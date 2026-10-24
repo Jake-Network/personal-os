@@ -16,7 +16,7 @@ HISTORICAL_EVIDENCE_RULES = (
 
 
 def build_request(model: str, history: HistoryDecision, package: ContextPackage, query: str,
-                  excluded: frozenset[Category], *, structured_output: bool = False) -> LLMRequest:
+                  excluded: frozenset[Category], *, structured_output: bool = False, style: str = "") -> LLMRequest:
     """The only place an outbound request is assembled; it re-checks the privacy policy on every part."""
     leaked = excluded & {Category(c) for c in [*package.categories,
                                                *package.payload.get("document_categories", [])]}
@@ -39,7 +39,7 @@ def build_request(model: str, history: HistoryDecision, package: ContextPackage,
         source_snapshot_id=package.snapshot_id,
         source_message_ids=tuple(message.id for message in history.kept),
         excluded_categories=tuple(str(c) for c in excluded),
-        instructions=(STRUCTURED_SYSTEM_PROMPT if structured_output else SYSTEM_PROMPT) + HISTORICAL_EVIDENCE_RULES,
+        instructions=(STRUCTURED_SYSTEM_PROMPT if structured_output else SYSTEM_PROMPT) + HISTORICAL_EVIDENCE_RULES + style,
         input=[
             *notes,
             *replayed,

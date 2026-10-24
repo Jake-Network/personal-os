@@ -156,11 +156,11 @@ def test_lock_cancels_provider_stream_even_without_next_delta(session, monkeypat
 def test_production_services_cannot_be_redirected_to_remote_hosts():
     from app.modules.security.deployment_checks import validate_local_services
     validate_local_services("postgresql+psycopg://user@db/personal", "http://embeddings:11434")
-    validate_local_services("sqlite:///local.db", "http://127.0.0.1:11434")
+    validate_local_services("postgresql+psycopg://user@127.0.0.1/personal", "http://127.0.0.1:11434")
     with pytest.raises(ValueError):
         validate_local_services("postgresql://user@remote.example/db", "http://embeddings:11434")
     with pytest.raises(ValueError):
-        validate_local_services("sqlite:///local.db", "https://remote.example/embed")
+        validate_local_services("postgresql+psycopg://user@127.0.0.1/personal", "https://remote.example/embed")
 
 
 def test_wsl_and_container_diagnostics_never_infer_host_protection(tmp_path):
@@ -259,7 +259,7 @@ def test_same_account_oauth_reconnect_requires_new_transfer_confirmation(locked_
         assert not transfer_policy.status(check, "chatgpt_plan")["confirmed"]
 
 
-def test_global_lock_waits_for_inflight_password_check_and_revokes_new_session(tmp_path, monkeypatch):
+def test_global_lock_waits_for_inflight_password_check_and_revokes_new_session(tmp_path, monkeypatch, postgres_url):
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
     from threading import Event
     import pytest
@@ -268,7 +268,7 @@ def test_global_lock_waits_for_inflight_password_check_and_revokes_new_session(t
     from app.modules.security import session_manager as auth
 
     database = Database()
-    database.init(f"sqlite:///{tmp_path / 'concurrent-auth.db'}")
+    database.init(postgres_url)
     database.create_schema()
     with database.session() as session:
         session.add(AppOwner(id=1, password_hash="synthetic-test-only"))

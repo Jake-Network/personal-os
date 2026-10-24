@@ -60,7 +60,7 @@ def test_legacy_rejected_batch_confirmation_saves_before_quote_refresh(runtime_e
         session.commit()
 
     calls = []
-    def refresh(session, *, excluded, authorization_check):
+    def refresh(session, *, excluded, authorization_check, write_authorization_check=None):
         authorization_check()
         assert session.scalar(select(Holding.quantity)) == Decimal('6')
         calls.append(True)

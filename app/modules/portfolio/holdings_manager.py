@@ -135,7 +135,7 @@ def save(session, body, client=None):
         current = version(obj)
         if not body.expected_version or body.expected_version != current:
             raise RuntimeError("Holding changed; reload before saving")
-        # Atomic compare-and-swap also protects SQLite, where FOR UPDATE is ignored.
+        # Atomic compare-and-swap rejects updates based on an outdated version.
         from sqlalchemy import update
 
         prior_time = obj.updated_at

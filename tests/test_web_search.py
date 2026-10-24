@@ -139,12 +139,14 @@ async def test_missing_key_no_network_and_cancellation_propagates():
 
 
 @run_async
-async def test_production_fails_closed_without_network(monkeypatch):
+@pytest.mark.parametrize("provider", ["brave", "searxng"])
+async def test_production_fails_closed_without_network(monkeypatch, provider):
     monkeypatch.setenv("PERSONAL_OS_PRODUCTION", "true")
     def handler(request):
         pytest.fail("production search must not make network requests")
     with pytest.raises(WebSearchError) as exc:
-        await WebSearchService("key", transport=httpx.MockTransport(handler)).search("policy")
+        await WebSearchService("key", provider=provider, searxng_url="http://searxng.local",
+                               transport=httpx.MockTransport(handler)).search("policy")
     assert exc.value.code == "web_search_production_unsupported"
 
 
@@ -177,3 +179,112 @@ async def test_provider_error_does_not_disclose_key_or_response_body():
         await service.search("policy")
     assert exc.value.code == "web_search_provider_failed"
     assert "synthetic-secret" not in str(exc.value) and "private provider detail" not in str(exc.value)
+
+
+@run_async
+async def test_searxng_needs_no_key_and_only_query_reaches_instance():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if request.url.host == "searxng.local":
+            assert request.url.path == "/search"
+            assert dict(request.url.params) == {"q": "policy", "format": "json"}
+            assert "X-Subscription-Token" not in request.headers
+            return response({"results": [
+                {"url": "https://public.example/policy", "title": "Policy", "content": "unproven snippet"},
+                {"url": "https://public.example/policy", "title": "Duplicate from another engine"},
+            ]})
+        assert request.headers["Host"] == "public.example"
+        return response("<title>Verified page</title><p>Policy applies only to residents.</p>")
+
+    service = WebSearchService(provider="searxng", searxng_url="http://searxng.local:8080/",
+                               transport=httpx.MockTransport(handler), resolver=public_resolver)
+    result = await service.search("policy")
+    assert [page["url"] for page in result["pages"]] == ["https://public.example/policy"]
+    assert result["pages"][0]["excerpts"] == ["Policy applies only to residents."]
+    assert "unproven snippet" not in str(result)
+    assert len(calls) == 2
+
+
+@run_async
+async def test_searxng_result_urls_still_pass_public_target_check():
+    def handler(request):
+        if request.url.host == "searxng.local":
+            return response({"results": [{"url": "http://127.0.0.1:8888/admin"}, {"url": "http://10.0.0.5/"}]})
+        pytest.fail("private result URLs must not be fetched")
+
+    async def resolver(host, port):
+        return [host]
+
+    result = await WebSearchService(provider="searxng", searxng_url="http://searxng.local", resolver=resolver,
+                                    transport=httpx.MockTransport(handler)).search("policy")
+    assert result["pages"] == []
+    assert result["data_quality_flags"] == ["web_page_blocked", "web_search_no_body_evidence"]
+
+
+@run_async
+async def test_searxng_json_format_disabled_is_explained():
+    service = WebSearchService(provider="searxng", searxng_url="http://searxng.local",
+                               transport=httpx.MockTransport(lambda request: response("Forbidden", status=403)))
+    with pytest.raises(WebSearchError) as exc:
+        await service.search("policy")
+    assert exc.value.code == "web_search_provider_failed" and "json" in str(exc.value)
+
+
+@run_async
+@pytest.mark.parametrize("provider,url", [("google", "http://searxng.local"), ("searxng", "")])
+async def test_unknown_provider_or_missing_instance_fails_without_network(provider, url):
+    def handler(request):
+        pytest.fail("misconfigured search must not make network requests")
+    with pytest.raises(WebSearchError) as exc:
+        await WebSearchService("key", provider=provider, searxng_url=url,
+                               transport=httpx.MockTransport(handler)).search("policy")
+    assert exc.value.code == "web_search_unavailable"
+
+
+@run_async
+@pytest.mark.parametrize("url", [
+    "http://user:synthetic-secret@searxng.local:8080",
+    "http:///missing-host",
+    "http://searxng.local:invalid",
+    "http://searxng.local:70000",
+    "http://searxng.local:0",
+    "http://searxng.local?token=synthetic-secret",
+    "http://searxng.local#synthetic-secret",
+    "http://searxng.local?",
+    "http://searxng.local#",
+    "http://searxng.local/\nsecret",
+    "http://searxng.local\\other",
+])
+async def test_invalid_searxng_endpoint_is_rejected_without_network_or_secret_disclosure(url):
+    def handler(request):
+        pytest.fail("invalid endpoint must not receive the public query or URL credentials")
+
+    with pytest.raises(WebSearchError) as exc:
+        await WebSearchService(provider="searxng", searxng_url=url,
+                               transport=httpx.MockTransport(handler)).search("policy")
+    assert exc.value.code == "web_search_unavailable"
+    assert "synthetic-secret" not in str(exc.value)
+
+
+@run_async
+@pytest.mark.parametrize("status", [302, 500])
+async def test_searxng_failure_does_not_follow_redirect_or_switch_provider(status):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        assert str(request.url).startswith("https://search.example/instance/search?")
+        assert dict(request.url.params) == {"q": "policy", "format": "json"}
+        assert "X-Subscription-Token" not in request.headers
+        return response("private provider detail", status=status, Location="https://api.search.brave.com/")
+
+    service = WebSearchService("synthetic-secret", provider="searxng",
+                               searxng_url="https://search.example/instance/",
+                               transport=httpx.MockTransport(handler))
+    with pytest.raises(WebSearchError) as exc:
+        await service.search("policy")
+    assert exc.value.code == "web_search_provider_failed"
+    assert len(calls) == 1
+    assert "private provider detail" not in str(exc.value) and "synthetic-secret" not in str(exc.value)

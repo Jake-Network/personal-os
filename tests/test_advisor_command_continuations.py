@@ -246,7 +246,7 @@ def test_confirmation_recovers_a_legacy_pending_run_without_command_metadata(run
         assert rows[0].balance == Decimal("3000000")
 
 
-def test_one_confirmation_saves_a_pending_batch_of_holdings_with_average_costs(runtime_env):
+def test_one_confirmation_saves_a_pending_batch_of_holdings_with_average_costs(runtime_env, monkeypatch):
     _, database, _ = runtime_env
     query = "내 주식 QATESTONE $12.34 3주, QATESTTWO $56.78 5주 있어. 가격은 평균 매입가야. 전부 저장해줘"
     commands = [data_command("create", "holdings", query, values={
@@ -263,6 +263,10 @@ def test_one_confirmation_saves_a_pending_batch_of_holdings_with_average_costs(r
     resolved = [{**command, "command_index": index, "source_quote": reply,
                  "values": {**command["values"], "symbol": f"{exchange}:{command['values']['symbol']}", "currency": "USD"}}
                 for index, (command, exchange) in enumerate(zip(commands, ["NASDAQ", "NYSEARCA"], strict=True))]
+    monkeypatch.setattr('app.modules.portfolio.symbol_directory.symbol_directory.resolve',
+        lambda symbol, currency='USD': {'status': 'resolved',
+            'symbol': ('NASDAQ:' if symbol == 'QATESTONE' else 'NYSEARCA:') + symbol,
+            'source': 'nasdaq_trader', 'as_of': '2026-10-24T00:00:00+00:00', 'candidates': []})
     run, _ = consult(runtime_env, "confirm-holdings-batch", reply, resolved)
     assert all(operation["status"] == "saved" for operation in run["result"]["data_operations"])
     with database.session() as session:

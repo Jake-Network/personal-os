@@ -9,7 +9,7 @@ KEY = "privacy.local_only_records"
 TABLES = frozenset({"accounts", "holdings", "other_assets", "liabilities", "cashflow_entries", "financial_transactions",
     "planned_expenses", "job_applications", "interviews", "career_criteria", "career_records",
     "calendar_events", "tasks", "goals", "workout_logs", "personal_memories", "documents",
-    "decision_journal", "advisor_messages", "conversation_summaries"})
+    "decision_journal", "advisor_messages", "conversation_summaries", "playbooks", "playbook_revisions"})
 TOOL_TABLES = {
     "get_accounts_summary": {"accounts", "other_assets", "liabilities", "holdings"},
     "get_cashflow_summary": {"cashflow_entries", "financial_transactions", "planned_expenses", "accounts", "holdings"},
@@ -91,7 +91,7 @@ RECORD_CATEGORY = {
 
 
 def invalidate_deleted_source(session, table, record_id):
-    """Permanently taint captured evidence before an identity may be reused by SQLite."""
+    """Permanently taint captured evidence before its source record is deleted."""
     from sqlalchemy import select, update
     from app.modules.database.model import ContextSnapshot, AdvisorMessage, MemoryRevision
     identities = {(table, str(record_id))}
@@ -99,8 +99,15 @@ def invalidate_deleted_source(session, table, record_id):
         identities.update(("memory_revisions", str(key)) for key in session.scalars(select(MemoryRevision.id).where(MemoryRevision.memory_id == record_id)))
     if table == "advisor_conversations":
         identities.update(("advisor_messages", str(key)) for key in session.scalars(select(AdvisorMessage.id).where(AdvisorMessage.conversation_id == record_id)))
+    # A procedure is not personal evidence. Deleting it removes the procedure and its usage
+    # records; answers that used it keep their snapshots, and the origin categories stamped on
+    # each reference keep tainting them (source_policy.deleted_procedure).
+    if table in {"playbooks", "playbook_revisions"}:
+        return
     if table not in TABLES and table != "advisor_conversations":
         return
+    from app.modules.playbooks.playbook_manager import purge_sources
+    purge_sources(session, identities)
     for snapshot in session.scalars(select(ContextSnapshot)):
         hit = any((ref.get("table"), str(ref.get("id"))) in identities
                   or ref.get("table") == table and ref.get("id") is None
@@ -125,6 +132,9 @@ def stamp_references(session, refs):
             created = next((getattr(row, key, None) for key in ("created_at", "recorded_at", "generated_at") if getattr(row, key, None)), None) if row else None
             if created:
                 ref["source_created_at"] = created.isoformat()
+            if ref.get("table") == "playbook_revisions" and row is not None and "categories" not in ref:
+                # Kept with the reference so taint survives the procedure's deletion.
+                ref["categories"] = sorted(row.categories or [])
         result.append(ref)
     return result
 

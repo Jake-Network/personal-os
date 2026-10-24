@@ -34,7 +34,6 @@ def upgrade():
         sa.Column("share_with_advisor", sa.Boolean(), nullable=False),
         sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sqlite_autoincrement=True,
     )
 
 

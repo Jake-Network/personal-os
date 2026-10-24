@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getEventStream } from '@/api-client/event-stream';
 import { getGetConversationQueryKey } from '@/api-client/generated/advisor/advisor';
+import { getCountUnreadInboxQueryKey, getListInboxItemsQueryKey } from '@/api-client/generated/agent/agent';
+import { getListPendingPlaybookRevisionsQueryKey } from '@/api-client/generated/playbooks/playbooks';
 import { getListProposalsQueryKey } from '@/api-client/generated/proposals/proposals';
 import type { RunEvent, RunView, WorkspaceView } from '@/api-client/model';
 import { workspaceApi, workspaceKey } from '../api';
@@ -75,7 +77,9 @@ export function useWorkspace(conversationId: number | null, observe = true) {
             } else {
               void refresh();
               void queryClient.invalidateQueries({ queryKey: getGetConversationQueryKey(conversationId) });
-              void queryClient.invalidateQueries({ queryKey: getListProposalsQueryKey() });
+              // A finished run may complete a briefing notice or queue learning proposals.
+              for (const queryKey of [getListProposalsQueryKey(), getCountUnreadInboxQueryKey(), getListInboxItemsQueryKey(), getListPendingPlaybookRevisionsQueryKey()])
+                void queryClient.invalidateQueries({ queryKey });
             }
           },
           controller.signal,

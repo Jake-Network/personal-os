@@ -147,14 +147,14 @@ def test_purged_scenario_cannot_be_selected_used_or_derived(session):
                                                 parent_revision=scenario.revision))
     assert derived.value.status_code == 409
 
-def test_advisor_runtime_migration_preserves_existing_conversation(tmp_path):
-    url = f"sqlite:///{tmp_path / 'migration.db'}"
+def test_advisor_runtime_migration_preserves_existing_conversation(tmp_path, postgres_url):
+    url = postgres_url
     config = alembic_config(url)
     command.upgrade(config, "0009_merge_local_os")
     engine = create_engine(url)
     with engine.begin() as conn:
         conn.execute(text("INSERT INTO advisor_conversations (id,title,created_at,updated_at) VALUES (42,'synthetic',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"))
-        conn.execute(text("INSERT INTO advisor_messages (id,conversation_id,role,content,status,context_purged,created_at) VALUES (77,42,'user','synthetic','complete',0,CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO advisor_messages (id,conversation_id,role,content,status,context_purged,created_at) VALUES (77,42,'user','synthetic','complete',false,CURRENT_TIMESTAMP)"))
     command.upgrade(config, "0010_advisor_runtime")
     with engine.connect() as conn:
         assert conn.execute(text("SELECT id FROM advisor_conversations")).scalar_one() == 42
@@ -162,13 +162,13 @@ def test_advisor_runtime_migration_preserves_existing_conversation(tmp_path):
         assert conn.execute(text("SELECT count(*) FROM advisor_runs")).scalar_one() == 0
     engine.dispose()
 
-def test_concurrent_duplicate_creation_and_global_worker_limit(tmp_path):
+def test_concurrent_duplicate_creation_and_global_worker_limit(tmp_path, postgres_url):
     from concurrent.futures import ThreadPoolExecutor
     from sqlalchemy.orm import Session
     from app.modules.database.model import Base
 
-    engine = create_engine(f"sqlite:///{tmp_path / 'concurrent.db'}", connect_args={"timeout": 10})
-    Base.metadata.create_all(engine)
+    engine = create_engine(postgres_url)
+    Base.metadata.create_all(engine, checkfirst=False)
     with Session(engine) as session:
         session.add_all([AdvisorConversation(id=1, title="one"), AdvisorConversation(id=2, title="two")])
         session.commit()

@@ -19,7 +19,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 대시보드는 중요한 상태와 다가오는 일정을 빠르게 파악하는 곳이다. 요약에서 관련 데이터 관리·상담으로 이어지게 한다. 대시보드 조회를 위해 LLM을 호출하지 않는다.
 - 상담은 질문·답변뿐 아니라 공유 범위, 사용한 데이터, 인용 근거와 승인할 제안을 함께 확인하는 작업 공간이다. 답변과 근거 패널의 연결을 유지한다.
 - 재무 화면은 통화·기준일·출처·기록 범위를 보여주고, 커리어·일정·목표 화면은 진행 상태와 다음 행동을 보여준다. 각 도메인의 의미를 무시한 범용 표만으로 모든 경험을 대체하지 않는다.
-- 기억은 `/settings/memory`의 `AI가 아는 나`, 결정·회고는 `/reflect`에서 관리한다. `/memory`, `/reflect/memory`는 기억 화면으로 연결한다. 장부는 `/finance/cashflow`에서 원본 종류와 ID를 함께 보존하며 `/finance/transactions`의 기존 링크도 이어받는다.
+- 기억은 `/settings/memory`의 `AI가 아는 나`, 결정·회고는 `/reflect`, 플레이북은 `/reflect/playbooks`, 상담 방식·자동 학습은 `/settings/agent`, 알림은 `/inbox`에서 관리한다. 알림은 이 기기 전용이며 신호·브리핑·학습 제안·예약 중지·실패를 서로 다른 상태로 표시하고 다음 행동 링크를 둔다. `/memory`, `/reflect/memory`는 기억 화면으로 연결한다. 장부는 `/finance/cashflow`에서 원본 종류와 ID를 함께 보존하며 `/finance/transactions`의 기존 링크도 이어받는다.
 - 기억·의사결정 기록은 사용자의 확인과 회고를 돕는다. 모델이 제안한 기억, 확정된 기억, 예상 결과와 실제 결과를 구별한다.
 - 한국어 UI와 기존 앱 셸을 기본으로 한다. 내비게이션은 영역(홈·상담·할 일·일정·자산·커리어·기록·회고·문서함·설정) 단위이며 영역 안의 화면은 라우트 탭(`AreaLayout`, `PageTabs`)으로 나눈다. DB 테이블을 그대로 메뉴로 노출하지 않는다. 좁은 화면에서는 하단 탭바와 더보기 메뉴를 쓰며, 상담 목록, 입력창과 근거를 사용할 수 있게 한다. 키보드 탐색, 입력 라벨, 포커스, dialog/sheet 제목과 아이콘 버튼의 접근 가능한 이름을 챙긴다.
 
@@ -30,7 +30,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 위치 | 책임 |
 | --- | --- |
 | `src/app/` | App Router 페이지·레이아웃·메타데이터. 도메인 로직은 기능 모듈로 위임한다. |
-| `src/features/` | `advisor`, `dashboard`, `plan`(할 일·일정·목표·운동, 달력 소스), `finance`, `holdings`, `documents`, `personal-data`(스키마 폼, `RecordSheet`, `ResourceTable`, 리소스 hooks), `memory`, `career`, `reviews`, `security`, `approvals`, `settings` 등 기능별 UI·상태·어댑터. |
+| `src/features/` | `advisor`, `dashboard`, `plan`(할 일·일정·목표·운동, 달력 소스), `finance`, `holdings`, `documents`, `personal-data`(스키마 폼, `RecordSheet`, `ResourceTable`, 리소스 hooks), `memory`, `career`, `reviews`(정기 회고·브리핑 예약), `security`, `approvals`, `playbooks`, `inbox`, `settings` 등 기능별 UI·상태·어댑터. |
 | `src/api-client/generated/`, `src/api-client/model/` | 백엔드 OpenAPI에서 Orval로 생성하는 함수·Query hooks·타입. 직접 수정하지 않는다. |
 | `src/api-client/custom-client.ts` | 일반 HTTP 요청의 공용 axios mutator. |
 | `src/api-client/event-stream.ts`, `src/api-client/api-error.ts` | SSE 전송과 공통 오류 정규화. |
@@ -81,7 +81,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 웹 검색은 요청별 허용과 별도 공개 검색어를 전달한다. 확인 질문 답변에는 새 검색을 붙이지 않으며 검색어가 바뀌면 이전 요청 ID의 본문을 재사용하지 않는다. `web_sources`와 스냅샷의 `data.web_search.pages`는 당시 수집한 발췌로 표시하고 현재 웹 내용으로 교체하지 않는다.
 - 문서 인용은 서버가 제공한 ref·버전·페이지·발췌로 연결한다. 과거 근거를 최신 파일로 대체하지 않는다. Markdown·외부 링크·업로드 내용은 신뢰하지 않는 입력으로 취급하며 임의 HTML 실행 경로를 열지 않는다.
 - 문서의 업로드·처리 중·검색 가능·실패, 활성 버전과 새 버전 상태를 구별한다. 파일 교체·재시도·공유 해제 후 관련 목록과 근거 표시를 갱신한다.
-- 승인·거절과 기억 확인은 명시적 사용자 동작이어야 한다. 생성된 제안을 자동 승인하거나 성공 전 적용된 것으로 표시하지 않는다. UI에서 중복 클릭을 막고 서버의 경합·검증 오류도 처리한다.
+- 플레이북 제안은 기준 버전과의 diff를 보여 주고, 그 사이 바뀐(stale) 제안이나 근거가 삭제된 제안은 승인 버튼을 막는다. `이 상담에서 배우기`는 메시지별 고정 요청 ID로 보내 중복 모델 호출을 만들지 않는다. 입력창의 `/slug`는 서버가 메시지에서 읽으므로 화면은 자동완성만 한다.
+- 승인·거절과 기억 확인은 명시적 사용자 동작이어야 한다. 생성된 제안을 자동 승인하거나 성공 전 적용된 것으로 표시하지 않는다. 일괄 처리(`features/approvals/batch.ts`)는 화면에 내용을 보여 준 항목을 사용자가 고른 경우에만 보내고 미리 선택하지 않으며, 항목별 실패 사유를 표시한다. UI에서 중복 클릭을 막고 서버의 경합·검증 오류도 처리한다.
 - 사용자가 직접 요청한 상담 CRUD의 서버 실행 결과는 승인 대기 제안과 구분해 표시한다. 답변 실패 뒤에도 이미 저장된 작업 결과를 표시하며 변경된 리소스·대시보드·타임라인 및 재무 캐시를 갱신한다. `자동 기록`은 기본 꺼짐이고 대화 변경 시 초기화하며, 활성화한 요청에만 `allow_data_recording`을 전달한다.
 - 삭제할 때 문서 원본, 과거 근거, 대화 텍스트의 삭제 범위를 분명히 설명한다. UI에서 제거된 항목이 캐시나 열려 있는 근거 패널에 남는지도 확인한다.
 

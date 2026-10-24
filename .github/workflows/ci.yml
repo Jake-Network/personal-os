@@ -14,12 +14,8 @@ concurrency:
 
 jobs:
   backend:
-    name: Python tests (${{ matrix.database }})
+    name: Python tests (PostgreSQL)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        database: [sqlite, postgresql]
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -41,12 +37,10 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - name: Audit locked Python dependencies
-        if: matrix.database == 'sqlite'
         run: |
           uv export --frozen --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/personal-os-requirements.txt"
           uvx pip-audit==2.10.1 --requirement "$RUNNER_TEMP/personal-os-requirements.txt" --no-deps --disable-pip
       - name: Migrations on PostgreSQL (upgrade, model check, downgrade, re-upgrade)
-        if: matrix.database == 'postgresql'
         env:
           DATABASE_URL: postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test
         run: |
@@ -54,9 +48,15 @@ jobs:
           uv run alembic check
           uv run alembic downgrade base
           uv run alembic upgrade head
+      # ORM schema fixtures expect the extension in public, independent of migration history.
+      - name: Enable pgvector
+        env:
+          PGPASSWORD: personal_os
+        run: psql -h localhost -U personal_os -d personal_os_test -c "CREATE EXTENSION IF NOT EXISTS vector"
+      # Tests run only on this disposable PostgreSQL service.
       - name: pytest
         env:
-          TEST_DATABASE_URL: ${{ matrix.database == 'postgresql' && 'postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test' || 'sqlite://' }}
+          TEST_DATABASE_URL: postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test
         run: uv run pytest -q
 
   frontend:

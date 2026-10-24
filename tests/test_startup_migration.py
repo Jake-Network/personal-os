@@ -1,5 +1,6 @@
 """Container startup migrates disposable databases before starting the server."""
 
+import hashlib
 import os
 import subprocess
 import threading
@@ -21,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def startup_engine(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'startup.db'}")
+def startup_engine(tmp_path, postgres_url):
+    engine = create_engine(postgres_url)
     try:
         yield engine
     finally:
@@ -31,16 +32,18 @@ def startup_engine(tmp_path):
 
 def current_revision(engine):
     with engine.connect() as connection:
-        return MigrationContext.configure(connection).get_current_revision()
+        return MigrationContext.configure(connection, opts={
+            "version_table_schema": connection.execute(text("SELECT current_schema()")).scalar_one(),
+        }).get_current_revision()
 
 
 def test_empty_database_upgrades_and_second_start_has_no_ddl(startup_engine):
     from app.modules.database.startup_migration import upgrade_database
 
     upgrade_database(startup_engine)
-    head = ScriptDirectory.from_config(mm.alembic_config(str(startup_engine.url))).get_current_head()
+    head = ScriptDirectory.from_config(mm.alembic_config(startup_engine.url.render_as_string(hide_password=False))).get_current_head()
     assert current_revision(startup_engine) == head
-    assert {"accounts", "checkpoints", "writes"} <= set(inspect(startup_engine).get_table_names())
+    assert {"accounts", "checkpoints", "checkpoint_writes", "checkpoint_blobs"} <= set(inspect(startup_engine).get_table_names(schema=inspect(startup_engine).default_schema_name))
     statements = []
 
     def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -55,11 +58,11 @@ def test_empty_database_upgrades_and_second_start_has_no_ddl(startup_engine):
 def test_versioned_database_upgrades_without_losing_existing_rows(startup_engine):
     from app.modules.database.startup_migration import upgrade_database
 
-    command.upgrade(mm.alembic_config(str(startup_engine.url)), "0001_baseline")
+    command.upgrade(mm.alembic_config(startup_engine.url.render_as_string(hide_password=False)), "0001_baseline")
     with startup_engine.begin() as connection:
         connection.execute(text("""INSERT INTO accounts
             (id, name, kind, currency, balance, balance_as_of, is_liquid, created_at, updated_at)
-            VALUES (42, 'synthetic account', 'checking', 'KRW', 150000, '2026-10-01', 1,
+            VALUES (42, 'synthetic account', 'checking', 'KRW', 150000, '2026-10-01', true,
                     '2026-10-01', '2026-10-01')"""))
     upgrade_database(startup_engine)
     with startup_engine.connect() as connection:
@@ -79,10 +82,10 @@ def test_unversioned_or_unknown_database_is_refused_without_mutation(startup_eng
         if revision:
             connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(64) PRIMARY KEY)"))
             connection.execute(text("INSERT INTO alembic_version VALUES (:revision)"), {"revision": revision})
-    before = set(inspect(startup_engine).get_table_names())
+    before = set(inspect(startup_engine).get_table_names(schema=inspect(startup_engine).default_schema_name))
     with pytest.raises(RuntimeError):
         upgrade_database(startup_engine)
-    assert set(inspect(startup_engine).get_table_names()) == before
+    assert set(inspect(startup_engine).get_table_names(schema=inspect(startup_engine).default_schema_name)) == before
     with startup_engine.connect() as connection:
         assert connection.execute(text("SELECT value FROM synthetic_records")).scalar_one() == "preserve me"
     assert current_revision(startup_engine) == revision
@@ -91,7 +94,7 @@ def test_unversioned_or_unknown_database_is_refused_without_mutation(startup_eng
 def test_failed_migration_rolls_back_schema_and_data(startup_engine, monkeypatch):
     from app.modules.database import startup_migration
 
-    command.upgrade(mm.alembic_config(str(startup_engine.url)), "0001_baseline")
+    command.upgrade(mm.alembic_config(startup_engine.url.render_as_string(hide_password=False)), "0001_baseline")
 
     def fail_after_changes(config, revision):
         connection = config.attributes["connection"]
@@ -103,7 +106,7 @@ def test_failed_migration_rolls_back_schema_and_data(startup_engine, monkeypatch
     with pytest.raises(RuntimeError, match="synthetic migration failure"):
         startup_migration.upgrade_database(startup_engine)
     assert current_revision(startup_engine) == "0001_baseline"
-    assert "migration_partial_write" not in inspect(startup_engine).get_table_names()
+    assert "migration_partial_write" not in inspect(startup_engine).get_table_names(schema=inspect(startup_engine).default_schema_name)
 
 
 def test_concurrent_startups_serialize_one_database_upgrade(startup_engine, monkeypatch):
@@ -129,7 +132,7 @@ def test_concurrent_startups_serialize_one_database_upgrade(startup_engine, monk
             future.result(timeout=30)
     assert calls == ["head"]
     assert current_revision(startup_engine) == ScriptDirectory.from_config(
-        mm.alembic_config(str(startup_engine.url)),
+        mm.alembic_config(startup_engine.url.render_as_string(hide_password=False)),
     ).get_current_head()
 
 
@@ -137,15 +140,17 @@ def test_startup_lock_has_bounded_wait_and_does_not_migrate(startup_engine):
     from app.modules.database.startup_migration import upgrade_database
 
     with startup_engine.connect() as lock_holder:
-        lock_holder.exec_driver_sql("BEGIN IMMEDIATE")
+        identity = lock_holder.exec_driver_sql("SELECT current_database(), current_schema()").one()
+        key = int.from_bytes(hashlib.sha256(repr(tuple(identity)).encode()).digest()[:8], "big", signed=True)
+        lock_holder.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
         try:
             started = time.monotonic()
-            with pytest.raises(OperationalError, match="locked"):
+            with pytest.raises(OperationalError, match="lock timeout"):
                 upgrade_database(startup_engine, timeout=0.05)
             assert time.monotonic() - started < 1
         finally:
             lock_holder.rollback()
-    assert inspect(startup_engine).get_table_names() == []
+    assert inspect(startup_engine).get_table_names(schema=inspect(startup_engine).default_schema_name) == []
 
 
 def test_cli_can_skip_migration_without_connecting(monkeypatch):
@@ -175,7 +180,7 @@ def test_cli_failure_returns_nonzero_and_omits_sensitive_exception(tmp_path, mon
 
     monkeypatch.setenv("PERSONAL_OS_AUTO_MIGRATE", "1")
     monkeypatch.setenv("PERSONAL_OS_PRODUCTION", "false")
-    monkeypatch.setattr(config, "settings", config.Settings(data_dir=tmp_path))
+    monkeypatch.setattr(config, "settings", config.Settings(data_dir=tmp_path, database_url="postgresql+psycopg://synthetic@127.0.0.1/test"))
     monkeypatch.setattr(startup_migration, "create_engine", lambda *args, **kwargs: SyntheticEngine())
     monkeypatch.setattr(startup_migration, "upgrade_database", fail)
     assert startup_migration.main() == 1

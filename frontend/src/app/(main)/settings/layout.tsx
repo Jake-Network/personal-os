@@ -3,6 +3,7 @@ import { AreaLayout } from '@/components/area-layout';
 const TABS = [
   { href: '/settings/ai-provider', label: 'AI 연결' },
   { href: '/settings/memory', label: 'AI가 아는 나' },
+  { href: '/settings/agent', label: '상담 방식' },
   { href: '/settings/privacy', label: '데이터 공유' },
   { href: '/settings/market', label: '시세 연결' },
   { href: '/settings/jobs', label: '자동 작업' },

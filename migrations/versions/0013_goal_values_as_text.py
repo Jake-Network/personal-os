@@ -16,18 +16,10 @@ depends_on = None
 
 
 def upgrade():
-    bind = op.get_bind()
-    if bind.dialect.name == "sqlite":
-        with op.batch_alter_table("goals") as batch:
-            batch.alter_column("target_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
-                               existing_nullable=True)
-            batch.alter_column("current_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
-                               existing_nullable=True)
-    else:
-        op.alter_column("goals", "target_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
-                        existing_nullable=True, postgresql_using="target_value::text")
-        op.alter_column("goals", "current_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
-                        existing_nullable=True, postgresql_using="current_value::text")
+    op.alter_column("goals", "target_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
+                    existing_nullable=True, postgresql_using="target_value::text")
+    op.alter_column("goals", "current_value", existing_type=sa.Numeric(20, 4), type_=sa.Text(),
+                    existing_nullable=True, postgresql_using="current_value::text")
 
 
 def downgrade():
@@ -41,14 +33,7 @@ def downgrade():
     except (InvalidOperation, ValueError) as exc:
         raise RuntimeError("Goal values contain free-form text and cannot be safely converted back") from exc
 
-    if bind.dialect.name == "sqlite":
-        with op.batch_alter_table("goals") as batch:
-            batch.alter_column("target_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
-                               existing_nullable=True)
-            batch.alter_column("current_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
-                               existing_nullable=True)
-    else:
-        op.alter_column("goals", "target_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
-                        existing_nullable=True, postgresql_using="target_value::numeric(20,4)")
-        op.alter_column("goals", "current_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
-                        existing_nullable=True, postgresql_using="current_value::numeric(20,4)")
+    op.alter_column("goals", "target_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
+                    existing_nullable=True, postgresql_using="target_value::numeric(20,4)")
+    op.alter_column("goals", "current_value", existing_type=sa.Text(), type_=sa.Numeric(20, 4),
+                    existing_nullable=True, postgresql_using="current_value::numeric(20,4)")

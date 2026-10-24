@@ -34,6 +34,17 @@ class CommandInputError(ValueError):
     pass
 
 
+def separate_position_authorized(query):
+    """Only the user's own separate-position request can bypass a ticker duplicate."""
+    from app.modules.advisor.data_command_intent import factual_write_authorized, instruction_text, operation_authorized
+    if not isinstance(query, str):
+        return False
+    text = instruction_text(query)
+    return bool(operation_authorized(text, "create") and factual_write_authorized(text, "holdings") and re.search(
+        r'(?:다른|별도(?:의)?|새(?:로운)?)\s*계좌|계좌(?:가|는)?\s*(?:서로\s*)?(?:다르|다른|달라)|'
+        r'별도(?:의)?\s*보유분|새(?:로운)?\s*(?:포지션|보유분)', text))
+
+
 def command_target_label(command):
     for group in (command.get('values', {}), command.get('selector', {})):
         for key in ('symbol', 'ticker', 'name', 'title', 'activity'):
@@ -142,6 +153,28 @@ def _holding_values(session, resource, values, obj, excluded):
         values["symbol"] = known_symbol
         values.setdefault("currency", known_currency)
     return values
+
+
+def _separate_position_key(session, command, excluded):
+    """Cosmetic extraction fields cannot turn one requested lot into two writes."""
+    try:
+        values = _holding_values(session, RESOURCES["holdings"], command.get("values", {}), None, excluded)
+        identity = {field: values.get(field) for field in ("symbol", "currency", "account_id", "quantity", "avg_cost")}
+        if identity["account_id"] is not None:
+            if isinstance(identity["account_id"], bool):
+                return None
+            identity["account_id"] = TypeAdapter(int).validate_python(identity["account_id"])
+        for field in ("quantity", "avg_cost"):
+            if identity[field] is not None:
+                number = Decimal(str(identity[field]))
+                if not number.is_finite():
+                    return None
+                with localcontext() as context:
+                    context.prec = max(100, len(number.as_tuple().digits))
+                    identity[field] = str(number.normalize()) if number else "0"
+        return json.dumps(identity, sort_keys=True, ensure_ascii=False)
+    except (CommandInputError, InvalidOperation, TypeError, ValueError):
+        return None
 
 
 def confirmed_holding_addition(session, command: dict, *, original_query: str,
@@ -346,7 +379,7 @@ def _validate_values(session, name, resource, values, obj, excluded):
     return data, trade_date
 
 
-def _execute(session, command, excluded):
+def _execute(session, command, excluded, *, separate_authority=False):
     name, operation = command.get("resource"), command.get("operation")
     resource = RESOURCES.get(name)
     if resource is None or operation not in OPERATIONS or operation != "read" and name not in WRITABLE_RESOURCES:
@@ -355,6 +388,9 @@ def _execute(session, command, excluded):
     if category in {str(c) for c in excluded}:
         return _result(command, "failed", "이 데이터는 상담 공유에서 제외되어 있습니다.")
     selector = command.get("selector", {})
+    separate = name == "holdings" and separate_authority
+    if separate and operation == "update":
+        return _result(command, "needs_input", "다른 계좌의 보유분은 기존 기록을 수정하지 않고 새 보유 기록으로 저장해야 합니다.")
     if operation in {"update", "delete"} and not selector:
         return _result(command, "needs_input", "변경할 기록 하나를 지정해 주세요.")
     if name == "holdings" and operation == "create":
@@ -363,12 +399,14 @@ def _execute(session, command, excluded):
         if values.get("symbol"):
             identity = {key: values[key] for key in ("symbol", "currency", "account_id") if values.get(key) is not None}
             matches = _matches(session, resource, identity, lock=True)
-            if matches:
+            if matches and not (separate and values.get("account_id") is None):
                 visible_matches = [row for row in matches if _visible(session, resource, row, excluded)]
-                return _result(command, "needs_input", "기존 보유 기록이 있습니다. 현재 총 보유량으로 바꿀지 추가 수량을 더할지 알려주세요.",
+                return _result(command, "needs_input", "기존 보유 기록이 있습니다. 같은 계좌의 추가 수량인지, 다른 계좌의 별도 보유분인지 알려주세요.",
                     candidates=[{"id": row.id, "label": row.name or row.symbol, "symbol": row.symbol,
                                  "currency": row.currency, "quantity": _serialized(resource, row)["quantity"]}
                                 for row in visible_matches[:10]])
+        if separate and values.get("account_id") is None and not values.get("name"):
+            command = {**command, "values": {**values, "name": str(values.get("symbol", ""))[:104] + " (별도 계좌)"}}
     rows = _matches(session, resource, selector, lock=operation != "read") if operation != "create" else []
     visible = [row for row in rows if _visible(session, resource, row, excluded)]
     if operation == "read":
@@ -434,11 +472,20 @@ def _execute(session, command, excluded):
         fields = {"quote_status": "ready" if obj.last_price is not None else "pending", "quote_needs_exchange": needs_exchange}
         if needs_exchange:
             message = "보유 기록을 저장했습니다. 거래소를 확인하면 자동 시세를 연결할 수 있습니다."
+        if separate and operation == "create":
+            fields.update(separate_position=True,
+                          account_status="assigned" if obj.account_id is not None else "unspecified")
+            message = ("기존 보유 기록과 분리해 별도 계좌의 보유분을 저장했습니다. "
+                       "계좌 이름은 나중에 연결할 수 있습니다." if obj.account_id is None else
+                       "선택한 계좌의 별도 보유분을 저장했습니다.")
+            if needs_exchange:
+                message += " 거래소를 확인하면 자동 시세를 연결할 수 있습니다."
     return _result(command, "saved", message, record_id=obj.id,
                    record_ref=_reference(resource, obj), record=_serialized(resource, obj), **fields)
 
 
-def execute_commands(session, *, commands, conversation_id, message_id, excluded, authorization_check=None):
+def execute_commands(session, *, commands, conversation_id, message_id, excluded, authorization_check=None,
+                     authorized_query=None):
     """Execute a bounded batch. Each command uses a savepoint; the caller commits it.
 
     Failed/ambiguous commands never write. Successful writes and their receipts are
@@ -450,6 +497,8 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
         AdvisorMessage.conversation_id == conversation_id, AdvisorMessage.role == "user").with_for_update())
     if source is None:
         raise ValueError("작업을 요청한 사용자 메시지를 찾을 수 없습니다.")
+    separate_authority = separate_position_authorized(authorized_query if authorized_query is not None else source.content)
+    separate_results = {}
     results = []
     target = f"advisor_messages:{message_id}"
     receipts = list(session.scalars(select(AuditLog).where(AuditLog.action == "advisor.data_command", AuditLog.target == target)))
@@ -459,6 +508,9 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
         from app.modules.context.privacy_manager import privacy_manager
         current_excluded = set(excluded) | set(privacy_manager.get_excluded(session))
         fingerprint = hashlib.sha256(json.dumps(command, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+        separate_key = None
+        if (separate_authority and command.get("resource") == "holdings" and command.get("operation") == "create"):
+            separate_key = _separate_position_key(session, command, current_excluded)
         existing = next((receipt for receipt in receipts if receipt.detail.get("index") == index), None)
         if existing:
             if existing.detail.get("fingerprint") != fingerprint:
@@ -474,10 +526,15 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
                 else:
                     current = {"record": _serialized(resource, row), "record_ref": _reference(resource, row)} if row is not None and prior.get("operation") != "delete" else {}
                     results.append({**prior, **current, "replayed": True})
+            if separate_key is not None and results[-1]["status"] == "saved":
+                separate_results[separate_key] = results[-1]
+            continue
+        if separate_key is not None and separate_key in separate_results:
+            results.append({**separate_results[separate_key], "replayed": True})
             continue
         try:
             with session.begin_nested():
-                result = _execute(session, command, current_excluded)
+                result = _execute(session, command, current_excluded, separate_authority=separate_authority)
                 if result["status"] == "saved":
                     receipt = AuditLog(actor="advisor", action="advisor.data_command", target=target,
                         detail={"conversation_id": conversation_id, "index": index, "fingerprint": fingerprint, "result": result})
@@ -485,6 +542,8 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
                     receipts.append(receipt)
                     session.flush()
             results.append(result)
+            if separate_key is not None and result["status"] == "saved":
+                separate_results[separate_key] = result
         except CommandInputError as exc:
             results.append(_result(command, "needs_input", str(exc)))
         except IntegrityError:

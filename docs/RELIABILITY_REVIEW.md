@@ -154,16 +154,15 @@ update happened survived, not the values.
   Differences between rows are documented as recorded edits, not realized returns. Nothing
   computes returns from them.
 - **Immutability.** Rows are blocked from changing by an ORM guard and by database triggers on
-  SQLite and PostgreSQL, in the same way as `monthly_snapshots`.
+  PostgreSQL, in the same way as `monthly_snapshots`.
 - **Migration.** `migrations/versions/0005_manual_value_history.py` creates the table, index and
   triggers, and backfills one `baseline` row per existing balance, quantity and average cost.
   Existing rows are never modified. A record created by the `create_all` startup path before the
   table existed gets its `baseline` lazily on its first edit.
 
 **Evidence.** `tests/test_value_history.py` covers the API workflow, Decimal exactness, no-op
-edits, deletes, lazy baselines and the ORM guard. Its migration test runs on SQLite: populated
-0004 database → head → `alembic check` → triggers → downgrade. The same backfill, trigger and
-downgrade sequence was run manually on PostgreSQL 17 (see Test evidence).
+edits, deletes, lazy baselines and the ORM guard. Migration coverage uses PostgreSQL: populated
+0004 database → head → `alembic check` → triggers → downgrade. See Test evidence for historical runs.
 
 ## 6. Context size enforcement
 
@@ -201,14 +200,12 @@ action ran twice (two tasks created). An approve racing a reject could both "win
 
 **Fix.** `ProposedActionHandler.transition` performs a compare-and-set
 `UPDATE … SET status = :to WHERE id = :id AND status = 'pending'` as the first statement of the
-transaction. Exactly one request matches the row. The other waits on the row lock (PostgreSQL) or
-the database write lock (SQLite), then matches nothing and gets HTTP 409. If applying the action
+transaction. Exactly one request matches the row. The other waits on the PostgreSQL row lock, then matches nothing and gets HTTP 409. If applying the action
 fails, the transaction rolls back and the proposal is `pending` again.
 
 **Evidence.** `tests/test_proposal_race.py` runs two threads with separate connections and slows
 `_apply` down to widen the window. On the old code both race tests fail: two tasks are created and
-an approve/reject pair both succeed. On the new code exactly one request wins, on both SQLite and
-PostgreSQL.
+an approve/reject pair both succeed. On the new code exactly one request wins, on PostgreSQL.
 
 ## 8. Local API trust boundary
 
@@ -249,15 +246,14 @@ anything except the local machine:
 3. Keep the Google and ChatGPT OAuth callbacks on loopback, or register the new redirect URIs and
    accept that they become reachable.
 4. Treat `data/secret.key`, the database and backups as secrets. They decrypt OAuth tokens.
-5. Run `python -m app.modules.database.migration_manager --apply` (PostgreSQL recommended) so that the append-only triggers
+5. Run `python -m app.modules.database.migration_manager --apply` (PostgreSQL) so that the append-only triggers
    exist.
 
 ## 9. CI
 
 `.github/workflows/ci.yml` runs on `ubuntu-latest` for pushes to `main` and for pull requests.
 
-- **Backend matrix (SQLite, PostgreSQL 17 service).** `uv sync --frozen`, then `pytest`. The
-  PostgreSQL leg first runs `alembic upgrade head`, `alembic check`, `downgrade base` and
+- **Backend (PostgreSQL 17 service).** `uv sync --frozen`, then `pytest`. CI first runs `alembic upgrade head`, `alembic check`, `downgrade base` and
   `upgrade head`.
 - **Frontend.** `yarn install --frozen-lockfile`, then `lint`, `typecheck`, `test` (Vitest) and
   `build`.
@@ -288,16 +284,16 @@ stamping it 0001 would re-run 0002–0004 against tables that already exist.
 **Fix.** Startup is unchanged on purpose: it uses the existing database as it is.
 `app/modules/database/migration_manager.py` is a separate command the user runs explicitly. It is
 a read-only plan by default and runs only with `--apply`.
-- It compares the database's tables and columns with the schema of every revision, each built in a
-  temporary SQLite file.
+- It compares the database's tables and columns with the schema of every revision, each built in an
+  isolated temporary PostgreSQL schema.
 - Only an exact match is stamped. The append-only triggers that `create_all` never installed are
   then added, and the remaining migrations run.
 - Without an exact match it lists the differences and changes nothing.
-- SQLite files are copied to `<file>.bak-<UTC timestamp>` first.
+- Back up with `pg_dump` and verify an isolated restore before applying changes.
 
-**Evidence.** `tests/test_migration_manager.py` (6 tests) covers:
+**Evidence.** `tests/test_migration_manager.py` covers:
 - a `create_all` database: stamped at head, triggers enforced;
-- a 0001-era database with data: preserved, baseline history created, backup exists;
+- a 0001-era database with data: preserved, baseline history created;
 - a schema with an extra column: refused, nothing written;
 - versioned and empty databases;
 - dry run;
@@ -342,7 +338,6 @@ All commands were run in the worktree on WSL2 (Linux 6.18) on 2026-10-18.
 
 | Command | Result |
 |---------|--------|
-| `uv run pytest -q` (SQLite) | 195 passed, 1 skipped (`test_sheets_live`: needs live Google credentials) |
 | `TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest -q` (postgres:17-alpine) | 195 passed, 1 skipped |
 | `alembic upgrade head && alembic check && alembic downgrade base && alembic upgrade head` (PostgreSQL) | OK, "No new upgrade operations detected" |
 | 0005 on populated PostgreSQL: backfill, UPDATE/DELETE blocked by trigger, downgrade keeps data | OK |

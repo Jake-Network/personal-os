@@ -1,7 +1,7 @@
-"""Preserve SQLite pending task ordering for the patched checkpoint saver."""
-from alembic import op
-import sqlalchemy as sa
+"""Retain the historical checkpoint revision as a PostgreSQL no-op.
 
+The task_path column has been present in checkpoint_writes since revision 0011.
+"""
 
 revision = "0016_checkpoint_task_path"
 down_revision = "0015_decision_source_message"
@@ -10,12 +10,8 @@ depends_on = None
 
 
 def upgrade():
-    # PostgreSQL has carried this column since 0011; SQLite saver 3.1 adds it.
-    # Runtime saver setup must never perform this DDL against an existing DB.
-    if op.get_bind().dialect.name == "sqlite":
-        op.add_column("writes", sa.Column("task_path", sa.Text(), nullable=False, server_default=""))
+    pass
 
 
 def downgrade():
-    if op.get_bind().dialect.name == "sqlite":
-        op.drop_column("writes", "task_path")
+    pass

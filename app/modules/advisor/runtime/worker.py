@@ -60,6 +60,8 @@ async def process_one(database):
                 repository = RunRepository(checking)
                 repository.heartbeat(run_id, owner, generation)
                 authorization.require(checking, auth)
+                from app.modules.agent.briefing import require_run_authorized
+                require_run_authorized(checking, repository.get(run_id))
                 checking.commit()
 
         async def heartbeat():
@@ -79,8 +81,10 @@ async def process_one(database):
 
         def command_guard():
             # The lease fence and local data changes share one short transaction.
-            repo.fence(run_id, owner, generation)
+            owned = repo.fence(run_id, owner, generation)
             authorization.require(session, auth)
+            from app.modules.agent.briefing import require_run_authorized
+            require_run_authorized(session, owned)
 
         def record_data_operations(operations, *, command_plan, command_query, source_message_ids,
                                    recording_allowed=False):
@@ -108,7 +112,9 @@ async def process_one(database):
                     recorded_operations=(run.runtime_metadata or {}).get('data_operations'),
                     recorded_command_plan=(run.runtime_metadata or {}).get('data_command_plan'),
                     recorded_command_query=(run.runtime_metadata or {}).get('data_command_query'),
-                    recorded_command_source_ids=(run.runtime_metadata or {}).get('data_command_source_ids'))
+                    recorded_command_source_ids=(run.runtime_metadata or {}).get('data_command_source_ids'),
+                    run_id=run_id, run_owner=owner, run_generation=generation,
+                    data_commands_allowed=not bool(metadata.get('schedule_id')))
                 saved = await graph.aget_state(config)
                 pending = {item.id for task_state in saved.tasks for item in task_state.interrupts}
                 response_id = run.checkpoint.get('question_id')
@@ -131,7 +137,8 @@ async def process_one(database):
                             if source_id:
                                 require_live_request_sources(session, LLMRequest(model=run.model, instructions='', input=[],
                                     source_snapshot_id=source_id,
-                                    excluded_categories=tuple(str(c) for c in advisor_manager.sharing_exclusions(session, body.options()))))
+                                    excluded_categories=tuple(str(c) for c in advisor_manager.sharing_exclusions(session, body.options()))),
+                                    outbound=False)
                             selected = {'title': scenario.title, 'assumptions': scenario.assumptions,
                                         'constraints': scenario.constraints, 'source_snapshot_id': source_id,
                                         'prior_results': scenario.results}
@@ -225,6 +232,8 @@ async def process_one(database):
                 'tool_calls': state.get('tool_calls', 0),
                 'proposals': [{'id': a.id, 'action': a.action, 'payload': a.payload, 'rationale': a.rationale} for a in actions],
                 'memory_proposals': [{'id': m.id, 'kind': m.kind, 'content': m.content} for m in mems]}
+            from app.modules.playbooks.selection import record_usage
+            result['playbooks'] = record_usage(session, run_id, snapshot_id)
             result['comparison'] = {'scenarios': scenario_views, 'evidence_basis': evidence,
                                     'limitations': result['limitations']} if scenarios else None
             result['artifacts'] = ([{'kind': 'message', 'id': str(reply.id), 'revision': row.answer_revision}]
@@ -238,6 +247,8 @@ async def process_one(database):
             repo.append_event(run_id, 'delta', {'text': answer, 'answer_revision': row.answer_revision}, f'answer:{row.answer_revision}', worker_id=owner, generation=generation)
             repo.append_event(run_id, 'done', result, f'done:{row.answer_revision}', worker_id=owner, generation=generation)
             repo.transition(run_id, 'completed', worker_id=owner, generation=generation, result=result)
+            from app.modules.agent.reflection import after_run
+            after_run(session, run_id, state)
             session.commit()
         except (LeaseLost, CheckpointLeaseLost):
             session.rollback()

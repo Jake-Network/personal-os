@@ -10,17 +10,9 @@ depends_on = None
 
 
 def _change_precision(old_type, new_type):
-    with op.batch_alter_table("manual_value_changes") as batch:
-        for column in ("old_value", "new_value"):
-            batch.alter_column(column, existing_type=old_type, type_=new_type,
-                               existing_nullable=True)
-    # SQLite's batch operation recreates the table, which drops its triggers.
-    # PostgreSQL alters the columns in place and retains the original trigger.
-    if op.get_bind().dialect.name == "sqlite":
-        for action in ("UPDATE", "DELETE"):
-            op.execute(f"""CREATE TRIGGER manual_value_changes_no_{action.lower()}
-                BEFORE {action} ON manual_value_changes
-                BEGIN SELECT RAISE(ABORT, 'Manual value history is append-only'); END""")
+    for column in ("old_value", "new_value"):
+        op.alter_column("manual_value_changes", column, existing_type=old_type, type_=new_type,
+                        existing_nullable=True)
 
 
 def upgrade():

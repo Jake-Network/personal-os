@@ -39,24 +39,19 @@ def upgrade_database(engine, timeout=60):
     The migration lock and Alembic DDL share one connection/transaction. A second
     bootstrap re-inspects the version only after the first one releases its lock.
     """
+    from app.modules.database.database import validate_database_url
+    validate_database_url(str(engine.url))
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('Migration timeout must be a positive finite number')
     deadline = time.monotonic() + timeout
     with _connect(engine, deadline) as connection:
         with connection.begin():
             remaining_ms = max(1, math.ceil((deadline - time.monotonic()) * 1000))
-            if connection.dialect.name == 'sqlite':
-                connection.exec_driver_sql(f'PRAGMA busy_timeout={remaining_ms}')
-                # Explicit BEGIN also makes SQLite DDL rollback on migration failure.
-                connection.exec_driver_sql('BEGIN IMMEDIATE')
-            elif connection.dialect.name == 'postgresql':
-                connection.execute(text("SELECT set_config('lock_timeout', :timeout, true)"),
-                                   {'timeout': f'{remaining_ms}ms'})
-                identity = connection.exec_driver_sql('SELECT current_database(), current_schema()').one()
-                key = int.from_bytes(hashlib.sha256(repr(tuple(identity)).encode()).digest()[:8], 'big', signed=True)
-                connection.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
-            else:
-                raise StartupMigrationError('Automatic migration supports SQLite and PostgreSQL only')
+            connection.execute(text("SELECT set_config('lock_timeout', :timeout, true)"),
+                               {'timeout': f'{remaining_ms}ms'})
+            identity = connection.exec_driver_sql('SELECT current_database(), current_schema()').one()
+            key = int.from_bytes(hashlib.sha256(repr(tuple(identity)).encode()).digest()[:8], 'big', signed=True)
+            connection.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
             check_collations(connection)
             if has_unversioned_tables(connection):
                 raise StartupMigrationError('Existing database has no Alembic history; use explicit legacy adoption first '
@@ -96,9 +91,7 @@ def main():
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError('Invalid migration timeout')
         settings.data_dir.mkdir(parents=True, exist_ok=True)
-        kwargs = {}
-        if settings.resolved_database_url.startswith('postgresql'):
-            kwargs['connect_args'] = {'connect_timeout': max(1, min(5, math.ceil(timeout)))}
+        kwargs = {'connect_args': {'connect_timeout': max(1, min(5, math.ceil(timeout)))}}
         engine = create_engine(settings.resolved_database_url, **kwargs)
         upgrade_database(engine, timeout=timeout)
         return 0

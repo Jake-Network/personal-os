@@ -1,7 +1,9 @@
 import os
 from collections.abc import AsyncIterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,20 +44,81 @@ class ExplodingProvider(FakeProvider):
         yield
 
 
-# Set to run the suite against PostgreSQL, e.g. the compose DB (a dedicated test database: tables are dropped).
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
+# The configured database must be disposable. Each test owns fresh schemas;
+# fixtures never drop tables from the configured database's existing schemas.
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+
+
+@contextmanager
+def migrated_database_url(tmp_path, name):
+    """A disposable database upgraded to Alembic head: an isolated schema on PostgreSQL when configured."""
+    from alembic import command
+    from sqlalchemy import create_engine, make_url, text
+    from app.modules.database.migration_manager import alembic_config
+    if not TEST_DATABASE_URL.startswith("postgresql"):
+        pytest.fail("Set TEST_DATABASE_URL to a disposable PostgreSQL database")
+    schema = name + "_" + uuid4().hex
+    admin = create_engine(TEST_DATABASE_URL)
+    with admin.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
+        connection.execute(text('CREATE SCHEMA "' + schema + '"'))
+    url = make_url(TEST_DATABASE_URL).update_query_dict(
+        {"options": "-csearch_path=" + schema + ",public"}).render_as_string(hide_password=False)
+    migration = alembic_config(url)
+    migration.attributes["version_table_schema"] = schema
+    try:
+        command.upgrade(migration, "head")
+        yield url
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text('DROP SCHEMA "' + schema + '" CASCADE'))
+        admin.dispose()
 
 
 @pytest.fixture
-def session(request, tmp_path):
-    url = TEST_DATABASE_URL
-    if url in {'sqlite://', 'sqlite:///:memory:'} and {'client', 'locked_client'} & set(request.fixturenames):
-        # HTTP subscribers, authentication checks and the server worker own separate
-        # transactions. Sharing one StaticPool connection can roll back another
-        # coroutine's uncommitted evidence; use independent disposable connections.
-        url = f"sqlite:///{tmp_path / 'api.db'}"
-    db.init(url)
-    Base.metadata.drop_all(db.engine)
+def postgres_database():
+    from uuid import uuid4
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+
+    if not TEST_DATABASE_URL:
+        pytest.fail("Set TEST_DATABASE_URL to a disposable PostgreSQL database")
+    configured = make_url(TEST_DATABASE_URL)
+    if configured.get_backend_name() != "postgresql":
+        pytest.fail("TEST_DATABASE_URL must use PostgreSQL")
+    admin = create_engine(configured)
+    schemas = []
+    with admin.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
+
+    def create():
+        schema = "personal_test_" + uuid4().hex
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        schemas.append(schema)
+        return configured.update_query_dict({
+            "options": f"-csearch_path={schema},public",
+        }).render_as_string(hide_password=False)
+
+    try:
+        yield create
+    finally:
+        if db.engine is not None:
+            db.engine.dispose()
+        with admin.begin() as connection:
+            for schema in reversed(schemas):
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+@pytest.fixture
+def postgres_url(postgres_database):
+    return postgres_database()
+
+
+@pytest.fixture
+def session(postgres_url):
+    db.init(postgres_url)
     db.create_schema()
     with db.session() as s:
         yield s
@@ -79,12 +142,13 @@ def checkpoint_schema(session):
     import importlib
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
 
     # Official saver tables belong to explicit migrations, outside ORM create_all.
     # Only this disposable test fixture installs them; application startup never does.
     with db.engine.begin() as connection:
-        if "checkpoints" not in inspect(connection).get_table_names():
+        schema = connection.execute(text("SELECT current_schema()")).scalar_one()
+        if "checkpoints" not in inspect(connection).get_table_names(schema=schema):
             with Operations.context(MigrationContext.configure(connection)):
                 importlib.import_module("migrations.versions.0011_advisor_checkpoints").upgrade()
                 importlib.import_module("migrations.versions.0016_checkpoint_task_path").upgrade()
@@ -95,6 +159,7 @@ def client(session, monkeypatch, checkpoint_schema):
     from app.main import app
     from app.modules.documents import document_manager
     from app.modules.jobs import job_manager
+    from app.modules.agent import reflection
 
     async def idle_worker(_database, stop):
         await stop.wait()
@@ -103,6 +168,7 @@ def client(session, monkeypatch, checkpoint_schema):
     # worker remains active so legacy SSE tests exercise durable server execution.
     monkeypatch.setattr(document_manager, "process_pending", idle_worker)
     monkeypatch.setattr(job_manager, "process_pending", idle_worker)
+    monkeypatch.setattr(reflection, "process_pending", idle_worker)
     # The API only answers to loopback hosts (LocalTrustMiddleware); TestClient defaults to "testserver".
     with TestClient(app, base_url="http://127.0.0.1:8000") as c:
         from app.config import settings
@@ -149,3 +215,11 @@ def seeded(session):
         session.add(CashflowEntry(occurred_on=d.replace(day=5), kind="expense", amount=Decimal("2000000")))
     session.commit()
     return session
+
+
+@pytest.fixture(autouse=True)
+def isolated_symbol_directory(monkeypatch):
+    """Legacy domain tests never contact a live public listing service."""
+    from app.modules.portfolio.symbol_directory import symbol_directory
+    monkeypatch.setattr(symbol_directory, 'resolve', lambda symbol, currency='USD': {
+        'status': 'unavailable', 'symbol': None, 'candidates': [], 'source': 'nasdaq_trader', 'as_of': None})

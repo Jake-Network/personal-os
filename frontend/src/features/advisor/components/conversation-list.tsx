@@ -131,6 +131,7 @@ export function ConversationList({ activeId, onNavigate }: { activeId: number | 
             className={cn('block px-3.5 py-2 text-foreground hover:bg-muted', c.id === activeId && 'bg-accent hover:bg-accent')}>
             <div className='truncate text-ui font-medium'>{c.title}</div>
             <div className='text-2xs text-faint'>
+              {c.origin === 'schedule' && <span className='mr-1 rounded bg-accent px-1 text-accent-foreground'>예약 브리핑</span>}
               {relative(c.updated_at)}
               {c.domain && ` · ${DOMAINS.find(d => d.key === c.domain)?.label ?? ''}`}
             </div>

@@ -29,25 +29,13 @@ def upgrade():
         sa.Column("record_id", sa.Integer(), nullable=False),
         sa.Column("imported_at", sa.DateTime(timezone=True), nullable=False),
     )
-    with op.batch_alter_table("holdings") as batch:
-        batch.alter_column(
-            "quantity",
-            existing_type=sa.Numeric(24, 8),
-            type_=sa.Numeric(32, 12),
-            existing_nullable=False,
-        )
-        batch.alter_column(
-            "avg_cost",
-            existing_type=sa.Numeric(20, 4),
-            type_=sa.Numeric(32, 12),
-            existing_nullable=True,
-        )
-        batch.alter_column(
-            "last_price",
-            existing_type=sa.Numeric(20, 4),
-            type_=sa.Numeric(32, 12),
-            existing_nullable=True,
-        )
+    for column, old_type, nullable in (
+        ("quantity", sa.Numeric(24, 8), False),
+        ("avg_cost", sa.Numeric(20, 4), True),
+        ("last_price", sa.Numeric(20, 4), True),
+    ):
+        op.alter_column("holdings", column, existing_type=old_type,
+                        type_=sa.Numeric(32, 12), existing_nullable=nullable)
     op.create_table(
         "financial_transactions",
         sa.Column("id", sa.Integer(), primary_key=True),

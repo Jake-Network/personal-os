@@ -307,3 +307,157 @@ def test_failed_pre_version_compound_confirmation_does_not_hide_original_request
     assert result['commands'] == []
     assert len(result['operations']) == 1
     assert result['operations'][0]['resource'] == 'accounts'
+
+
+def holding_pending(session):
+    conversation, run, current, snapshot = pending(session)
+    snapshot.context_categories = ['investment']
+    query = 'QALOT $42.25 8주 더 있어. 이 보유분 저장해줘'
+    session.get(AdvisorMessage, run.user_message_id).content = query
+    command = {'operation': 'update', 'resource': 'holdings', 'command_index': 5,
+               'selector': {'symbol': 'QALOT'}, 'values': {'delta': '8', 'avg_cost': '42.25'}}
+    run.input_payload = {**run.input_payload, 'message': query}
+    run.runtime_metadata = {'data_command_plan': [command], 'data_command_query': query,
+                            'data_command_validation_version': 2}
+    run.result = {**run.result, 'data_operations': [
+        {'operation': 'create', 'resource': 'holdings', 'command_index': 0, 'status': 'saved'},
+        {'operation': 'update', 'resource': 'holdings', 'command_index': 5, 'status': 'needs_input'}]}
+    session.flush()
+    return conversation, run, current, snapshot
+
+
+def clarification_turn(session, conversation, current, snapshot, query):
+    current.status, current.context_snapshot_id, current.content = 'complete', snapshot.id, query
+    answer = AdvisorMessage(conversation_id=conversation.id, role='assistant', status='complete',
+                            content='계좌가 다르면 별도 보유분으로 저장할 수 있습니다.', context_snapshot_id=snapshot.id)
+    session.add(answer)
+    session.flush()
+    session.add(AdvisorRun(id=str(uuid4()), conversation_id=conversation.id, request_id=str(uuid4()),
+        status='completed', user_message_id=current.id, assistant_message_id=answer.id,
+        input_payload={'message': query}, runtime_metadata={}, result={}))
+    latest = AdvisorMessage(conversation_id=conversation.id, role='user', status='pending', content='그러면 그렇게 해줘')
+    session.add(latest)
+    session.flush()
+    return latest, answer
+
+
+def test_then_assent_and_explicit_separate_account_save_are_followups():
+    assert is_data_followup('그러면 그렇게 해줘')
+    assert is_data_followup('그럼 그대로 저장해줘')
+    assert is_data_followup('다른 계좌의 별도 보유분으로 저장해줘')
+    assert not is_data_followup('그러면 다른 질문인데 운동 추천해줘')
+
+
+def test_account_separation_discussion_is_checked_and_carried_to_the_pending_request(session):
+    conversation, run, current, snapshot = holding_pending(session)
+    discussion = '그러면 같은 ticker로 하나 더 저장하면 안되나? 계좌가 서로 다른거에 사놓은 거라서'
+    latest, answer = clarification_turn(session, conversation, current, snapshot, discussion)
+    result = find_pending_commands(session, conversation_id=conversation.id, message_id=latest.id,
+                                   query=latest.content, excluded=set())
+    assert result is not None
+    assert result['query'].startswith(run.input_payload['message'])
+    assert discussion in result['query']
+    assert {current.id, answer.id, run.user_message_id, run.assistant_message_id} <= set(result['source_message_ids'])
+    assert [operation['command_index'] for operation in result['operations'] if operation['status'] == 'needs_input'] == [5]
+
+
+@pytest.mark.parametrize('blocked_role', ['user', 'assistant'])
+def test_sharing_off_for_the_account_clarification_blocks_pending_recovery(session, blocked_role):
+    from app.modules.context.record_privacy import set_record_policy
+    conversation, _, current, snapshot = holding_pending(session)
+    latest, answer = clarification_turn(session, conversation, current, snapshot,
+        '그러면 같은 ticker로 하나 더 저장하면 안되나? 계좌가 서로 다른거에 사놓은 거라서')
+    set_record_policy(session, 'advisor_messages', current.id if blocked_role == 'user' else answer.id, False)
+    assert find_pending_commands(session, conversation_id=conversation.id, message_id=latest.id,
+                                 query=latest.content, excluded=set()) is None
+
+
+@pytest.mark.parametrize('query', [
+    '새로운 질문인데 계좌가 다르면 이직 준비는 어떻게 할까?',
+    '같은 ticker로 하나 더 저장하면 안되나? 내일 운동 계획은 어때?',
+    '같은 ticker로 하나 더 저장하면 안되나? 친구 계좌가 다른거라서',
+])
+def test_unrelated_questions_do_not_extend_the_holding_pending_scope(session, query):
+    conversation, _, current, snapshot = holding_pending(session)
+    latest, _ = clarification_turn(session, conversation, current, snapshot, query)
+    assert find_pending_commands(session, conversation_id=conversation.id, message_id=latest.id,
+                                 query=latest.content, excluded=set()) is None
+
+
+def test_reextract_skeleton_preserves_the_original_pending_index(session):
+    conversation, run, current, _ = holding_pending(session)
+    skeleton = {'operation': 'update', 'resource': 'holdings', 'command_index': 5,
+                'selector': {'symbol': 'QALOT'}, 'values': {}, 'reextract': True}
+    run.runtime_metadata = {**run.runtime_metadata, 'data_command_plan': [skeleton]}
+    session.flush()
+    result = find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
+                                   query=current.content, excluded=set())
+    assert result is not None and result['commands'] == [skeleton]
+    assert result['operations'][-1]['command_index'] == 5
+
+
+def test_pending_update_can_become_a_separate_create_only_with_current_user_authority():
+    original = {'operation': 'update', 'resource': 'holdings', 'selector': {'symbol': 'QALOT'},
+                'values': {'delta': '8', 'avg_cost': '42.25'}}
+    candidate = {'operation': 'create', 'resource': 'holdings', 'selector': {}, 'separate_position': True,
+                 'values': {'symbol': 'QALOT', 'quantity': '8', 'avg_cost': '42.25', 'currency': 'USD'}}
+    clarification = '다른 계좌의 별도 보유분으로 저장해줘'
+    assert resolution_allowed(original, candidate, clarification)
+    assert not resolution_allowed(original, candidate, '응')
+    assert not resolution_allowed(original, {**candidate, 'separate_position': False}, clarification)
+    assert not resolution_allowed(original, {**candidate, 'values': {**candidate['values'], 'symbol': 'OTHER'}}, clarification)
+    assert not resolution_allowed(original, {**candidate, 'values': {**candidate['values'], 'quantity': '16'}}, clarification)
+
+
+def test_separate_account_authority_does_not_turn_old_numbers_into_a_current_correction():
+    original = {'operation': 'update', 'resource': 'holdings', 'selector': {'symbol': 'QALOT'},
+                'values': {'delta': '8', 'avg_cost': '42.25'}}
+    candidate = {'operation': 'create', 'resource': 'holdings', 'selector': {}, 'separate_position': True,
+                 'values': {'symbol': 'QALOT', 'quantity': '8', 'avg_cost': '42.25', 'currency': 'USD'}}
+    authority = 'QALOT 평균 매입가 42.25달러 8주 저장해줘. 계좌가 서로 다른거라서'
+    assert resolution_allowed(original, candidate, '그러면 그렇게 해줘', authorization_query=authority)
+    changed = {**candidate, 'values': {**candidate['values'], 'avg_cost': '8'}}
+    assert not resolution_allowed(original, changed, '그러면 그렇게 해줘', authorization_query=authority)
+
+
+def unindexed_partial_holding_rejection(session, *, label='NYSEARCA:QALOT', plan=True):
+    conversation, run, current, snapshot = holding_pending(session)
+    saved = [{'operation': 'create', 'resource': 'holdings', 'command_index': index,
+              'selector': {}, 'values': {'symbol': f'QASAVED{index}', 'quantity': '1'}} for index in range(5)]
+    query = run.input_payload['message']
+    run.runtime_metadata = {'data_command_plan': saved if plan else [], 'data_command_query': query,
+                            'data_command_validation_version': 2}
+    run.result = {**run.result, 'data_operations': [
+        *[{'operation': 'create', 'resource': 'holdings', 'command_index': index, 'status': 'saved'} for index in range(5)],
+        {'operation': 'update', 'resource': 'holdings', 'status': 'needs_input', 'target_label': label,
+         'message': '이 항목의 수량·금액이 사용자 원문과 일치하지 않아 저장하지 않았습니다.'}]}
+    session.flush()
+    return conversation, run, current, snapshot
+
+
+def test_version_two_partial_batch_recovers_only_the_unindexed_grounded_holding(session):
+    from copy import deepcopy
+    conversation, run, current, _ = unindexed_partial_holding_rejection(session)
+    metadata, result_before = deepcopy(run.runtime_metadata), deepcopy(run.result)
+    result = find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
+                                   query=current.content, excluded=set())
+    assert result is not None
+    recovered = [command for command in result['commands'] if command.get('reextract')]
+    assert recovered == [{'operation': 'update', 'resource': 'holdings', 'selector': {},
+                          'values': {'symbol': 'QALOT'}, 'reextract': True, 'command_index': 5}]
+    assert [operation['command_index'] for operation in result['operations'] if operation['status'] == 'saved'] == list(range(5))
+    assert [operation['command_index'] for operation in result['operations'] if operation['status'] == 'needs_input'] == [5]
+    assert run.runtime_metadata == metadata and run.result == result_before
+
+
+@pytest.mark.parametrize('label', ['invalid ticker label', 'NYSEARCA:ABSENT', 'NYSEARCA:QALOT:OTHER'])
+def test_partial_batch_rejection_without_a_valid_original_ticker_is_not_recovered(session, label):
+    conversation, _, current, _ = unindexed_partial_holding_rejection(session, label=label)
+    assert find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
+                                 query=current.content, excluded=set()) is None
+
+
+def test_version_two_empty_plan_does_not_gain_recovery_from_a_rejection_label(session):
+    conversation, _, current, _ = unindexed_partial_holding_rejection(session, plan=False)
+    assert find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
+                                 query=current.content, excluded=set()) is None

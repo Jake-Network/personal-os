@@ -3,8 +3,6 @@ from sqlalchemy import create_engine, text
 
 
 def collation_mismatches(connection):
-    if connection.dialect.name != 'postgresql':
-        return []
     database = connection.execute(text('''SELECT datname AS name, datcollversion AS stored,
         pg_database_collation_actual_version(oid) AS actual
         FROM pg_database WHERE datname = current_database()''')).mappings().all()
@@ -32,7 +30,7 @@ def main():
     try:
         with engine.connect() as connection:
             check_collations(connection)
-        print('Collation versions match (or SQLite: not applicable).')
+        print('Collation versions match.')
     finally:
         engine.dispose()
 

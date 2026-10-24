@@ -3,6 +3,7 @@ import asyncio
 import json
 import re
 import hashlib
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal, TypedDict
 
@@ -52,6 +53,8 @@ class Plan(StrictModel):
     tasks: list[ResearchTask] = Field(default_factory=list, max_length=24)
     clarification: Question | None = None
     scenarios: list[Scenario] = Field(default_factory=list, max_length=3)
+    # Slugs from the provided playbook catalog whose full procedure this question needs.
+    playbooks: list[str] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode='after')
     def acyclic(self):
@@ -86,6 +89,7 @@ class FinalAnswer(StrictModel):
 
 class DataCommand(StrictModel):
     command_index: int | None = Field(default=None, ge=0, le=11)
+    separate_position: bool = False
     operation: Literal['create', 'read', 'update', 'delete']
     resource: str = Field(min_length=1, max_length=80)
     selector: dict = Field(default_factory=dict)
@@ -209,6 +213,8 @@ class ConsultationState(TypedDict, total=False):
     data_operations: list[dict]
     data_command_handled: bool
     pending_data_commands: dict | None
+    playbook_slugs: list[str]
+    catalog_refs: list[dict]
 
 
 def scenario_followup(query):
@@ -250,13 +256,17 @@ def needs_analysis(state):
     comparison = re.search(r'비교|시나리오|대안|트레이드오프|장단점|선택|어느.{0,12}(좋|나)|뭐가\s*더|versus|\bvs\b', query, re.I)
     constraints = re.search(r'예산|생활비|지출|소득|잔고|퇴사|런웨이|시간|일정|조건|제약|개월|만원|억|이직|커리어|경력|투자|부채|목표|위험', query)
     explicit = re.search(r'심층|종합\s*분석|상세\s*분석|재무\s*분석|계산해|계산해줘', query)
+    # Recalling an earlier consultation needs a planned search_sessions call, not just recent turns.
+    past_session = re.search(r'지난\s*(?:번|상담|대화)|예전에|이전\s*(?:상담|대화)|과거\s*(?:상담|대화)|'
+                             r'전에\s*(?:상담|얘기|이야기|말했|물어|물었)', query)
     financial_calculation = re.search(r'생활비|지출|소득|잔고|현금|만원|런웨이', query) and re.search(r'버틸|계산|런웨이|면.{0,30}얼마', query)
     time_feasibility = re.search(r'시간|수면|근무', query) and re.search(r'가능|여유|할\s*수|남는|남을|계산|부족', query)
     quantitative_change = (re.search(r'생활비|지출|소득|수입|현금|잔고|근무|시간|수면', query)
         and re.search(r'\d', query)
         and re.search(r'바꾸면|줄이면|늘리면|쓴다면|벌면|가능|충분|부족|남을|남는', query))
     multiple = len(re.findall(r'[?？]', query)) > 1 and bool(constraints)
-    return bool(explicit or (comparison and constraints) or financial_calculation or time_feasibility or quantitative_change or multiple)
+    return bool(explicit or past_session or (comparison and constraints) or financial_calculation or time_feasibility
+                or quantitative_change or multiple)
 
 
 def structured_response(content, schema):
@@ -272,10 +282,25 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                              guard=None, current_message_id=None, on_progress=None, run_authorization=None,
                              on_stream=None, command_guard=None, on_data_operations=None,
                              recorded_operations=None, recorded_command_plan=None,
-                             recorded_command_query=None, recorded_command_source_ids=None):
+                             recorded_command_query=None, recorded_command_source_ids=None,
+                             run_id=None, run_owner=None, run_generation=None, data_commands_allowed=True):
     assembler = ContextAssembler(session, manager, conversation, options, model,
-                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization)
+                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization, run_id=run_id,
+                                 run_owner=run_owner, run_generation=run_generation)
     tools = read_tools(assembler)
+    base_options = options
+    explicit_playbooks = bool(getattr(options, 'playbook_ids', ()) or getattr(options, 'playbook_slugs', ()))
+
+    def apply_playbooks(state):
+        # A plan's choice persists in the checkpoint; a user's explicit choice always wins.
+        if options is not None and not explicit_playbooks and state.get('playbook_slugs'):
+            assembler.options = replace(base_options, playbook_slugs=tuple(state['playbook_slugs']))
+
+    def playbook_catalog(query, exclude_slugs=()):
+        if options is None or session is None:
+            return {}, []
+        from app.modules.playbooks.selection import catalog_context
+        return catalog_context(session, manager.sharing_exclusions(session, options), query, exclude_slugs=exclude_slugs)
 
     async def progress(stage, **metadata):
         if on_progress:
@@ -289,6 +314,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 'model_finished': '모델 응답을 받았습니다. 결과를 확인하고 있습니다.',
                 'structured_output_invalid': '응답 형식을 확인하고 다시 정리하고 있습니다.',
                 'summarizing': '이전 대화에서 필요한 맥락을 정리하고 있습니다.',
+                'loading_playbook': '선택한 상담 절차를 불러와 조사 계획에 반영하고 있습니다.',
                 'web_searching': '허용한 공개 검색어로 웹 자료를 확인하고 있습니다.',
             }
             if stage == 'model_started':
@@ -307,11 +333,13 @@ def build_conversation_graph(session, manager, conversation, options, model, che
     def pending_tasks(state):
         return [task for task in state['plan']['tasks'] if state.get('results', {}).get(task['id']) is None]
 
-    async def call(state, instruction, schema=None, derived=None, history_source_ids=()):
+    async def call(state, instruction, schema=None, derived=None, history_source_ids=(), context_data=None, context_flags=()):
         max_calls, _, _ = limits(state)
         assembler.baseline_snapshot_id = state.get('baseline_snapshot_id')
         attempts = 2 if schema else 1
         validation_errors = []
+        apply_playbooks(state)
+        assembler.run_catalog_refs = list(state.get('catalog_refs', []))
         for attempt in range(attempts):
             if state['model_calls'] >= max_calls:
                 raise AdvisorError('상담 모델 호출 한도에 도달했습니다.', provider_code='analysis_budget_exceeded')
@@ -324,10 +352,16 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 prompt += '\n검증 오류(필드 경로와 오류 유형만): ' + json.dumps(validation_errors, ensure_ascii=False)
                 prompt += '\n필수 필드와 자료형을 확인하고, 스키마에 없는 필드와 JSON 밖의 설명은 빼세요.'
             extra = {'history_source_ids': history_source_ids} if history_source_ids else {}
+            if context_data or context_flags:
+                extra.update(context_data=context_data, context_flags=context_flags)
             request, package = await assembler.assemble(state['query'], instruction=prompt,
                 derived=derived, sources=state.get('sources', []), structured_output=schema is not None, **extra)
             state['sources'] = list(dict.fromkeys([*state.get('sources', []), package.snapshot_id]))
             state['snapshot_id'], state['context'] = package.snapshot_id, assembler.last_context
+            offered = [{key: value for key, value in ref.items() if key != 'role'}
+                       for ref in getattr(package, 'record_references', []) if ref.get('role') == 'catalog']
+            if offered:
+                state['catalog_refs'] = offered
             state['numeric_basis'] = getattr(package, 'payload', {}).get('data', {})
             async def stream_delta(text):
                 if on_stream:
@@ -359,6 +393,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     raise AdvisorError('모델의 구조화된 분석 결과를 검증하지 못했습니다.', provider_code='invalid_structured_output')
 
     async def execute_data_commands(state):
+        if not data_commands_allowed:
+            return state
         from app.modules.advisor.data_command_intent import command_requested, operation_authorized, instruction_text, observation_authorized, factual_write_authorized, shared_write_authorized, direct_write_authorized
         from app.modules.advisor.command_grounding import legacy_command_grounded
         from app.modules.personal_data.personal_data_manager import RESOURCES
@@ -406,6 +442,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 'source_quote는 현재 사용자 확인 메시지를 그대로 복사하세요. '
                 '같은 종목을 추가 보유한다는 확인이면 update와 delta=원문 추가 수량을 사용하세요. '
                 '기존 수량과의 합계를 quantity로 만들어내지 마세요. '
+                '단 사용자가 다른 계좌의 별도 보유분이라고 확인하면 create와 separate_position=true로 '
+                '원래 추가 수량·평균 매입가를 새 보유분에 보존하세요. 기존 보유분에 더하거나 원가를 합치지 마세요. '
                 '기존 계좌/종목과 유일하게 일치하면 서버가 그 기록을 갱신하게 selector에 이름/종목을 쓰세요. '
                 if pending else '')
             result = await call(working,
@@ -427,6 +465,8 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 '증감 요청은 사용자가 말한 증감 값만 values에 delta로 넣으세요(서버가 현재 값에 적용합니다). '
                 '화폐·보유량 수치는 정밀도를 유지한 문자열로 반환하세요. 값이 없는 원가·가격을 0으로 만들지 마세요. '
                 '주식 보유 사실과 시세 연결은 다릅니다. 미국 주식의 $ 표시는 USD로 해석하고, '
+                '같은 티커라도 계좌가 다른 별도 보유분은 create, separate_position=true로 분리합니다. '
+                '계좌명을 모르면 account_id를 만들지 않고 계좌 미지정인 별도 보유분으로 저장할 수 있습니다. '
                 '평균 매입가라고 한 가격은 avg_cost에 넣으세요. 신규 보유 종목은 bare symbol과 통화로 저장할 수 있으며 '
                 '거래소가 없어도 보유 사실을 먼저 저장합니다. 거래소를 추측하거나 그 이유로 저장을 보류하지 마세요. '
                 '운동 시간은 duration_seconds 정수 초로 환산하고, 거리·대회 등 별도 필드가 없는 원문 정보는 notes에 보존하세요. '
@@ -437,23 +477,37 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 derived={'pending_request': pending} if pending else None,
                 history_source_ids=tuple(pending.get('source_message_ids', [])) if pending else ())
             await assembler.check()
-            commands, rejected = [], []
+            commands, rejected, deferred_commands = [], [], []
             selected_indices = set()
             selected_holdings = set()
             rejected_by_index = {}
-            for command in result.commands:
+            for ordinal, command in enumerate(result.commands):
                 candidate = command.model_dump(exclude={'command_index'})
+                from app.modules.advisor.data_commands import separate_position_authorized
+                separate = bool(command.resource == 'holdings' and separate_position_authorized(command_query))
+                if separate and command.operation in {'create', 'update'}:
+                    # The user's request determines a new position. A model's
+                    # optional flag cannot authorize overwriting the old lot.
+                    fields = dict(candidate['values'])
+                    identity = candidate['selector'].get('symbol', candidate['selector'].get('ticker'))
+                    if 'symbol' not in fields and 'ticker' not in fields and identity:
+                        fields['symbol'] = identity
+                    if 'delta' in fields and 'quantity' not in fields:
+                        fields['quantity'] = fields.pop('delta')
+                    candidate = {**candidate, 'operation': 'create', 'separate_position': True,
+                                 'selector': {}, 'values': fields}
                 index = command.command_index
                 bound = None
                 if pending:
-                    if index is None:
+                    if index not in pending_by_index:
                         matching = [key for key, item in pending_by_index.items()
                             if item.get('resource') == command.resource and
                             (item.get('operation') == command.operation or
-                             item.get('operation') == 'create' and command.operation == 'update')]
+                             item.get('operation') == 'create' and command.operation == 'update' or
+                             separate and item.get('operation') == 'update' and command.operation == 'create')]
                         if len(matching) > 1:
                             matching = [key for key in matching if key not in original_by_index or
-                                        resolution_allowed(original_by_index[key], candidate, state['query'])]
+                                        resolution_allowed(original_by_index[key], candidate, state['query'], authorization_query=command_query)]
                         if pending.get('legacy'):
                             # Old receipts contained only resource/action, so their
                             # otherwise identical slots have no further identity.
@@ -475,8 +529,10 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     merged_values = {**original.get('values', {}), **supplied_values}
                     if command.operation == 'update' and 'delta' in supplied_values and 'quantity' not in supplied_values:
                         merged_values.pop('quantity', None)
+                    if separate and candidate['operation'] == 'create' and 'quantity' in supplied_values:
+                        merged_values.pop('delta', None)
                     candidate = {**candidate, 'values': merged_values}
-                if pending and bound and command.source_quote in state['query']:
+                if pending and bound and command.source_quote in state['query'] and not separate:
                     from app.modules.advisor.data_commands import confirmed_holding_addition
                     candidate = confirmed_holding_addition(session, candidate, original_query=pending['query'],
                         original_command=original, clarification=pending.get('clarification', ''),
@@ -484,9 +540,11 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 continuation_authorized = bool(pending and bound and index not in selected_indices and
                     command.resource == bound.get('resource') and
                     (command.operation == bound.get('operation') or
-                     bound.get('operation') == 'create' and command.operation == 'update') and
-                    (original is None or resolution_allowed(original, candidate, state['query'])) and
-                    (not pending.get('legacy') or original is not None or legacy_command_grounded(pending['query'], candidate)) and
+                     bound.get('operation') == 'create' and command.operation == 'update' or
+                     separate and bound.get('operation') == 'update' and command.operation == 'create') and
+                    (original is None or resolution_allowed(original, candidate, state['query'], authorization_query=command_query)) and
+                    (not (pending.get('legacy') and original is None or original and original.get('reextract'))
+                     or legacy_command_grounded(pending['query'], candidate)) and
                     (operation_authorized(pending['query'], bound.get('operation')) or
                      pending.get('allow_data_recording') and observation_authorized(pending['query']) and
                      command.resource in {'workout-logs', 'accounts', 'holdings'}))
@@ -502,6 +560,12 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     valid = valid and (continuation_authorized or operation_authorized(command.source_quote, 'delete'))
                 if command.operation in {'create', 'update'}:
                     valid = valid and factual_write_authorized(command_query if pending else own_quote, command.resource)
+                if command.resource == 'holdings' and candidate['operation'] == 'create':
+                    ticker = candidate['values'].get('symbol', candidate['values'].get('ticker'))
+                    if isinstance(ticker, str):
+                        bare_ticker = ticker.rsplit(':', 1)[-1]
+                        valid = valid and bool(re.search(r'(?<![A-Za-z0-9.:-])' + re.escape(bare_ticker) +
+                            r'(?![A-Za-z0-9.:-])', own_instruction if pending else own_quote, re.I))
                 monetary = {'balance', 'quantity', 'avg_cost', 'amount', 'value', 'monthly_payment', 'delta'}
                 for key, value in candidate['values'].items():
                     if key in monetary and value is not None:
@@ -521,6 +585,9 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                         except InvalidOperation:
                             valid = False
                 if valid:
+                    from app.modules.advisor.symbol_resolution import resolve_command_symbol
+                    candidate = await resolve_command_symbol(candidate, command_query)
+                    await assembler.check()
                     if pending and pending.get('legacy') and command.resource == 'holdings':
                         values, selector = candidate['values'], candidate['selector']
                         target = (str(selector.get('id') or selector.get('symbol') or values.get('symbol') or
@@ -529,7 +596,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                         if target in selected_holdings:
                             continue
                         selected_holdings.add(target)
-                    index = index if pending else len(commands)
+                    index = index if pending else ordinal
                     selected_indices.add(index)
                     commands.append({**candidate, 'command_index': index})
                 else:
@@ -540,6 +607,18 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     if bound and index not in selected_indices:
                         rejected_by_index[index] = {**rejection, 'command_index': index}
                     else:
+                        # Retain a source-grounded identity for a rejected stock
+                        # row, never its untrusted monetary values. A later
+                        # clarification must re-ground every field in its own row.
+                        if not pending and command.resource == 'holdings' and command.operation in {'create', 'update'}:
+                            values, selector = candidate['values'], candidate['selector']
+                            symbol = values.get('symbol') or values.get('ticker') or selector.get('symbol') or selector.get('ticker')
+                            skeleton = {'operation': command.operation, 'resource': 'holdings', 'selector': {},
+                                'values': {'symbol': symbol}, 'command_index': ordinal, 'reextract': True}
+                            if (isinstance(symbol, str) and own_quote and own_quote in own_instruction and
+                                    legacy_command_grounded(command_query, skeleton) and re.search(r'(?<![A-Za-z0-9.:-])' + re.escape(symbol.rsplit(':', 1)[-1]) + r'(?![A-Za-z0-9.:-])', own_quote, re.I)):
+                                deferred_commands.append(skeleton)
+                                rejection['command_index'] = ordinal
                         rejected.append(rejection)
             if command_guard:
                 command_guard()
@@ -549,9 +628,12 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             assembler.validate_sources(working.get('sources', []))
             from app.modules.advisor.data_commands import execute_commands
             operations = execute_commands(session, commands=commands, conversation_id=conversation.id,
-                message_id=current_message_id, excluded=manager.sharing_exclusions(session, options))
-            operations = [{**operation, 'command_index': commands[index]['command_index']}
+                message_id=current_message_id, excluded=manager.sharing_exclusions(session, options),
+                authorized_query=command_query)
+            operations = [{**operation, 'command_index': commands[index]['command_index'],
+                           **({'symbol_resolution': commands[index]['symbol_resolution']} if commands[index].get('symbol_resolution') else {})}
                           for index, operation in enumerate(operations)] + rejected
+            commands.extend(deferred_commands)
             if pending:
                 # Unresolved siblings survive a partial clarification without replaying saved ones.
                 for index, operation in pending_by_index.items():
@@ -588,12 +670,18 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 assembler.validate_sources(working.get('sources', []))
                 session.commit()
 
+            def refresh_write_authorization():
+                if command_guard:
+                    command_guard()
+                assembler.validate_sources(working.get('sources', []))
+
             refresh_authorization()
             persist_operations()
             # The finance gateway is synchronous. Keep the lease heartbeat alive;
             # cancellation waits for the thread before this session can be closed.
             task = asyncio.create_task(asyncio.to_thread(refresh_quotes, session,
-                excluded=manager.sharing_exclusions(session, options), authorization_check=refresh_authorization))
+                excluded=manager.sharing_exclusions(session, options), authorization_check=refresh_authorization,
+                write_authorization_check=refresh_write_authorization))
             try:
                 refreshed = await asyncio.shield(task)
             except asyncio.CancelledError:
@@ -663,7 +751,11 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'clarification': None, 'needs_replan': False,
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
         conditional = state.get('clarification_unknown') or state.get('clarification_count', 0) >= 2
-        result = await call(state,
+        from app.modules.playbooks.selection import MAX_SELECTED
+        loaded = list(state.get('playbook_slugs', []))
+        catalog, catalog_flags = (({}, []) if explicit_playbooks or len(loaded) >= MAX_SELECTED
+                                  else playbook_catalog(state['query'], exclude_slugs=loaded))
+        planning = (
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
             '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
             '일반 조언은 명시적 한계와 조건부 설명으로 바로 답하고 선택적인 선호를 반복해서 묻지 마세요. '
@@ -677,13 +769,45 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             '명시된 조건만 구조화하세요. 불명확하면 확인 질문을 하세요. '
             + ('사용자가 모르는 조건 또는 확인 질문 한도에 도달했습니다. 추가 확인 질문을 하지 마세요. '
                '모르는 값은 unresolved에 남기고, 가정을 사실로 채우지 말고 가능한 범위의 조건부 답변을 준비하세요. '
-               if conditional else '') + '허용 도구: ' + ', '.join(tools), Plan,
-            {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
-             'selected_scenarios': state.get('selected_scenarios', []),
-             'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})})
+               if conditional else '') + '이전 상담의 내용이나 결론이 필요하면 search_sessions로 검색하세요(당시 기록이며 '
+            '현재 사실이 아님). 허용 도구: ' + ', '.join(tools) + '. ')
+        derived_plan = {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
+                        'selected_scenarios': state.get('selected_scenarios', []),
+                        'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})}
+        result = await call(state, planning +
+            ('playbook_catalog에서 이 질문에 필요한 승인된 상담 절차가 있으면 slug를 playbooks에 최대 2개 넣으세요. '
+             '카탈로그에 없는 slug는 쓰지 마세요.' if catalog else ''), Plan, derived_plan,
+            context_data={'playbook_catalog': catalog} if catalog else None, context_flags=catalog_flags)
         _, max_tools, _ = limits(state)
         if any(t.tool not in tools for t in result.tasks):
             raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
+        # An optional procedure choice never fails the consultation: unknown slugs are dropped and
+        # disclosed. Without a catalog in this call there was nothing to choose from.
+        offered = {item['slug'] for item in state.get('numeric_basis', {}).get('playbook_catalog', {}).get('items', {}).values()}
+        requested = list(dict.fromkeys(result.playbooks)) if catalog else []
+        chosen = [slug for slug in requested if slug in offered]
+        if len(chosen) < len(requested):
+            state['limitations'] = [*state['limitations'], '승인된 플레이북 목록에 없는 절차는 사용하지 않았습니다.']
+        present = [item.get('slug') for item in state.get('numeric_basis', {}).get('playbooks', {}).get('items', {}).values()]
+        combined = list(dict.fromkeys([*loaded, *present, *chosen]))
+        newly = [slug for slug in combined[:MAX_SELECTED] if slug not in present]
+        result.playbooks = combined[:MAX_SELECTED]
+        if newly:
+            state['playbook_slugs'] = combined
+            apply_playbooks(state)
+            # Progressive disclosure inside the run: the catalog showed only summaries, so plan the
+            # research again once the chosen procedures' steps are in data.playbooks.
+            if state['model_calls'] < limits(state)[0] - 2:
+                await progress('loading_playbook', playbooks=newly)
+                result = await call(state, planning + 'data.playbooks에 방금 선택한 승인된 상담 절차의 단계가 있습니다. '
+                    '그 절차가 확인하라는 근거를 허용 도구로 조사하도록 계획을 다시 작성하세요. 절차는 사실이 아닙니다.',
+                    Plan, derived_plan)
+                if any(t.tool not in tools for t in result.tasks):
+                    raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
+                result.playbooks = combined[:MAX_SELECTED]
+            else:
+                state['limitations'] = [*state['limitations'],
+                    '호출 예산이 부족해 선택한 상담 절차를 조사 계획에는 반영하지 못하고 답변에만 사용했습니다.']
         previous = {task['id']: task for task in state.get('plan', {}).get('tasks', [])}
         proposed = {task.id: task.model_dump() for task in result.tasks}
         invalidated = {key for key in previous.keys() | proposed.keys()
@@ -703,7 +827,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         if conditional:
             result.clarification = None
         return {**state, 'results': kept, 'plan': result.model_dump(), 'problem': problem, 'needs_replan': False,
-                'baseline_snapshot_id': '', 'baseline_payload': {},
+                'playbook_slugs': state.get('playbook_slugs', []), 'baseline_snapshot_id': '', 'baseline_payload': {},
                 'clarification': result.clarification.model_dump() if result.clarification else None}
 
     def clarify(state):

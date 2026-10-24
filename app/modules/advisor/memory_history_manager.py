@@ -110,11 +110,24 @@ async def index_history(session, after_id=0, limit=100):
     return {"indexed": len(rows), "next_after_id": rows[-1].id, "complete": len(rows) < limit}
 
 
-def relevant_history(session, query, conversation_id, excluded, options, limit=6):
-    """Filter before local hybrid retrieval; index is always disposable and hash-checked."""
-    from app.config import settings
-    from app.modules.documents import embedding
-    terms = list(dict.fromkeys(re.findall(r"[\w가-힣]{3,}", query)))[:12]
+def _replayable(session, message, excluded, options):
+    """(allowed, snapshot): the cumulative turn filter, live provenance and document scope for one message."""
+    prefix = list(session.scalars(select(AdvisorMessage).options(defer(AdvisorMessage.content)).where(AdvisorMessage.conversation_id == message.conversation_id,
+        AdvisorMessage.id <= message.id, AdvisorMessage.status == "complete").order_by(AdvisorMessage.id)))
+    if message not in history_privacy_manager.filter(session, prefix, excluded).kept:
+        return False, None
+    if not source_allowed(session, [{"table": "advisor_messages", "id": message.id}], excluded):
+        return False, None
+    snapshot = session.get(ContextSnapshot, message.context_snapshot_id) if message.context_snapshot_id else None
+    if snapshot:
+        evidence = snapshot.payload.get("document_dependencies", []) + snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", [])
+        if evidence and (not options.document_search or any(options.document_ids and e["document_id"] not in options.document_ids for e in evidence)):
+            return False, None
+    return True, snapshot
+
+
+def _history_scope(options):
+    """The user's period and linked-record filters for past-message retrieval."""
     scope = []
     if options.history_since:
         scope.append(AdvisorMessage.created_at >= options.history_since)
@@ -124,6 +137,15 @@ def relevant_history(session, query, conversation_id, excluded, options, limit=6
         if target is not None:
             scope.append(AdvisorMessage.conversation_id.in_(select(ConversationLink.conversation_id).where(
                 ConversationLink.kind == kind, ConversationLink.target == str(target))))
+    return scope
+
+
+def relevant_history(session, query, conversation_id, excluded, options, limit=6):
+    """Filter before local hybrid retrieval; index is always disposable and hash-checked."""
+    from app.config import settings
+    from app.modules.documents import embedding
+    terms = list(dict.fromkeys(re.findall(r"[\w가-힣]{3,}", query)))[:12]
+    scope = _history_scope(options)
     lexical = list(session.scalars(select(AdvisorMessage).options(defer(AdvisorMessage.content)).where(*scope,
         AdvisorMessage.conversation_id != conversation_id, AdvisorMessage.status == "complete",
         or_(*(AdvisorMessage.content.icontains(t, autoescape=True) for t in terms))).order_by(AdvisorMessage.id.desc()).limit(100))) if terms else []
@@ -135,17 +157,10 @@ def relevant_history(session, query, conversation_id, excluded, options, limit=6
     candidates = {m.id: m for m in [*lexical, *(m for m, _ in indexed_rows if m.id in indexes)]}
     safe, snapshots = [], {}
     for message in candidates.values():
-        prefix = list(session.scalars(select(AdvisorMessage).options(defer(AdvisorMessage.content)).where(AdvisorMessage.conversation_id == message.conversation_id,
-            AdvisorMessage.id <= message.id, AdvisorMessage.status == "complete").order_by(AdvisorMessage.id)))
-        if message not in history_privacy_manager.filter(session, prefix, excluded).kept:
+        allowed, snapshot = _replayable(session, message, excluded, options)
+        if not allowed:
             continue
-        if not source_allowed(session, [{"table": "advisor_messages", "id": message.id}], excluded):
-            continue
-        snapshot = session.get(ContextSnapshot, message.context_snapshot_id) if message.context_snapshot_id else None
         if snapshot:
-            evidence = snapshot.payload.get("document_dependencies", []) + snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", [])
-            if evidence and (not options.document_search or any(options.document_ids and e["document_id"] not in options.document_ids for e in evidence)):
-                continue
             snapshots[snapshot.id] = snapshot
         if message.id in indexes and indexes[message.id].content_hash != _history_hash(message.content):
             del indexes[message.id]
@@ -228,3 +243,74 @@ def relevant_experiences(session, query, excluded, options, limit=4):
             "interpretation": "historical_decision_not_current_state_or_prediction"} for r in decisions]},
         refs=[{"table": "conversation_summaries", "id": r.id} for r in summaries]
             + [{"table": "decision_journal", "id": r.id} for r in decisions], flags=flags)
+
+
+SESSION_EXCERPT_CHARS = 600
+SESSION_SEARCH_CHARS = 6000
+
+
+def search_sessions(session, query, conversation_id, excluded, options, max_sessions=4, per_session=4):
+    """Past consultations as question-answer pairs, grouped by conversation (Hermes-style session search).
+
+    Matching reuses the filtered hybrid history retrieval. Each matched turn brings its
+    counterpart (the question for an answer, the answer for a question) only if that message
+    passes the same sharing checks. Titles are omitted: they may echo a withheld first message.
+    Returns (data, refs, flags); the caller records refs as snapshot provenance.
+    """
+    limit = max_sessions * per_session
+    semantic, _, flags = relevant_history(session, query, conversation_id, excluded, options, limit=limit)
+    flags = [flag for flag in flags if flag["code"] != "history_search_results_omitted"]
+    # The model writes a short search query, and Korean keywords are often two syllables:
+    # match those too, then apply the same per-message sharing checks.
+    terms = list(dict.fromkeys(re.findall(r"[\w가-힣]{2,}", query)))[:12]
+    lexical = list(session.scalars(select(AdvisorMessage).where(*_history_scope(options),
+        AdvisorMessage.conversation_id != conversation_id, AdvisorMessage.status == "complete",
+        or_(*(AdvisorMessage.content.icontains(t, autoescape=True) for t in terms))).order_by(AdvisorMessage.id.desc()).limit(100))) if terms else []
+    scored = {message.id: (0.5, message) for message in semantic}
+    for message in lexical:
+        hits = sum(t.casefold() in message.content.casefold() for t in terms) / len(terms)
+        if message.id in scored or _replayable(session, message, excluded, options)[0]:
+            scored[message.id] = (scored.get(message.id, (0, None))[0] + hits, message)
+    matches = [message for _, message in sorted(scored.values(), key=lambda pair: (-pair[0], -pair[1].id))[:limit]]
+    order, grouped = [], {}
+    for message in matches:
+        if message.conversation_id not in grouped:
+            order.append(message.conversation_id)
+            grouped[message.conversation_id] = {}
+        turn = grouped[message.conversation_id]
+        turn[message.id] = message
+        counterpart = session.scalar(select(AdvisorMessage).where(
+            AdvisorMessage.conversation_id == message.conversation_id, AdvisorMessage.status == "complete",
+            *((AdvisorMessage.id < message.id, AdvisorMessage.role == "user") if message.role == "assistant"
+              else (AdvisorMessage.id > message.id, AdvisorMessage.role == "assistant")))
+            .order_by(AdvisorMessage.id.desc() if message.role == "assistant" else AdvisorMessage.id).limit(1))
+        if counterpart is not None and counterpart.id not in turn and _replayable(session, counterpart, excluded, options)[0]:
+            turn[counterpart.id] = counterpart
+    sessions, refs, used, omitted, truncated = [], [], 0, 0, 0
+    for conversation in order:
+        if len(sessions) >= max_sessions:
+            omitted += 1
+            continue
+        items = []
+        for message in sorted(grouped[conversation].values(), key=lambda m: m.id)[:per_session * 2]:
+            content = message.content
+            if len(content) > SESSION_EXCERPT_CHARS:
+                content, truncated = content[:SESSION_EXCERPT_CHARS] + " …(생략)", truncated + 1
+            items.append({"ref": f"advisor_messages:{message.id}", "role": message.role,
+                          "created_at": message.created_at.isoformat(), "content": content, "historical": True})
+        cost = sum(len(item["content"]) for item in items)
+        if used + cost > SESSION_SEARCH_CHARS:
+            omitted += 1
+            continue
+        used += cost
+        sessions.append({"conversation_id": conversation, "historical": True, "messages": items,
+                         "last_activity": items[-1]["created_at"]})
+        refs.extend({"table": "advisor_messages", "id": int(item["ref"].split(":")[1])} for item in items)
+    if omitted:
+        flags.append({"code": "session_search_results_omitted", "category": "system", "count": omitted})
+    if truncated:
+        flags.append({"code": "session_search_excerpts_truncated", "category": "system", "count": truncated})
+    if not sessions:
+        flags.append({"code": "session_search_no_match", "category": "system"})
+    return ({"historical": True, "interpretation": "past_sessions_not_current_facts", "sessions": sessions},
+            refs, flags)

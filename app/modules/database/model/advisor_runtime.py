@@ -14,7 +14,6 @@ class AdvisorRun(Base):
     __table_args__ = (
         UniqueConstraint("conversation_id", "request_id", name="uq_advisor_run_request"),
         Index("uq_advisor_active_conversation", "conversation_id", unique=True,
-              sqlite_where=text("status NOT IN ('completed','cancelled','failed')"),
               postgresql_where=text("status NOT IN ('completed','cancelled','failed')")),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

@@ -19,6 +19,7 @@ from app.modules.personal_data.personal_data_manager import RESOURCES
 
 
 def _assent(text):
+    text = re.sub(r'^(?:그러면|그럼)\s+', '', text)
     return bool(re.fullmatch(r'(?:응|네|예|그래|좋아|맞아|확인|오케이|알겠어|ok|yes)(?:[,，.]?\s*(?:그대로|이렇게|그렇게|그걸로|맞게|다|모두|저장|기록|반영|추가|처리|진행|해|하자|줘|주세요|해줘|해주세요|해\s*줘|해\s*주세요|부탁해|부탁해요))*[.!。]*', text, re.I)
         or re.fullmatch(r'(?:그대로|이렇게|그렇게|그걸로)\s*(?:(?:저장|기록|반영|추가|처리|진행)\s*)?(?:해\s*줘|해\s*주세요|해|하자|해주세요)[.!。]*', text))
 
@@ -35,6 +36,9 @@ def is_data_followup(query: str) -> bool:
     if compact in {'아니', '아니요', '싫어', '됐어', '괜찮아'}:
         return False
     if _assent(text):
+        return True
+    from app.modules.advisor.data_commands import separate_position_authorized
+    if separate_position_authorized(text):
         return True
     completion = re.sub(r'^(?:응|네|예|그래|좋아|맞아|확인|오케이|ok|yes)(?:[,，]\s*|\s+)(?=\S)', '', text, count=1, flags=re.I)
     # A short answer may supply a currency, named account or numeric field the
@@ -67,6 +71,7 @@ def _sources_allowed(session, run, metadata, excluded):
 
 
 _REJECTED_INPUT = '요청한 변경 내용과 원문의 수치를 확인해 주세요.'
+_UNINDEXED_HOLDING_INPUT = '이 항목의 수량·금액이 사용자 원문과 일치하지 않아 저장하지 않았습니다.'
 
 
 def _legacy_rejections(operations):
@@ -96,6 +101,23 @@ def _failed_legacy_refresh_followup(run, metadata, operations):
         and operation.get('message') == '지원하지 않는 데이터 작업입니다.' for operation in unsupported))
 
 
+def _holding_account_clarification(query):
+    """A factual account distinction can survive a discussion before consent."""
+    text = instruction_text(query).strip()
+    if not text or len(query) > 600 or re.search(
+            r'다른\s*질문|새로운?\s*(?:질문|주제)|만약|가정|예시|샘플|친구|동료|엄마|아빠|형|누나|'
+            r'운동|러닝|날씨|이직|추천|일정|목표|대출|부채|잔액|잔고', text):
+        return False
+    distinction = re.search(r'(?:다른|별도(?:의)?)\s*계좌|계좌(?:가|는)?\s*(?:서로\s*)?(?:다른|다르|달라)', text)
+    if not distinction:
+        return False
+    same_position = re.search(r'같은\s*(?:ticker|티커|종목|주식|[A-Z][A-Z0-9.:-]*)', query, re.I)
+    if same_position and re.search(r'저장|기록|보유|추가', query):
+        return True
+    return bool(len(text) <= 100 and not re.search(r'[?？]', text) and re.fullmatch(
+        r'(?:응[,，]?\s*)?계좌(?:가|는)?\s*(?:서로\s*)?(?:다른|다르|달라)[가-힣\s.!。]*', text))
+
+
 def find_pending_commands(session, *, conversation_id, message_id, query, excluded):
     if not is_data_followup(query):
         return None
@@ -106,6 +128,7 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
         AdvisorRun.user_message_id < message_id,
     ).order_by(AdvisorRun.user_message_id.desc(), AdvisorRun.created_at.desc()).limit(8))
     cutoff = utcnow() - timedelta(hours=24)
+    account_clarifications = []
     for run in runs:
         if run.status != 'completed' or run.created_at < cutoff:
             return None
@@ -123,8 +146,17 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
         if not pending:
             # Recover old releases' lost assent turns, but stop as soon as another
             # real topic or an already successful data request intervenes.
-            if operations or not is_data_followup(run.input_payload.get('message', '')):
+            previous_query = run.input_payload.get('message', '')
+            from app.modules.advisor.data_commands import separate_position_authorized
+            account_clarification = (_holding_account_clarification(previous_query)
+                                     or separate_position_authorized(previous_query))
+            if operations or not (is_data_followup(previous_query) or account_clarification):
                 return None
+            if account_clarification:
+                checked_ids = _sources_allowed(session, run, metadata, excluded)
+                if checked_ids is None:
+                    return None
+                account_clarifications.append((previous_query, checked_ids))
             continue
         commands = metadata.get('data_command_plan', [])
         if not isinstance(commands, list) or any(not isinstance(command, dict) for command in commands):
@@ -145,8 +177,38 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
             indices = set(command_indices)
             if len(indices) != len(command_indices):
                 return None
-            pending = [operation for operation in pending
-                       if isinstance(operation.get('command_index'), int)
+            # Version 2 stored successful commands but could omit a rejected row's
+            # slot. Recover only its original ticker, never its rejected numbers.
+            if commands and isinstance(original_query, str):
+                from app.modules.advisor.command_grounding import legacy_command_grounded
+                used = indices | {operation['command_index'] for operation in operations
+                    if isinstance(operation.get('command_index'), int) and not isinstance(operation['command_index'], bool)}
+                recovered_symbols = set()
+                restored = []
+                for operation in operations:
+                    label = operation.get('target_label')
+                    if (operation.get('status') == 'needs_input' and operation.get('resource') == 'holdings'
+                            and operation.get('operation') in {'create', 'update'} and 'command_index' not in operation
+                            and operation.get('message') == _UNINDEXED_HOLDING_INPUT
+                            and isinstance(label, str) and len(label) <= 32
+                            and re.fullmatch(r'(?:[A-Z][A-Z0-9]*:)?[A-Z0-9][A-Z0-9.-]*', label)):
+                        symbol = label.rsplit(':', 1)[-1]
+                        skeleton = {'operation': operation['operation'], 'resource': 'holdings',
+                                    'selector': {}, 'values': {'symbol': symbol}, 'reextract': True}
+                        next_index = next((index for index in range(12) if index not in used), None)
+                        if (symbol not in recovered_symbols and next_index is not None
+                                and legacy_command_grounded(original_query, skeleton)):
+                            skeleton['command_index'] = next_index
+                            commands = [*commands, skeleton]
+                            operation = {**operation, 'command_index': next_index}
+                            used.add(next_index)
+                            indices.add(next_index)
+                            recovered_symbols.add(symbol)
+                    restored.append(operation)
+                operations = restored
+            pending = [operation for operation in operations
+                       if operation.get('status') == 'needs_input'
+                       and isinstance(operation.get('command_index'), int)
                        and not isinstance(operation['command_index'], bool)
                        and operation['command_index'] in indices]
             if not pending:
@@ -173,7 +235,24 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
         answer = session.get(AdvisorMessage, run.assistant_message_id)
         if not isinstance(original_query, str) or not original_query.strip():
             return None
-        return {'commands': commands, 'query': original_query, 'operations': operations,
+        authorized_query = original_query
+        if account_clarifications:
+            if {operation['resource'] for operation in pending} != {'holdings'}:
+                return None
+            pending_indices = {operation.get('command_index') for operation in pending}
+            pending_symbols = {str(group.get('symbol') or group.get('ticker')).upper().split(':')[-1]
+                for index, command in enumerate(commands) if command.get('command_index', index) in pending_indices
+                for group in (command.get('values', {}), command.get('selector', {}))
+                if group.get('symbol') or group.get('ticker')}
+            for clarification_query, checked_ids in reversed(account_clarifications):
+                mentioned = set(re.findall(r'(?<![A-Za-z0-9.:-])(?:[A-Z][A-Z0-9]*:)?([A-Z][A-Z0-9.:-]+)(?![A-Za-z0-9.:-])', clarification_query)) - {'TICKER', 'USD', 'KRW'}
+                if mentioned and any(symbol.split(':')[-1] not in pending_symbols for symbol in mentioned):
+                    return None
+                if not source_allowed(session, [{'table': 'advisor_messages', 'id': key} for key in checked_ids], excluded):
+                    return None
+                source_ids = list(dict.fromkeys([*source_ids, *checked_ids]))
+                authorized_query += '\n사용자 계좌 구분 설명: ' + clarification_query
+        return {'commands': commands, 'query': authorized_query, 'original_query': original_query, 'operations': operations,
                 'source_message_ids': source_ids, 'source_snapshot_id': snapshot_id,
                 'clarification': answer.content if answer else '', 'legacy': legacy,
                 'allow_data_recording': bool(metadata.get('data_command_recording_allowed',
@@ -281,11 +360,15 @@ def _explicit_correction(field, value, clarification):
     return bool(field in text and str(value) in text)
 
 
-def resolution_allowed(original: dict, candidate: dict, clarification: str = '') -> bool:
+def resolution_allowed(original: dict, candidate: dict, clarification: str = '', *, authorization_query: str | None = None) -> bool:
     if original.get('resource') != candidate.get('resource'):
         return False
     operation = original.get('operation')
-    if candidate.get('operation') != operation and not (operation == 'create' and candidate.get('operation') == 'update'):
+    from app.modules.advisor.data_commands import separate_position_authorized
+    separate_create = (original.get('resource') == 'holdings' and operation == 'update'
+                       and candidate.get('operation') == 'create' and candidate.get('separate_position') is True
+                       and separate_position_authorized(authorization_query if authorization_query is not None else clarification))
+    if candidate.get('operation') != operation and not (operation == 'create' and candidate.get('operation') == 'update') and not separate_create:
         return False
     old_selector = _canonical_fields(original.get('selector') or {})
     new_selector = _canonical_fields(candidate.get('selector') or {})
@@ -293,9 +376,16 @@ def resolution_allowed(original: dict, candidate: dict, clarification: str = '')
     new_values = _canonical_fields(candidate.get('values') or {})
     if not all(isinstance(value, dict) for value in (old_selector, new_selector, old_values, new_values)):
         return False
+    if separate_create:
+        symbol = old_selector.get('symbol') or old_values.get('symbol')
+        if not symbol or not _same_identity('symbol', symbol, new_values.get('symbol')):
+            return False
     # Existing target filters may be narrowed, never silently replaced or dropped.
     for field, value in old_selector.items():
-        if field not in new_selector or not _same_identity(field, value, new_selector[field]):
+        if separate_create and field in {'id', 'account_id'}:
+            continue
+        supplied = new_values.get(field) if separate_create else new_selector.get(field)
+        if supplied is None or not _same_identity(field, value, supplied):
             return False
     if operation == 'create':
         identity_fields = {'holdings': ('symbol', 'account_id'), 'accounts': ('name',),
@@ -314,6 +404,10 @@ def resolution_allowed(original: dict, candidate: dict, clarification: str = '')
         if value is None:
             continue  # Missing input may be filled by the clarification.
         supplied = new_values.get(field, new_selector.get(field))
+        if separate_create and field == 'delta' and supplied is None:
+            supplied = new_values.get('quantity')
+        if separate_create and field == 'account_id' and supplied is None:
+            continue
         if field == 'quantity' and supplied is None and candidate.get('operation') == 'update':
             supplied = new_values.get('delta')
         if supplied is None:

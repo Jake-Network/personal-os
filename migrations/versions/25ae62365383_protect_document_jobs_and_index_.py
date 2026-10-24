@@ -14,21 +14,15 @@ branch_labels = None
 depends_on = None
 
 
-def _repair_legacy_triggers(connection):
-    if connection.dialect.name == 'postgresql':
-        op.execute('''CREATE OR REPLACE FUNCTION reject_monthly_snapshot_mutation() RETURNS trigger
-            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Monthly snapshots are append-only'; END; $$''')
-        op.execute('''DO $$ BEGIN IF NOT EXISTS (
-            SELECT 1 FROM pg_trigger WHERE tgname = 'monthly_snapshots_immutable'
-            AND tgrelid = 'monthly_snapshots'::regclass) THEN
-            CREATE TRIGGER monthly_snapshots_immutable BEFORE UPDATE OR DELETE
-            ON monthly_snapshots FOR EACH ROW EXECUTE FUNCTION reject_monthly_snapshot_mutation();
-            END IF; END $$''')
-    elif connection.dialect.name == 'sqlite':
-        for action in ('UPDATE', 'DELETE'):
-            op.execute(f'''CREATE TRIGGER IF NOT EXISTS monthly_snapshots_no_{action.lower()}
-                BEFORE {action} ON monthly_snapshots
-                BEGIN SELECT RAISE(ABORT, 'Monthly snapshots are append-only'); END''')
+def _repair_legacy_triggers():
+    op.execute('''CREATE OR REPLACE FUNCTION reject_monthly_snapshot_mutation() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Monthly snapshots are append-only'; END; $$''')
+    op.execute('''DO $$ BEGIN IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'monthly_snapshots_immutable'
+        AND tgrelid = 'monthly_snapshots'::regclass) THEN
+        CREATE TRIGGER monthly_snapshots_immutable BEFORE UPDATE OR DELETE
+        ON monthly_snapshots FOR EACH ROW EXECUTE FUNCTION reject_monthly_snapshot_mutation();
+        END IF; END $$''')
 
 
 def _backfill_references(connection):
@@ -56,25 +50,16 @@ def _backfill_references(connection):
         after = batch[-1]['id']
 
 
-def _chunk_constraint(connection, create):
-    sequence = None
-    if connection.dialect.name == 'sqlite':
-        sequence = connection.execute(sa.text("SELECT seq FROM sqlite_sequence WHERE name='document_chunks'")).scalar()
-    with op.batch_alter_table('document_chunks', table_kwargs={'sqlite_autoincrement': True}) as batch:
-        if create:
-            batch.create_unique_constraint('uq_document_chunk_ordinal', ['version_id', 'ordinal'])
-        else:
-            batch.drop_constraint('uq_document_chunk_ordinal', type_='unique')
-    if sequence is not None:
-        # Rebuilding an AUTOINCREMENT table must not reuse any historical source id.
-        connection.execute(sa.text("UPDATE sqlite_sequence SET seq=max(seq,:seq) WHERE name='document_chunks'"), {'seq': sequence})
-        if connection.execute(sa.text("SELECT seq FROM sqlite_sequence WHERE name='document_chunks'")).scalar() is None:
-            connection.execute(sa.text("INSERT INTO sqlite_sequence(name,seq) VALUES ('document_chunks',:seq)"), {'seq': sequence})
+def _chunk_constraint(create):
+    if create:
+        op.create_unique_constraint('uq_document_chunk_ordinal', 'document_chunks', ['version_id', 'ordinal'])
+    else:
+        op.drop_constraint('uq_document_chunk_ordinal', 'document_chunks', type_='unique')
 
 
 def upgrade():
     connection = op.get_bind()
-    _repair_legacy_triggers(connection)
+    _repair_legacy_triggers()
     op.create_table('context_document_references',
         sa.Column('snapshot_id', sa.String(36), nullable=False),
         sa.Column('document_id', sa.Integer(), nullable=False),
@@ -89,12 +74,12 @@ def upgrade():
                       sa.column('ordinal', sa.Integer))
     keep = sa.select(sa.func.min(chunks.c.id)).group_by(chunks.c.version_id, chunks.c.ordinal)
     connection.execute(chunks.delete().where(chunks.c.id.not_in(keep)))
-    _chunk_constraint(connection, True)
+    _chunk_constraint(True)
     _backfill_references(connection)
 
 
 def downgrade():
-    _chunk_constraint(op.get_bind(), False)
+    _chunk_constraint(False)
     op.drop_column('document_versions', 'lease_expires_at')
     op.drop_column('document_versions', 'lease_owner')
     op.drop_column('advisor_messages', 'context_purged')

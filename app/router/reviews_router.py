@@ -21,6 +21,8 @@ def list_decision_reviews(decision_id: int, session: Session = Depends(get_sessi
 def create_decision_review(decision_id: int, body: OutcomeCreate, session: Session = Depends(get_session)):
     try:
         record = review_manager.add_outcome(session, decision_id, body)
+        from app.modules.agent.reflection import after_outcome
+        after_outcome(session, decision_id, record.id)
         session.commit()
         return record
     except LookupError as exc:

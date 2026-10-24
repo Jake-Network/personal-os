@@ -7,6 +7,7 @@
 import type { ActionProposalView } from './actionProposalView';
 import type { ArtifactRef } from './artifactRef';
 import type { MemoryProposalView } from './memoryProposalView';
+import type { PlaybookUseView } from './playbookUseView';
 import type { RunResultContext } from './runResultContext';
 import type { RunResultDataOperationsItem } from './runResultDataOperationsItem';
 import type { ScenarioComparison } from './scenarioComparison';
@@ -25,4 +26,5 @@ export interface RunResult {
   model_calls?: number;
   tool_calls?: number;
   data_operations?: RunResultDataOperationsItem[];
+  playbooks?: PlaybookUseView[];
 }

@@ -10,7 +10,6 @@ from app.modules.database.model.base import Base, UTCDateTime, utcnow
 
 class Document(Base):
     __tablename__ = "documents"
-    __table_args__ = {"sqlite_autoincrement": True}
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     categories: Mapped[list[str]] = mapped_column(JSON)
@@ -26,7 +25,6 @@ class Document(Base):
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
-    __table_args__ = {"sqlite_autoincrement": True}
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
     filename: Mapped[str] = mapped_column(String(255))
@@ -48,15 +46,14 @@ class DocumentVersion(Base):
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
-    __table_args__ = (UniqueConstraint("version_id", "ordinal", name="uq_document_chunk_ordinal"),
-                      {"sqlite_autoincrement": True})
+    __table_args__ = (UniqueConstraint("version_id", "ordinal", name="uq_document_chunk_ordinal"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     version_id: Mapped[int] = mapped_column(ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
     ordinal: Mapped[int] = mapped_column()
     page: Mapped[int | None] = mapped_column()
     section: Mapped[str | None] = mapped_column(String(200))
     text: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list[float]] = mapped_column(Vector().with_variant(JSON(), "sqlite"))
+    embedding: Mapped[list[float]] = mapped_column(Vector())
 
 
 class ContextDocumentReference(Base):

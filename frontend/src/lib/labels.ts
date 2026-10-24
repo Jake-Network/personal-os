@@ -86,6 +86,8 @@ const FLAG_TEXT: Record<string, string> = {
   context_section_omitted: '길이 제한으로 우선순위가 낮은 영역을 뺐습니다',
   context_records_summarized: '길이 제한으로 계산된 수치만 남기고 세부 레코드를 뺐습니다',
   data_quality_flags_omitted: '반복되는 데이터 경고 일부를 생략했습니다',
+  playbook_unavailable: '요청한 플레이북은 공유 설정이나 상태 때문에 보내지 않았습니다',
+  playbooks_limited: '한 번에 보낼 수 있는 플레이북 수를 넘어 일부를 뺐습니다',
 };
 
 // Their backend `detail` is guidance for the model (English); the Korean text above says it all.
@@ -129,10 +131,13 @@ export const TABLE_LABEL: Record<string, string> = {
   goals: '목표',
   workout_logs: '운동 기록',
   personal_memories: '기억',
+  playbook_revisions: '플레이북',
 };
 
 export const TOOL_LABEL: Record<string, string> = {
   search_documents: '문서 검색',
+  search_sessions: '이전 상담 검색',
+  search_history: '과거 대화 검색',
   get_accounts_summary: '계좌·자산·부채',
   get_cashflow_summary: '현금흐름',
   get_portfolio_summary: '포트폴리오',
@@ -145,6 +150,7 @@ export const TOOL_LABEL: Record<string, string> = {
   get_goals: '목표',
   get_health_summary: '운동',
   get_profile: '개인 프로필',
+  playbooks: '플레이북',
 };
 
 export const ACTION_LABEL: Record<string, string> = {

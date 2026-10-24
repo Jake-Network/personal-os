@@ -4,6 +4,7 @@ The active provider is whatever the user selected (default: ChatGPT plan). Failu
 recorded and re-raised; the gateway never retries on a different, billable provider.
 """
 
+import asyncio
 import os
 import time
 from collections.abc import AsyncIterator
@@ -16,6 +17,10 @@ from app.modules.auth.oauth_manager import oauth_manager
 from app.modules.crud import app_setting_handler, audit_log_handler, llm_usage_event_handler
 from app.modules.database.model import LLMUsageEvent
 from app.modules.llm.errors import AdvisorError, AuthRequired, QuotaExceeded, ScopeNotAuthorized
+
+# Usage outcomes that are not provider failures: stopped before or during the call by policy.
+BLOCKED_CODES = frozenset({"run_authorization_changed", "source_policy_changed"})
+FAILED_OUTCOMES = frozenset({"failed", "quota_exceeded", "auth_error", "incomplete"})
 from app.modules.llm.providers import (
     ApiKeyProvider,
     ChatGPTPlanProvider,
@@ -85,6 +90,19 @@ class LLMGatewayManager:
             transfer_policy.require_confirmation(session, provider.name)
             from app.modules.context.source_policy import require_live_request_sources
             require_live_request_sources(session, request)
+            if request.run_id:
+                from app.modules.database.model.advisor_runtime import AdvisorRun
+                from app.modules.agent.briefing import require_run_authorized
+                run = session.get(AdvisorRun, request.run_id, populate_existing=True)
+                from app.modules.database.model.base import utcnow
+                if (run is None or run.status != "running" or not request.run_owner
+                        or run.lease_owner != request.run_owner or run.lease_generation != request.run_generation
+                        or run.lease_until is None or run.lease_until <= utcnow()):
+                    raise AdvisorError("상담 실행이 중지되었거나 변경되었습니다.", provider_code="run_authorization_changed")
+                require_run_authorized(session, run)
+            if request.background_job_id is not None:
+                from app.modules.agent.reflection import require_job_authorized
+                require_job_authorized(session, request.background_job_id, request.background_job_owner)
             async for chunk in provider.stream(session, request):
                 if chunk.type == "completed":
                     record["input_tokens"] = chunk.usage.get("input_tokens")
@@ -92,10 +110,14 @@ class LLMGatewayManager:
                     record["outcome"] = "completed"
                 yield chunk
         except AdvisorError as exc:
-            record["outcome"] = {
+            # A consent, lease or sharing change stops the call by design; it is not a provider failure.
+            record["outcome"] = "blocked" if exc.provider_code in BLOCKED_CODES else {
                 QuotaExceeded: "quota_exceeded", AuthRequired: "auth_error", ScopeNotAuthorized: "auth_error",
             }.get(type(exc), "failed")
             record["error_code"] = exc.provider_code or exc.code
+            raise
+        except (asyncio.CancelledError, GeneratorExit):
+            record["outcome"] = record["outcome"] or "cancelled"
             raise
         finally:
             record["outcome"] = record["outcome"] or "failed"

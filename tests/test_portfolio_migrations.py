@@ -6,9 +6,9 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import DatabaseError
 
 
-def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
+def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path, postgres_url):
     config = Config("alembic.ini")
-    url = f"sqlite:///{tmp_path / 'migration.db'}"
+    url = postgres_url
     config.attributes["database_url"] = url
     command.upgrade(config, "head")
     command.check(config)
@@ -23,22 +23,22 @@ def test_fresh_migrations_match_models_and_protect_snapshot_history(tmp_path):
             with engine.begin() as connection:
                 connection.execute(text(statement))
     command.downgrade(config, "0001_baseline")
-    assert "monthly_snapshots" not in inspect(engine).get_table_names()
-    assert "holdings" in inspect(engine).get_table_names()
+    assert "monthly_snapshots" not in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
+    assert "holdings" in inspect(engine).get_table_names(schema=inspect(engine).default_schema_name)
     command.upgrade(config, "head")
     command.check(config)
     engine.dispose()
 
 
 @pytest.mark.parametrize('previous_revision', [None, '0004_portfolio_identity', 'head'])
-def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, monkeypatch, previous_revision):
+def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, monkeypatch, previous_revision, postgres_url):
     from dataclasses import replace
     from fastapi.testclient import TestClient
     from app.modules.database import Database
     from app.modules.database.model import Base
     import app.main as main
 
-    url = f"sqlite:///{tmp_path / 'startup.db'}"
+    url = postgres_url
     config = Config('alembic.ini')
     from alembic.script import ScriptDirectory
     expected_head = ScriptDirectory.from_config(config).get_current_head()
@@ -55,24 +55,24 @@ def test_startup_builds_empty_databases_and_preserves_existing_ones(tmp_path, mo
     monkeypatch.chdir(tmp_path)
     try:
         with TestClient(main.app):
-            tables = set(inspect(database.engine).get_table_names())
+            tables = set(inspect(database.engine).get_table_names(schema=inspect(database.engine).default_schema_name))
             with database.engine.connect() as connection:
                 version = connection.scalar(text('SELECT version_num FROM alembic_version'))
             if previous_revision == '0004_portfolio_identity':  # existing databases are never migrated at startup
                 assert version == previous_revision and 'documents' not in tables
             else:
-                assert tables == set(Base.metadata.tables) | {'alembic_version', 'checkpoints', 'writes'}
+                assert tables == set(Base.metadata.tables) | {'alembic_version', 'checkpoint_migrations', 'checkpoints', 'checkpoint_writes', 'checkpoint_blobs'}
                 assert version == expected_head
             with database.engine.connect() as connection:
                 if previous_revision:
-                    assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == '{}'
+                    assert connection.scalar(text("SELECT value FROM app_settings WHERE key='preserved'")) == {}
     finally:
         if database.engine is not None:
             database.engine.dispose()
 
 
 def test_revision_ids_fit_the_alembic_version_column():
-    # alembic_version.version_num is VARCHAR(32); SQLite does not enforce it, PostgreSQL does.
+    # alembic_version.version_num is VARCHAR(32), enforced by PostgreSQL.
     from alembic.script import ScriptDirectory
     script = ScriptDirectory.from_config(Config("alembic.ini"))
     assert [r.revision for r in script.walk_revisions() if len(r.revision) > 32] == []

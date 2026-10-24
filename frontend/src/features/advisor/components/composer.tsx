@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, FileText, Globe, History, Microscope, MoreHorizontal, SendHorizontal, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
+import { useListPlaybooks } from '@/api-client/generated/playbooks/playbooks';
 import type { Category } from '@/api-client/model';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ import { RecordSelect } from '@/features/personal-data/components/record-select'
 
 import type { AdvisorSend } from '../hooks/use-advisor-send';
 import { MAX_DOCUMENTS } from '../utils/send-logic';
+import { completeSlash, slashSuggestions } from '../utils/slash';
 
 const toolClass =
   'inline-flex h-7 items-center gap-1 rounded-md border border-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5';
@@ -149,6 +151,31 @@ function DocumentPicker({ send }: { send: AdvisorSend }) {
   );
 }
 
+/** `/slug` invokes an approved playbook; the server reads it from the message. */
+function SlashMenu({ send }: { send: AdvisorSend }) {
+  const playbooks = useListPlaybooks(undefined, { query: { enabled: send.input.startsWith('/') } });
+  const options = slashSuggestions(
+    send.input,
+    (playbooks.data ?? []).filter(p => p.status === 'active' && p.active_revision).map(p => ({ slug: p.slug, title: p.active_revision!.title, summary: p.active_revision!.summary })),
+  );
+  if (!options.length) return null;
+  return (
+    <ul aria-label='플레이북 불러오기' className='flex flex-col border-b px-1 py-1'>
+      {options.map(option => (
+        <li key={option.slug}>
+          <button
+            type='button'
+            className='flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+            onClick={() => send.setInput(completeSlash(option.slug))}>
+            <span className='text-ui font-medium'>/{option.slug}</span>
+            <span className='truncate text-xs text-muted-foreground'>{option.title}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Narrow the search over past consultations to a company, project or decision. */
 function HistoryScope({ send }: { send: AdvisorSend }) {
   const { draft, updateDraft, busy } = send;
@@ -254,6 +281,7 @@ export function Composer({
           </p>
         )}
         <div className='rounded-lg border bg-background focus-within:ring-2 focus-within:ring-ring'>
+          {!waiting && <SlashMenu send={send} />}
           <Textarea
             className='max-h-[200px] min-h-[52px] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0'
             placeholder={
