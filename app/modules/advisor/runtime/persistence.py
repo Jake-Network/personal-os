@@ -10,6 +10,24 @@ from app.schema.advisor_runtime_schema import RunCreate, RunView, RunEvent, Work
 
 TERMINAL = frozenset({"completed", "cancelled", "failed"})
 
+def llm_job_running(session, now):
+    from app.modules.crud.review_jobs_handler import LLM_KINDS
+    from app.modules.database.model.review_jobs import BackgroundJob
+    return session.scalar(select(BackgroundJob.id).where(BackgroundJob.kind.in_(LLM_KINDS),
+        BackgroundJob.status == "running", BackgroundJob.lease_until > now).limit(1)) is not None
+
+
+def take_runtime_gate(session):
+    """Serialize every model-calling claimer on one coordination row."""
+    if session.bind.dialect.name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert
+    session.execute(insert(AdvisorRuntimeLock).values(id=1, generation=0).on_conflict_do_nothing())
+    session.execute(update(AdvisorRuntimeLock).where(AdvisorRuntimeLock.id == 1)
+                    .values(generation=AdvisorRuntimeLock.generation + 1))
+
+
 class LeaseLost(RuntimeError):
     """The worker may no longer publish this run."""
 
@@ -96,17 +114,11 @@ class RunRepository:
 
     def claim(self, worker_id, lease_seconds=60):
         # Serialize claimers on a single coordination row: only one global run executes.
-        if self.session.bind.dialect.name == "sqlite":
-            from sqlalchemy.dialects.sqlite import insert
-        else:
-            from sqlalchemy.dialects.postgresql import insert
-        self.session.execute(insert(AdvisorRuntimeLock).values(id=1, generation=0).on_conflict_do_nothing())
-        self.session.execute(update(AdvisorRuntimeLock).where(AdvisorRuntimeLock.id == 1)
-                             .values(generation=AdvisorRuntimeLock.generation + 1))
+        take_runtime_gate(self.session)
         now = utcnow()
         running = self.session.scalar(select(AdvisorRun.id).where(
             AdvisorRun.status.in_(["running", "cancel_requested"]), AdvisorRun.lease_until > now))
-        if running:
+        if running or llm_job_running(self.session, now):
             return None
         candidate = self.session.scalar(select(AdvisorRun).where(AdvisorRun.status == "queued")
                                         .order_by(AdvisorRun.created_at, AdvisorRun.id).limit(1))
@@ -160,6 +172,8 @@ class RunRepository:
                 user.status = "failed"
         self.session.flush()
         self.append_event(run_id, "status", {"status": status}, f"state:{row.revision}")
+        from app.modules.agent.briefing import after_run
+        after_run(self.session, row)
         return row
 
     def respond(self, run_id, request):
@@ -199,6 +213,8 @@ class RunRepository:
                 user.status = "failed"
         self.session.flush()
         self.append_event(run_id, "status", {"status": row.status}, f"cancel:{row.revision}")
+        from app.modules.agent.briefing import after_run
+        after_run(self.session, row)
         return row
 
     def acknowledge_cancel(self, run_id):
@@ -211,6 +227,8 @@ class RunRepository:
                 user.status = "failed"
             self.session.flush()
             self.append_event(run_id, "status", {"status": "cancelled"}, f"cancelled:{row.revision}")
+            from app.modules.agent.briefing import after_run
+            after_run(self.session, row)
         return row
 
     def retry(self, run_id):
@@ -254,6 +272,8 @@ class RunRepository:
                 user.status = "failed"
             self.session.flush()
             self.append_event(row.id, "status", {"status": row.status}, f"recovered:{row.revision}")
+            from app.modules.agent.briefing import after_run
+            after_run(self.session, row)
         return len(rows)
 
     def create_scenario(self, conversation_id, request, *, run_id=None, evidence=None, results=None, unknowns=None):

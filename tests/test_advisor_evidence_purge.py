@@ -1,11 +1,8 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from importlib import import_module
 
 import pytest
-from sqlalchemy import inspect, select, text
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
+from sqlalchemy import select, text
 from langgraph.checkpoint.base import empty_checkpoint
 from app.modules.advisor.runtime.checkpoints import create_checkpointer
 
@@ -29,7 +26,7 @@ def snapshot(session, conversation_id, key, payload):
         data_quality_flags=[], payload=payload, content_hash=key))
 
 
-def test_purge_removes_derived_runtime_copies_and_keeps_unrelated_chat(session):
+def test_purge_removes_derived_runtime_copies_and_keeps_unrelated_chat(session, checkpoint_schema):
     conversation = AdvisorConversation(title='synthetic')
     session.add(conversation)
     session.flush()
@@ -61,10 +58,6 @@ def test_purge_removes_derived_runtime_copies_and_keeps_unrelated_chat(session):
     session.flush()
     unrelated = repo.create(other_conversation.id, RunCreate(request_id='other', message='unrelated'))
     unrelated.result = {'answer': 'unrelated result'}
-    # Explicit test-only migration, using the actual dialect-specific saver schema.
-    if 'checkpoints' not in inspect(session.connection()).get_table_names():
-        with Operations.context(MigrationContext.configure(session.connection())):
-            import_module('migrations.versions.0011_advisor_checkpoints').upgrade()
     run.lease_until = datetime.now(UTC) + timedelta(minutes=5)
     session.commit()
     config = {'configurable': {'thread_id': run.id, 'checkpoint_ns': ''}}

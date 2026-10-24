@@ -164,6 +164,10 @@ def rate_recommendation(body: RecommendationFeedback, session: Session = Depends
         "message_id": message.id, "summary": message.content.splitlines()[0][:200],
         "user_rating": body.user_rating, "user_feedback": body.user_feedback,
     })
+    session.flush()
+    from app.modules.agent.reflection import after_feedback
+    # Optional automatic learning; rating never fails because of it.
+    after_feedback(session, message.id, rec.id, body.user_rating)
     session.commit()
     return {"id": rec.id}
 

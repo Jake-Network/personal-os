@@ -94,13 +94,20 @@ async def _resolve(host: str, port: int) -> list[str]:
     return list(dict.fromkeys(record[4][0] for record in records))
 
 
+PROVIDERS = {"brave", "searxng"}
+
+
 class WebSearchService:
     def __init__(
-        self, api_key: str = "", *, max_pages: int = 3, max_bytes: int = 1_000_000,
+        self, api_key: str = "", *, provider: str = "brave", searxng_url: str = "",
+        max_pages: int = 3, max_bytes: int = 1_000_000,
         timeout_seconds: float = 25, transport: httpx.AsyncBaseTransport | None = None,
         resolver: Callable[[str, int], Awaitable[list[str]]] = _resolve,
     ):
         self.api_key = api_key
+        self.provider = provider.strip().lower()
+        # Operator-configured local instance; result URLs it returns still pass _public_target.
+        self.searxng_url = searxng_url.strip().rstrip("/")
         self.max_pages = max(1, min(max_pages, 5))
         self.max_bytes = max(1024, min(max_bytes, 2_000_000))
         self.timeout_seconds = max(1, min(timeout_seconds, 60))
@@ -141,14 +148,41 @@ class WebSearchService:
             timeout=httpx.Timeout(8), headers={"Accept-Encoding": "identity", "User-Agent": "PersonalOS-WebResearch/1.0"},
         )
 
+    def _searxng_target(self, query: str) -> httpx.URL:
+        # The operator may explicitly select a local or remote instance, but its
+        # URL must not smuggle credentials or extra request parameters.
+        try:
+            configured = self.searxng_url
+            parsed = urlsplit(configured)
+            if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                    or parsed.username is not None or parsed.password is not None
+                    or "?" in configured or "#" in configured or parsed.port == 0
+                    or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in configured)
+                    or "\\" in configured):
+                raise ValueError
+            return httpx.URL(f"{configured}/search", params={"q": query, "format": "json"})
+        except (ValueError, httpx.InvalidURL):
+            raise WebSearchError(
+                "web_search_unavailable",
+                "SearXNG 주소(PERSONAL_OS_SEARXNG_URL)를 확인하세요. 인증 정보·검색 인자 없는 HTTP(S) 주소가 필요합니다.",
+            ) from None
+
     async def _discover(self, query: str) -> list[dict]:
-        url = httpx.URL("https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": self.max_pages + 2})
+        if self.provider == "searxng":
+            url = self._searxng_target(query)
+            headers = None
+        else:
+            url = httpx.URL("https://api.search.brave.com/res/v1/web/search", params={"q": query, "count": self.max_pages + 2})
+            headers = {"X-Subscription-Token": self.api_key}
         async with self._client() as client:
-            status, _, body = await self._read(client, url, headers={"X-Subscription-Token": self.api_key})
+            status, _, body = await self._read(client, url, headers=headers)
+        if status == 403 and self.provider == "searxng":
+            raise WebSearchError("web_search_provider_failed", "SearXNG 설정의 search.formats에 json을 허용하세요.")
         if status != 200:
             raise WebSearchError("web_search_provider_failed", "웹 검색 제공자 요청에 실패했습니다.")
         try:
-            results = json.loads(body).get("web", {}).get("results", [])
+            payload = json.loads(body)
+            results = payload.get("results", []) if self.provider == "searxng" else payload.get("web", {}).get("results", [])
             if not isinstance(results, list):
                 raise ValueError
             return [item for item in results if isinstance(item, dict)][:self.max_pages + 2]
@@ -198,7 +232,9 @@ class WebSearchService:
         query = query.strip()
         if not query or len(query) > 400:
             raise WebSearchError("web_search_invalid_query", "검색어는 1~400자로 입력해 주세요.")
-        if not self.api_key:
+        if self.provider not in PROVIDERS:
+            raise WebSearchError("web_search_unavailable", "지원하지 않는 웹 검색 제공자입니다.")
+        if self.provider == "brave" and not self.api_key:
             raise WebSearchError("web_search_unavailable", "웹 검색 API 키가 설정되지 않았습니다.")
         try:
             async with asyncio.timeout(self.timeout_seconds):

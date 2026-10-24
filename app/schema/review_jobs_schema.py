@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.enums.context_category import Category
+
 
 class OutcomeCreate(BaseModel):
     actual_outcome: str = Field(min_length=1, max_length=20000)
@@ -75,11 +77,52 @@ class ScheduleCreate(BaseModel):
     enabled: bool = False
 
 
-class ScheduleItem(ScheduleCreate):
+class ScheduleItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    name: str
+    kind: str = "period_review"
+    cadence: str
+    enabled: bool
+    local_time: str | None = None
+    options: dict = Field(default_factory=dict)
+    paused_reason: str | None = None
     next_run_at: datetime
     created_at: datetime
+    # Whether model use is pinned to the connection that was current when it was enabled.
+    model_authorized: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def authority_flag(cls, value):
+        if hasattr(value, "authorization"):
+            return {**{key: getattr(value, key) for key in ("id", "name", "kind", "cadence", "enabled", "local_time",
+                    "options", "paused_reason", "next_run_at", "created_at")},
+                    "options": {k: v for k, v in (value.options or {}).items() if k != "model"},
+                    "model_authorized": bool(value.authorization)}
+        return value
+
+
+class BriefingCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    kind: Literal["daily_briefing", "weekly_briefing"] = "daily_briefing"
+    local_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    # Model use is explicit; without it a briefing only refreshes local inbox signals.
+    llm_enabled: bool = False
+    categories: list[Category] = Field(default_factory=list)
+    playbook_ids: list[int] = Field(default_factory=list, max_length=2)
+    enabled: bool = False
+
+    @model_validator(mode="after")
+    def weekly_day(self):
+        if self.kind == "weekly_briefing" and self.weekday is None:
+            raise ValueError("주간 브리핑은 요일을 선택해야 합니다")
+        return self
+
+
+class RunNow(BaseModel):
+    request_id: str = Field(min_length=1, max_length=60)
 
 
 class ScheduleActivation(BaseModel):

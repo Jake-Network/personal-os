@@ -78,6 +78,25 @@ def read_tools(assembler):
                          'experiences': package.payload.get('data', {}).get('search_past_experiences', {})},
                 'snapshot_id': package.snapshot_id, 'data_quality_flags': package.data_quality_flags}
 
+    async def sessions(query):
+        from app.modules.llm.errors import AdvisorError
+        data, refs, flags = await assembler.search_sessions(query)
+        # Excerpts enter the request only through assembly: source checks, budget and snapshot apply.
+        try:
+            _, package = await assembler.assemble(query, context_data={'search_sessions': data},
+                                                  record_sources=refs, context_flags=flags)
+        except AdvisorError as exc:
+            if exc.provider_code not in {'context_budget_exceeded', 'request_budget_exceeded'}:
+                raise
+            # Optional history yields to the required context; the omission is disclosed, never silent.
+            omitted = {**data, 'sessions': []}
+            _, package = await assembler.assemble(query, context_data={'search_sessions': omitted}, context_flags=[
+                *flags, {'code': 'session_search_budget_omitted', 'category': 'system', 'count': len(data['sessions'])}])
+        return {'data': package.payload.get('data', {}).get('search_sessions', {}),
+                'snapshot_id': package.snapshot_id, 'data_quality_flags': package.data_quality_flags}
+
+    registry['search_sessions'] = StructuredTool.from_function(coroutine=sessions, name='search_sessions',
+        description='이전 상담을 검색해 상담별 질문·답변 발췌를 반환. 당시 기록이며 현재 사실로 재사용하지 않음', args_schema=ReadInput)
     registry['search_documents'] = StructuredTool.from_function(coroutine=documents, name='search_documents',
         description='현재 공유 범위에서 문서를 검색하고 버전·발췌·인용 출처를 반환', args_schema=ReadInput)
     registry['search_history'] = StructuredTool.from_function(coroutine=history, name='search_history',

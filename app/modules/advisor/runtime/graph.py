@@ -2,6 +2,7 @@
 import json
 import re
 import hashlib
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal, TypedDict
 
@@ -51,6 +52,8 @@ class Plan(StrictModel):
     tasks: list[ResearchTask] = Field(default_factory=list, max_length=24)
     clarification: Question | None = None
     scenarios: list[Scenario] = Field(default_factory=list, max_length=3)
+    # Slugs from the provided playbook catalog whose full procedure this question needs.
+    playbooks: list[str] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode='after')
     def acyclic(self):
@@ -191,6 +194,8 @@ class ConsultationState(TypedDict, total=False):
     previous_analysis: bool
     clarification_count: int
     clarification_unknown: bool
+    playbook_slugs: list[str]
+    catalog_refs: list[dict]
 
 
 def scenario_followup(query):
@@ -231,13 +236,17 @@ def needs_analysis(state):
     comparison = re.search(r'비교|시나리오|대안|트레이드오프|장단점|선택|어느.{0,12}(좋|나)|뭐가\s*더|versus|\bvs\b', query, re.I)
     constraints = re.search(r'예산|생활비|지출|소득|잔고|퇴사|런웨이|시간|일정|조건|제약|개월|만원|억|이직|커리어|경력|투자|부채|목표|위험', query)
     explicit = re.search(r'심층|종합\s*분석|상세\s*분석|재무\s*분석|계산해|계산해줘', query)
+    # Recalling an earlier consultation needs a planned search_sessions call, not just recent turns.
+    past_session = re.search(r'지난\s*(?:번|상담|대화)|예전에|이전\s*(?:상담|대화)|과거\s*(?:상담|대화)|'
+                             r'전에\s*(?:상담|얘기|이야기|말했|물어|물었)', query)
     financial_calculation = re.search(r'생활비|지출|소득|잔고|현금|만원|런웨이', query) and re.search(r'버틸|계산|런웨이|면.{0,30}얼마', query)
     time_feasibility = re.search(r'시간|수면|근무', query) and re.search(r'가능|여유|할\s*수|남는|남을|계산|부족', query)
     quantitative_change = (re.search(r'생활비|지출|소득|수입|현금|잔고|근무|시간|수면', query)
         and re.search(r'\d', query)
         and re.search(r'바꾸면|줄이면|늘리면|쓴다면|벌면|가능|충분|부족|남을|남는', query))
     multiple = len(re.findall(r'[?？]', query)) > 1 and bool(constraints)
-    return bool(explicit or (comparison and constraints) or financial_calculation or time_feasibility or quantitative_change or multiple)
+    return bool(explicit or past_session or (comparison and constraints) or financial_calculation or time_feasibility
+                or quantitative_change or multiple)
 
 
 def structured_response(content, schema):
@@ -251,10 +260,24 @@ def structured_response(content, schema):
 
 def build_conversation_graph(session, manager, conversation, options, model, checkpointer=None,
                              guard=None, current_message_id=None, on_progress=None, run_authorization=None,
-                             on_stream=None):
+                             on_stream=None, run_id=None, run_owner=None, run_generation=None):
     assembler = ContextAssembler(session, manager, conversation, options, model,
-                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization)
+                                 guard=guard, current_message_id=current_message_id, authorization=run_authorization, run_id=run_id,
+                                 run_owner=run_owner, run_generation=run_generation)
     tools = read_tools(assembler)
+    base_options = options
+    explicit_playbooks = bool(getattr(options, 'playbook_ids', ()) or getattr(options, 'playbook_slugs', ()))
+
+    def apply_playbooks(state):
+        # A plan's choice persists in the checkpoint; a user's explicit choice always wins.
+        if options is not None and not explicit_playbooks and state.get('playbook_slugs'):
+            assembler.options = replace(base_options, playbook_slugs=tuple(state['playbook_slugs']))
+
+    def playbook_catalog(query, exclude_slugs=()):
+        if options is None or session is None:
+            return {}, []
+        from app.modules.playbooks.selection import catalog_context
+        return catalog_context(session, manager.sharing_exclusions(session, options), query, exclude_slugs=exclude_slugs)
 
     async def progress(stage, **metadata):
         if on_progress:
@@ -268,6 +291,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 'model_finished': '모델 응답을 받았습니다. 결과를 확인하고 있습니다.',
                 'structured_output_invalid': '응답 형식을 확인하고 다시 정리하고 있습니다.',
                 'summarizing': '이전 대화에서 필요한 맥락을 정리하고 있습니다.',
+                'loading_playbook': '선택한 상담 절차를 불러와 조사 계획에 반영하고 있습니다.',
                 'web_searching': '허용한 공개 검색어로 웹 자료를 확인하고 있습니다.',
             }
             if stage == 'model_started':
@@ -286,11 +310,13 @@ def build_conversation_graph(session, manager, conversation, options, model, che
     def pending_tasks(state):
         return [task for task in state['plan']['tasks'] if state.get('results', {}).get(task['id']) is None]
 
-    async def call(state, instruction, schema=None, derived=None, history_source_ids=()):
+    async def call(state, instruction, schema=None, derived=None, history_source_ids=(), context_data=None, context_flags=()):
         max_calls, _, _ = limits(state)
         assembler.baseline_snapshot_id = state.get('baseline_snapshot_id')
         attempts = 2 if schema else 1
         validation_errors = []
+        apply_playbooks(state)
+        assembler.run_catalog_refs = list(state.get('catalog_refs', []))
         for attempt in range(attempts):
             if state['model_calls'] >= max_calls:
                 raise AdvisorError('상담 모델 호출 한도에 도달했습니다.', provider_code='analysis_budget_exceeded')
@@ -303,10 +329,16 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                 prompt += '\n검증 오류(필드 경로와 오류 유형만): ' + json.dumps(validation_errors, ensure_ascii=False)
                 prompt += '\n필수 필드와 자료형을 확인하고, 스키마에 없는 필드와 JSON 밖의 설명은 빼세요.'
             extra = {'history_source_ids': history_source_ids} if history_source_ids else {}
+            if context_data or context_flags:
+                extra.update(context_data=context_data, context_flags=context_flags)
             request, package = await assembler.assemble(state['query'], instruction=prompt,
                 derived=derived, sources=state.get('sources', []), structured_output=schema is not None, **extra)
             state['sources'] = list(dict.fromkeys([*state.get('sources', []), package.snapshot_id]))
             state['snapshot_id'], state['context'] = package.snapshot_id, assembler.last_context
+            offered = [{key: value for key, value in ref.items() if key != 'role'}
+                       for ref in getattr(package, 'record_references', []) if ref.get('role') == 'catalog']
+            if offered:
+                state['catalog_refs'] = offered
             state['numeric_basis'] = getattr(package, 'payload', {}).get('data', {})
             async def stream_delta(text):
                 if on_stream:
@@ -378,7 +410,11 @@ def build_conversation_graph(session, manager, conversation, options, model, che
                     'clarification': None, 'needs_replan': False,
                     'limitations': [*state['limitations'], '추가 조사 계획을 위한 호출 예산이 부족합니다.']}
         conditional = state.get('clarification_unknown') or state.get('clarification_count', 0) >= 2
-        result = await call(state,
+        from app.modules.playbooks.selection import MAX_SELECTED
+        loaded = list(state.get('playbook_slugs', []))
+        catalog, catalog_flags = (({}, []) if explicit_playbooks or len(loaded) >= MAX_SELECTED
+                                  else playbook_catalog(state['query'], exclude_slugs=loaded))
+        planning = (
             '사용자의 목적·기간·필수 제약을 파악하고 필요한 읽기 조사만 계획하세요. '
             '단순 조회는 대안을 만들지 마세요. 답변에 꼭 필요한 사용자 조건이 없을 때만 확인 질문을 하세요. '
             '일반 조언은 명시적 한계와 조건부 설명으로 바로 답하고 선택적인 선호를 반복해서 묻지 마세요. '
@@ -392,13 +428,45 @@ def build_conversation_graph(session, manager, conversation, options, model, che
             '명시된 조건만 구조화하세요. 불명확하면 확인 질문을 하세요. '
             + ('사용자가 모르는 조건 또는 확인 질문 한도에 도달했습니다. 추가 확인 질문을 하지 마세요. '
                '모르는 값은 unresolved에 남기고, 가정을 사실로 채우지 말고 가능한 범위의 조건부 답변을 준비하세요. '
-               if conditional else '') + '허용 도구: ' + ', '.join(tools), Plan,
-            {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
-             'selected_scenarios': state.get('selected_scenarios', []),
-             'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})})
+               if conditional else '') + '이전 상담의 내용이나 결론이 필요하면 search_sessions로 검색하세요(당시 기록이며 '
+            '현재 사실이 아님). 허용 도구: ' + ', '.join(tools) + '. ')
+        derived_plan = {'response': state.get('response'), 'previous_issues': state.get('limitations', []),
+                        'selected_scenarios': state.get('selected_scenarios', []),
+                        'previous_plan': state.get('plan'), 'existing_research': state.get('results', {})}
+        result = await call(state, planning +
+            ('playbook_catalog에서 이 질문에 필요한 승인된 상담 절차가 있으면 slug를 playbooks에 최대 2개 넣으세요. '
+             '카탈로그에 없는 slug는 쓰지 마세요.' if catalog else ''), Plan, derived_plan,
+            context_data={'playbook_catalog': catalog} if catalog else None, context_flags=catalog_flags)
         _, max_tools, _ = limits(state)
         if any(t.tool not in tools for t in result.tasks):
             raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
+        # An optional procedure choice never fails the consultation: unknown slugs are dropped and
+        # disclosed. Without a catalog in this call there was nothing to choose from.
+        offered = {item['slug'] for item in state.get('numeric_basis', {}).get('playbook_catalog', {}).get('items', {}).values()}
+        requested = list(dict.fromkeys(result.playbooks)) if catalog else []
+        chosen = [slug for slug in requested if slug in offered]
+        if len(chosen) < len(requested):
+            state['limitations'] = [*state['limitations'], '승인된 플레이북 목록에 없는 절차는 사용하지 않았습니다.']
+        present = [item.get('slug') for item in state.get('numeric_basis', {}).get('playbooks', {}).get('items', {}).values()]
+        combined = list(dict.fromkeys([*loaded, *present, *chosen]))
+        newly = [slug for slug in combined[:MAX_SELECTED] if slug not in present]
+        result.playbooks = combined[:MAX_SELECTED]
+        if newly:
+            state['playbook_slugs'] = combined
+            apply_playbooks(state)
+            # Progressive disclosure inside the run: the catalog showed only summaries, so plan the
+            # research again once the chosen procedures' steps are in data.playbooks.
+            if state['model_calls'] < limits(state)[0] - 2:
+                await progress('loading_playbook', playbooks=newly)
+                result = await call(state, planning + 'data.playbooks에 방금 선택한 승인된 상담 절차의 단계가 있습니다. '
+                    '그 절차가 확인하라는 근거를 허용 도구로 조사하도록 계획을 다시 작성하세요. 절차는 사실이 아닙니다.',
+                    Plan, derived_plan)
+                if any(t.tool not in tools for t in result.tasks):
+                    raise AdvisorError('허용되지 않은 조사 도구입니다.', provider_code='invalid_research_plan')
+                result.playbooks = combined[:MAX_SELECTED]
+            else:
+                state['limitations'] = [*state['limitations'],
+                    '호출 예산이 부족해 선택한 상담 절차를 조사 계획에는 반영하지 못하고 답변에만 사용했습니다.']
         previous = {task['id']: task for task in state.get('plan', {}).get('tasks', [])}
         proposed = {task.id: task.model_dump() for task in result.tasks}
         invalidated = {key for key in previous.keys() | proposed.keys()
@@ -418,7 +486,7 @@ def build_conversation_graph(session, manager, conversation, options, model, che
         if conditional:
             result.clarification = None
         return {**state, 'results': kept, 'plan': result.model_dump(), 'problem': problem, 'needs_replan': False,
-                'baseline_snapshot_id': '', 'baseline_payload': {},
+                'playbook_slugs': state.get('playbook_slugs', []), 'baseline_snapshot_id': '', 'baseline_payload': {},
                 'clarification': result.clarification.model_dump() if result.clarification else None}
 
     def clarify(state):

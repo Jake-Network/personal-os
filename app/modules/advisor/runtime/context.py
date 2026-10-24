@@ -17,6 +17,7 @@ from app.modules.advisor.memory_store import ConfirmedMemoryStore
 from app.modules.advisor.retrievers import HistoryRetriever, DocumentRetriever
 from app.enums.context_category import ALL_CATEGORIES
 from app.modules.advisor.history_service import history_service
+from app.modules.agent.settings_manager import style_instruction
 
 
 def bounded_history_excerpt(messages, budget=4000):
@@ -47,15 +48,18 @@ def bounded_history_excerpt(messages, budget=4000):
 
 class ContextAssembler:
     def __init__(self, session, manager, conversation, options, model, *, guard=None, current_message_id=None,
-                 authorization=None):
+                 authorization=None, run_id=None, run_owner=None, run_generation=None):
         self.session, self.manager, self.conversation = session, manager, conversation
         self.options, self.model, self.guard = options, model, guard
         self.current_message_id = current_message_id
         self.authorization = authorization
+        self.run_id, self.run_owner, self.run_generation = run_id, run_owner, run_generation
         self.lock = asyncio.Lock()
         self.last_context = {}
         self.last_history = []
         self.baseline_snapshot_id = None
+        # Playbook catalog entries offered earlier in this run (persisted by the graph state).
+        self.run_catalog_refs = []
         self.memory_store = ConfirmedMemoryStore(session,
             allowed=frozenset(ALL_CATEGORIES) - manager.sharing_exclusions(session, options),
             document_scope={'enabled': options.document_search, 'document_ids': options.document_ids or []})
@@ -110,7 +114,8 @@ class ContextAssembler:
         for snapshot_id in snapshots:
             require_live_request_sources(self.session, LLMRequest(
                 model=self.model, instructions='', input=[], source_snapshot_id=snapshot_id,
-                excluded_categories=tuple(str(c) for c in self.manager.sharing_exclusions(self.session, self.options))))
+                excluded_categories=tuple(str(c) for c in self.manager.sharing_exclusions(self.session, self.options))),
+                outbound=False)
 
     async def history_overflow(self, query):
         await self.check()
@@ -133,7 +138,9 @@ class ContextAssembler:
             query = self.options.web_query.strip()
             self.session.commit()
         try:
-            result = await WebSearchService(api_key=settings.web_search_api_key).search(query)
+            result = await WebSearchService(
+                api_key=settings.web_search_api_key, provider=settings.web_search_provider,
+                searxng_url=settings.searxng_url).search(query)
         except WebSearchError as exc:
             raise WebResearchError(str(exc), exc.code) from exc
         async with self.lock:
@@ -142,6 +149,15 @@ class ContextAssembler:
             snapshot_id = save_web_snapshot(self.session, self.conversation.id, result)
             self.session.commit()
             return snapshot_id
+
+    async def search_sessions(self, query):
+        """Filtered past-session excerpts and their refs; assemble() snapshots and budgets them."""
+        from app.modules.advisor.memory_history_manager import search_sessions
+        async with self.lock:
+            await self.check()
+            options = self.manager.document_options(self.session, self.conversation, self.options)
+            return search_sessions(self.session, query, self.conversation.id,
+                                   self.manager.sharing_exclusions(self.session, options), options)
 
     def saved_history_summary(self, overflow):
         options = self.manager.document_options(self.session, self.conversation, self.options)
@@ -152,10 +168,11 @@ class ContextAssembler:
         return history_service.record_summary(self.session, self.conversation.id, content, overflow, generator=generator)
 
     async def assemble(self, query, *, instruction='', derived=None, sources=(), history_source_ids=(),
-                       structured_output=False):
+                       structured_output=False, context_data=None, record_sources=(), context_flags=()):
         async with self.lock:
             await self.check()
             self.validate_sources(sources)
+            from app.modules.context.source_policy import source_allowed
             route, package, options, history = self.manager.prepare_context(
                 self.session, query, self.conversation, self.options, self.conversation.id)
             summary = None
@@ -178,7 +195,8 @@ class ContextAssembler:
                 if row is None:
                     raise AdvisorError('비교 기준 근거가 삭제되었습니다.', provider_code='source_policy_changed')
                 package = to_package(row, True)
-            if sources or summary is not None or history_source_ids:
+            if (sources or summary is not None or history_source_ids or context_data or record_sources or context_flags
+                    or self.run_catalog_refs):
                 from app.modules.context.snapshots import content_hash, to_package
                 from app.modules.database.model import ContextSnapshot
                 snapshot_id = str(uuid.uuid4())
@@ -191,8 +209,23 @@ class ContextAssembler:
                 from app.config import settings
                 payload = merge_web_sources(payload,
                     [self.session.get(ContextSnapshot, key) for key in sources], settings.context_char_limit)
+                payload['data'] = {**payload.get('data', {}), **(context_data or {})}
+                payload['data_quality_flags'] = [*payload.get('data_quality_flags', []), *context_flags]
+                # Discovery is optional. Drop whole catalog entries before failing a full context;
+                # procedure steps and required reflection evidence are never silently truncated.
+                catalog = payload['data'].get('playbook_catalog')
+                if catalog:
+                    catalog = {**catalog, 'items': dict(catalog.get('items', {}))}
+                    payload['data']['playbook_catalog'] = catalog
                 refs = list(package.record_references)
                 from app.modules.context.record_privacy import stamp_references
+                extra_refs = list(record_sources)
+                if not source_allowed(self.session, extra_refs,
+                        self.manager.sharing_exclusions(self.session, options),
+                        document_scope={'enabled': options.document_search,
+                                        'document_ids': list(options.document_ids or [])}):
+                    raise AdvisorError('상담 절차나 회고 근거가 변경되었습니다.', provider_code='source_policy_changed')
+                refs.extend(stamp_references(self.session, extra_refs))
                 refs.extend(stamp_references(self.session,
                     [{'table': 'advisor_messages', 'id': key} for key in history_source_ids]))
                 if summary is not None:
@@ -222,9 +255,14 @@ class ContextAssembler:
                     # Re-budget cached legacy extracts too. Provenance continues
                     # to cover the complete original range, including omissions.
                     payload['data']['conversation_summary']['content'] = ''
-                    empty_package = replace(package, payload=payload)
+                    # Mandatory history gets its room before optional procedure discovery.
+                    # Counting the catalog here could fail before the later whole-entry cull.
+                    empty_payload = {**payload, 'data': {name: value for name, value in payload['data'].items()
+                                                        if name != 'playbook_catalog'}}
+                    empty_package = replace(package, payload=empty_payload)
                     base_request = build_request(self.model, history.decision(), empty_package, query,
-                        self.manager.sharing_exclusions(self.session, options), structured_output=structured_output)
+                        self.manager.sharing_exclusions(self.session, options), structured_output=structured_output,
+                        style=style_instruction(self.session))
                     base_request.instructions += '\n' + instruction
                     if derived:
                         base_request.input.insert(-1, {'role': 'developer', 'content':
@@ -235,6 +273,48 @@ class ContextAssembler:
                                (settings.request_char_limit - size) // 2)
                     payload['data']['conversation_summary']['content'] = bounded_history_excerpt(
                         overflow['messages'], room)
+                if catalog:
+                    def catalog_fits():
+                        candidate = replace(package, payload=payload)
+                        if len(candidate.text) > settings.context_char_limit:
+                            return False
+                        try:
+                            preview = build_request(self.model, history.decision(), candidate, query,
+                                self.manager.sharing_exclusions(self.session, options),
+                                structured_output=structured_output, style=style_instruction(self.session))
+                        except AdvisorError as exc:
+                            if exc.provider_code == 'request_budget_exceeded':
+                                return False
+                            raise
+                        preview.instructions += ('\n' + instruction) if instruction else ''
+                        if derived:
+                            preview.input.insert(-1, {'role': 'developer', 'content':
+                                '이번 실행의 파생 분석(확정 사실이나 장기 기억이 아님):\n' + json.dumps(derived, ensure_ascii=False)})
+                        return len(json.dumps({'instructions': preview.instructions, 'input': preview.input},
+                                              ensure_ascii=False)) <= settings.request_char_limit
+
+                    omission = None
+                    while catalog['items'] and not catalog_fits():
+                        catalog['items'].popitem()
+                        if omission is None:
+                            omission = {'code': 'playbook_catalog_omitted', 'category': 'system', 'count': 0}
+                            payload['data_quality_flags'].append(omission)
+                        omission['count'] += 1
+                    catalog_refs = [{'table': 'playbook_revisions', 'id': int(ref.split(':')[1])}
+                                    for ref in catalog['items']]
+                else:
+                    catalog_refs = []
+                # Discovery metadata is checked at transport, but is never evidence of the answer:
+                # revoking a listed procedure later must not withhold answers that never used it.
+                # Every later call of this run carries the catalog it was planned from.
+                catalog_refs = list({(ref['table'], ref['id']): ref for ref in
+                                     [*self.run_catalog_refs, *catalog_refs]}.values())
+                if catalog_refs:
+                    from app.modules.context.source_policy import procedures_sendable
+                    if not procedures_sendable(self.session, catalog_refs, self.manager.sharing_exclusions(self.session, options)):
+                        raise AdvisorError('상담 절차의 공유 설정이 변경되었습니다.', provider_code='source_policy_changed')
+                    # Kept beside the evidence (never in the sent payload), marked so history checks skip it.
+                    refs.extend({**ref, 'role': 'catalog'} for ref in stamp_references(self.session, catalog_refs))
                 row = ContextSnapshot(id=snapshot_id, conversation_id=self.conversation.id,
                     context_categories=package.categories, excluded_categories=package.excluded_categories,
                     record_references=refs, source_updated_at=package.source_updated_at,
@@ -256,8 +336,9 @@ class ContextAssembler:
                 'historical': True} for m in history.messages]
             request = build_request(self.model, history.decision(), package, query,
                                     self.manager.sharing_exclusions(self.session, options),
-                                    structured_output=structured_output)
+                                    structured_output=structured_output, style=style_instruction(self.session))
             request.authorization = self.authorization
+            request.run_id, request.run_owner, request.run_generation = self.run_id, self.run_owner, self.run_generation
             if instruction:
                 request.instructions += '\n' + instruction
             if derived:

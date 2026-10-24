@@ -147,10 +147,14 @@ class ContextPackage:
             "categories": self.categories,
             "excluded_categories": self.excluded_categories,
             "source_updated_at": self.source_updated_at,
-            "record_references": self.record_references,
+            # Catalog entries were only offered to the planner; the panel lists what the answer used.
+            "record_references": [ref for ref in self.record_references if ref.get("role") != "catalog"],
             "data_quality_flags": self.data_quality_flags,
             "document_citations": payload_citations(self.payload),
             "web_sources": self.payload.get('data', {}).get('web_search', {}).get('pages', []),
+            "playbooks": [{"ref": ref, "playbook_id": item.get("playbook_id"), "slug": item.get("slug"),
+                           "title": item.get("title")}
+                          for ref, item in self.payload.get('data', {}).get('playbooks', {}).get('items', {}).items()],
         }
 
 

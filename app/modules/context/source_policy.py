@@ -21,6 +21,11 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
         from app.modules.context.record_privacy import record_allowed, record_exists, reference_generation_matches, RECORD_CATEGORY, TABLES
         if RECORD_CATEGORY.get(table) in {str(c) for c in excluded}:
             return False
+        if deleted_procedure(session, ref):
+            # Only the categories captured with the reference remain to taint what depended on it.
+            if "categories" not in ref or set(ref["categories"]) & {str(c) for c in excluded}:
+                return False
+            continue
         if not record_allowed(session, table, key) or not record_exists(session, table, key) or not reference_generation_matches(session, ref):
             return False
         if memo.get((table, key)):
@@ -61,9 +66,11 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                 version = session.get(DocumentVersion, evidence_ref["version_id"])
                 if version is None or version.document_id != evidence_ref["document_id"]:
                     return False
-            if any(not record_allowed(session, r.get("table"), r.get("id")) or not record_exists(session, r.get("table"), r.get("id")) or not reference_generation_matches(session, r) for r in snapshot.record_references):
+            # Catalog entries were only offered, never used: checked at transport (outbound), not as history.
+            evidence_refs = [r for r in snapshot.record_references if r.get("role") != "catalog"]
+            if any(not deleted_procedure(session, r) and (not record_allowed(session, r.get("table"), r.get("id")) or not record_exists(session, r.get("table"), r.get("id")) or not reference_generation_matches(session, r)) for r in evidence_refs):
                 return False
-            dependencies = [r for r in snapshot.record_references if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "financial_transactions", "holdings"}]
+            dependencies = [r for r in evidence_refs if r.get("table") in {"memory_revisions", "personal_memories", "advisor_messages", "conversation_summaries", "career_records", "decision_journal", "decision_reviews", "financial_transactions", "holdings", "playbook_revisions"}]
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table in {"personal_memories", "memory_revisions"}:
@@ -106,6 +113,17 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                 dependencies.append({"table": "document_versions", "id": record.source_document_version_id})
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
+        elif table == "playbook_revisions":
+            from app.modules.database.model import Playbook, PlaybookRevision
+            revision = session.get(PlaybookRevision, key)
+            playbook = session.get(Playbook, revision.playbook_id) if revision else None
+            # A procedure is sent only while approved, shareable and free of now-restricted origins.
+            if (revision is None or playbook is None or revision.source_purged
+                    or revision.status not in {"active", "superseded"} or not playbook.external_allowed
+                    or not record_allowed(session, "playbooks", playbook.id)
+                    or set(revision.categories) & {str(c) for c in excluded}
+                    or not source_allowed(session, revision.source_references, excluded, seen, memo, document_scope)):
+                return False
         elif table == "conversation_summaries":
             summary = session.get(ConversationSummary, key)
             if summary is None or summary.status == 'source_purged' or not source_allowed(session, summary.source_references, excluded, seen, memo, document_scope):
@@ -120,6 +138,16 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                 if transaction.payload.get(field) is not None]
             if transaction.reverses_id:
                 dependencies.append({"table": "financial_transactions", "id": transaction.reverses_id})
+            if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
+                return False
+        elif table == "decision_reviews":
+            from app.modules.database.model.review_jobs import DecisionReviewRecord
+            outcome = session.get(DecisionReviewRecord, key)
+            if outcome is None:
+                return False
+            dependencies = [{"table": "decision_journal", "id": outcome.decision_id}]
+            if outcome.context_snapshot_id:
+                dependencies.append({"table": "context_snapshots", "id": outcome.context_snapshot_id})
             if not source_allowed(session, dependencies, excluded, seen, memo, document_scope):
                 return False
         elif table == "decision_journal":
@@ -149,8 +177,26 @@ def latest_revision(session, memory_id):
     return session.scalar(select(MemoryRevision).where(MemoryRevision.memory_id == memory_id).order_by(MemoryRevision.revision.desc()).limit(1))
 
 
-def require_live_request_sources(session, request):
-    """Recheck after model resolution, at the final inference boundary."""
+def deleted_procedure(session, ref) -> bool:
+    """A playbook revision the user deleted (or whose ID now names another row)."""
+    if ref.get("table") != "playbook_revisions" or not isinstance(ref.get("id"), int):
+        return False
+    from app.modules.context.record_privacy import record_exists, reference_generation_matches
+    return not record_exists(session, "playbook_revisions", ref["id"]) or not reference_generation_matches(session, ref)
+
+
+def procedures_sendable(session, refs, excluded) -> bool:
+    """Procedure text in the request being sent: deleted ones are never sent, unlike history."""
+    return not any(deleted_procedure(session, ref) for ref in refs) and source_allowed(session, refs, excluded)
+
+
+def require_live_request_sources(session, request, *, outbound=True):
+    """Recheck after model resolution, at the final inference boundary.
+
+    `outbound=False` validates an earlier snapshot this request derives from. Only the
+    snapshot actually being sent carries its procedures and catalog entries as payload, so
+    only then are they held to the stricter send policy; as history they are provenance.
+    """
     if not request.source_snapshot_id:
         return
     from app.modules.context.privacy_manager import privacy_manager
@@ -166,3 +212,8 @@ def require_live_request_sources(session, request):
     document_scope = root_snapshot.payload.get("document_scope") if root_snapshot else None
     if not source_allowed(session, [{"table": "context_snapshots", "id": request.source_snapshot_id}], excluded, document_scope=document_scope):
         raise AdvisorError("상담 근거의 공유 설정이나 원본이 변경되었습니다. 전송 내용을 다시 확인하세요.", provider_code="source_policy_changed")
+    if outbound and root_snapshot is not None:
+        # Used procedures and catalog entries this run offered (titles and summaries) are both sent.
+        procedures = [ref for ref in root_snapshot.record_references if ref.get("table") == "playbook_revisions"]
+        if procedures and not procedures_sendable(session, procedures, excluded):
+            raise AdvisorError("상담 절차의 공유 설정이 변경되었습니다.", provider_code="source_policy_changed")

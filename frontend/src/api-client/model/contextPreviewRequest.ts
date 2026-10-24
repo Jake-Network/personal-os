@@ -27,6 +27,8 @@ export interface ContextPreviewRequest {
   document_ids?: ContextPreviewRequestDocumentIds;
   web_search?: boolean;
   web_query?: ContextPreviewRequestWebQuery;
+  /** @maxItems 2 */
+  playbook_ids?: number[];
   history_since?: ContextPreviewRequestHistorySince;
   history_until?: ContextPreviewRequestHistoryUntil;
   history_company?: ContextPreviewRequestHistoryCompany;

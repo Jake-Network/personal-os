@@ -4,17 +4,20 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
-import type { ScheduleItemCadence } from './scheduleItemCadence';
+import type { ScheduleItemLocalTime } from './scheduleItemLocalTime';
+import type { ScheduleItemOptions } from './scheduleItemOptions';
+import type { ScheduleItemPausedReason } from './scheduleItemPausedReason';
 
 export interface ScheduleItem {
-  /**
-   * @minLength 1
-   * @maxLength 120
-   */
-  name: string;
-  cadence: ScheduleItemCadence;
-  enabled?: boolean;
   id: number;
+  name: string;
+  kind?: string;
+  cadence: string;
+  enabled: boolean;
+  local_time?: ScheduleItemLocalTime;
+  options?: ScheduleItemOptions;
+  paused_reason?: ScheduleItemPausedReason;
   next_run_at: string;
   created_at: string;
+  model_authorized?: boolean;
 }

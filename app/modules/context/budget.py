@@ -10,6 +10,7 @@ from app.modules.context.types import DataQualityFlag, data_citations
 # Budget reduction order, lowest priority first. Sections not listed rank just above news.
 SECTION_PRIORITY: tuple[str, ...] = (
     "get_relevant_news", "get_market_data", "get_health_summary", "get_monthly_asset_history", "get_tasks",
+    "playbooks",
     "search_documents", "get_calendar_events", "get_interview_schedule", "get_goals", "get_job_applications",
     "get_profile", "get_portfolio_summary", "get_cashflow_summary", "get_accounts_summary", "cash_runway",
 )

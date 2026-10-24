@@ -65,7 +65,8 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
   const used = ALL_CATEGORIES.filter(c => data.categories.includes(c));
   const excluded = ALL_CATEGORIES.filter(c => data.excluded_categories.includes(c));
   const refsByTool = groupBy(
-    data.record_references.filter(r => r.tool),
+    // Playbooks have their own block; they are procedures, not personal records.
+    data.record_references.filter(r => r.tool && r.tool !== 'playbooks'),
     r => r.tool,
   );
   const flags = data.data_quality_flags.filter(f => f.code !== 'category_excluded_by_user');
@@ -123,6 +124,26 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
               <p className='mt-2 whitespace-pre-wrap'>{c.text}</p>
             </details>
           ))}
+        </Block>
+      )}
+
+      {!!data.playbooks?.length && (
+        <Block title={mode === 'preview' ? '함께 보낼 플레이북' : '따른 플레이북'}>
+          <ul className='flex flex-col gap-1 text-xs'>
+            {data.playbooks.map(playbook => (
+              <li key={playbook.ref}>
+                {playbook.playbook_id ? (
+                  <Link href={`/reflect/playbooks?record=${playbook.playbook_id}`} className='text-primary hover:underline'>
+                    {playbook.title ?? playbook.slug}
+                  </Link>
+                ) : (
+                  (playbook.title ?? playbook.slug)
+                )}
+                {playbook.slug && <span className='ml-1 text-faint'>/{playbook.slug}</span>}
+              </li>
+            ))}
+          </ul>
+          {mode !== 'preview' && <p className='mt-1 text-2xs text-faint'>답변 당시 승인되어 있던 버전입니다. 이후 수정해도 이 답변의 근거는 바뀌지 않습니다.</p>}
         </Block>
       )}
 

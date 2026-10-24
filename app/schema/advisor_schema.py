@@ -21,6 +21,7 @@ class ConversationItem(BaseModel):
     id: int
     title: str
     domain: str | None
+    origin: str = "user"  # user | schedule (a briefing run in its own conversation)
     created_at: datetime
     updated_at: datetime
 
@@ -53,6 +54,7 @@ class AskRequest(BaseModel):
     document_ids: list[int] | None = Field(default=None, max_length=5)
     web_search: bool = False
     web_query: str | None = Field(default=None, min_length=1, max_length=300)
+    playbook_ids: list[int] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode='after')
     def public_web_query(self):
@@ -67,7 +69,10 @@ class AskRequest(BaseModel):
     history_decision: int | None = None
 
     def options(self) -> AskOptions:
+        from app.modules.playbooks.selection import explicit_slug
+        slug = explicit_slug(self.message)
         return AskOptions(
+            playbook_ids=tuple(self.playbook_ids), playbook_slugs=(slug,) if slug else (),
             categories=frozenset(self.categories) if self.categories is not None else None,
             exclude=frozenset(self.exclude),
             document_search=self.document_search,

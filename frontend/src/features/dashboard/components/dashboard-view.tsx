@@ -5,7 +5,10 @@ import type { ReactNode } from 'react';
 
 import Link from 'next/link';
 
-import { ArrowRight, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo, Sparkles, TriangleAlert } from 'lucide-react';
+
+import { useCountUnreadInbox } from '@/api-client/generated/agent/agent';
+import { useListPendingPlaybookRevisions } from '@/api-client/generated/playbooks/playbooks';
 
 import { useListDecisions, useListMemories } from '@/api-client/generated/memory/memory';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
@@ -96,6 +99,8 @@ export function DashboardView() {
   const pending = useListProposals({ status: 'pending' }).data?.length ?? 0;
   const dueReviews = (useListDecisions().data ?? []).filter(d => isDecisionReviewDue(d)).length;
   const proposedMemories = useListMemories({ status: 'proposed' }).data?.length ?? 0;
+  const proposedPlaybooks = useListPendingPlaybookRevisions().data?.length ?? 0;
+  const unread = useCountUnreadInbox().data?.unread ?? 0;
   const data = summary.data;
   const today = todayKey();
 
@@ -133,6 +138,11 @@ export function DashboardView() {
   const agendaDays = [...new Set(agenda.map(a => a.day))];
 
   const attention = [
+    unread > 0 && (
+      <AttentionItem key='inbox' href='/inbox' icon={Bell}>
+        새 알림 <strong>{unread}건</strong>
+      </AttentionItem>
+    ),
     pending > 0 && (
       <AttentionItem key='p' href='/approvals' icon={Inbox}>
         승인을 기다리는 제안 <strong>{pending}건</strong>
@@ -146,6 +156,11 @@ export function DashboardView() {
     proposedMemories > 0 && (
       <AttentionItem key='m' href='/settings/memory' icon={Sparkles}>
         확인이 필요한 기억 <strong>{proposedMemories}건</strong>
+      </AttentionItem>
+    ),
+    proposedPlaybooks > 0 && (
+      <AttentionItem key='pb' href='/approvals' icon={Sparkles}>
+        상담에서 배운 절차 제안 <strong>{proposedPlaybooks}건</strong>
       </AttentionItem>
     ),
     overdue.length > 0 && (

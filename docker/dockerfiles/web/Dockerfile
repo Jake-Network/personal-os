@@ -1,4 +1,4 @@
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine AS build
 WORKDIR /web
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json yarn.lock ./
@@ -8,7 +8,7 @@ ARG SERVER_DOMAIN=http://app:8000
 ENV SERVER_DOMAIN=${SERVER_DOMAIN}
 RUN yarn build
 
-FROM node:24-alpine
+FROM node:24.22.1-alpine
 WORKDIR /web
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 SERVER_DOMAIN=http://app:8000
 RUN corepack enable

@@ -1,4 +1,4 @@
-FROM nginx:1.28-alpine
+FROM nginx:1.30.6-alpine
 COPY nginx.conf /etc/nginx/nginx.conf
 USER nginx
 EXPOSE 8080

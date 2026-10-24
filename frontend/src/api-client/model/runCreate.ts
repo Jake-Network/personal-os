@@ -29,6 +29,8 @@ export interface RunCreate {
   document_ids?: RunCreateDocumentIds;
   web_search?: boolean;
   web_query?: RunCreateWebQuery;
+  /** @maxItems 2 */
+  playbook_ids?: number[];
   history_since?: RunCreateHistorySince;
   history_until?: RunCreateHistoryUntil;
   history_company?: RunCreateHistoryCompany;

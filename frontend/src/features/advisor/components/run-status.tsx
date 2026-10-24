@@ -30,6 +30,7 @@ const STAGES: Record<string, string> = {
   planning: '살펴볼 쟁점을 정리하는 중',
   research_started: '필요한 기록을 찾는 중',
   web_searching: '웹에서 자료를 찾는 중',
+  loading_playbook: '상담 절차를 불러와 계획에 반영하는 중',
   research_finished: '자료 확인 완료',
   analyzing: '대안을 비교하는 중',
   reviewing: '근거와 계산을 검토하는 중',

@@ -26,6 +26,19 @@ export function stripBlocks(text: string): string {
   return text.replace(/```(proposal|memory)[\s\S]*?(```|$)/g, '').trimEnd();
 }
 
+type SnapshotPlaybookItem = { playbook_id?: number; slug?: string; title?: string };
+
+/** The exact playbook versions a saved answer carried, as frozen in its snapshot. */
+export function snapshotPlaybooks(payload: unknown): NonNullable<InspectorData['playbooks']> {
+  const items = (payload as { data?: { playbooks?: { items?: Record<string, SnapshotPlaybookItem> } } }).data?.playbooks?.items ?? {};
+  return Object.entries(items).map(([ref, item]) => ({
+    ref,
+    playbook_id: item.playbook_id ?? null,
+    slug: item.slug ?? null,
+    title: item.title ?? null,
+  }));
+}
+
 export function snapshotToInspector(s: SnapshotResponse): InspectorData {
   return {
     context_snapshot_id: s.context_snapshot_id,
@@ -33,6 +46,7 @@ export function snapshotToInspector(s: SnapshotResponse): InspectorData {
     document_citations:
       (s.payload as { data?: { search_documents?: { citations?: InspectorData['document_citations'] } } }).data?.search_documents?.citations ?? [],
     web_sources: (s.payload as { data?: { web_search?: { pages?: InspectorData['web_sources'] } } }).data?.web_search?.pages ?? [],
+    playbooks: snapshotPlaybooks(s.payload),
     categories: s.context_categories,
     excluded_categories: s.excluded_categories,
     source_updated_at: s.source_updated_at as InspectorData['source_updated_at'],

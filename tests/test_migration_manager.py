@@ -39,9 +39,15 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_p
                 "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s"}) as batch:
                 batch.drop_constraint("fk_decision_journal_source_message_id_advisor_messages", type_="foreignkey")
                 batch.drop_column("source_message_id")
+        # ... and the agent playbook/inbox tables and briefing schedule columns.
+        for table in ("playbook_usages", "playbook_revisions", "playbooks", "inbox_items"):
+            c.execute(text(f"DROP TABLE {table}"))
+        for column in ("kind", "local_time", "options", "authorization", "paused_reason"):
+            c.execute(text(f'ALTER TABLE job_schedules DROP COLUMN "{column}"'))
+        c.execute(text("ALTER TABLE advisor_conversations DROP COLUMN origin"))
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0015_decision_source_message"
+    assert plan.head == "0017_merge_agent_security"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())

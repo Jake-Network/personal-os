@@ -13,4 +13,8 @@ describe('decision review due', () => {
     expect(isDecisionReviewDue({}, now)).toBe(false);
     expect(isDecisionReviewDue({ review_on: 'invalid' }, now)).toBe(false);
   });
+  it('treats an outcome recorded before the scheduled review as not settling it', () => {
+    expect(isDecisionReviewDue({ review_on: '2026-10-19T00:00:00Z', reviewed_at: '2026-10-18T00:00:00Z' }, now)).toBe(true);
+    expect(isDecisionReviewDue({ review_on: '2026-10-19T00:00:00Z', reviewed_at: '2026-10-19T00:00:00Z' }, now)).toBe(false);
+  });
 });
