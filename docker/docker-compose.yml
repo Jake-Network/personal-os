@@ -68,7 +68,7 @@ services:
         condition: service_healthy
 
   embeddings:
-    image: ollama/ollama:0.18.2
+    image: ollama/ollama:0.40.10
     profiles: ["rag"]
     restart: unless-stopped
     volumes:

@@ -62,7 +62,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
   embeddings:
-    image: ollama/ollama:0.18.2
+    image: ollama/ollama:0.40.10
     restart: unless-stopped
     volumes: ["embedding_data:/root/.ollama"]
     networks: [private]

@@ -47,7 +47,7 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_p
         c.execute(text("ALTER TABLE advisor_conversations DROP COLUMN origin"))
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0016_agent_playbooks_inbox"
+    assert plan.head == "0017_merge_agent_security"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())

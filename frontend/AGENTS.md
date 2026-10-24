@@ -91,6 +91,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ```bash
 corepack yarn install --frozen-lockfile
+corepack yarn audit --level moderate # 의존성 변경 시
 corepack yarn generate-api # API 계약 변경 시
 corepack yarn lint
 corepack yarn typecheck

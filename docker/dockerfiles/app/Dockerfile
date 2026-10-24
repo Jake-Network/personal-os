@@ -1,6 +1,6 @@
-FROM python:3.13-slim
+FROM python:3.13.17-slim
 
-COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
 # The venv lives outside /project so mounting ./app for live reload never hides it.
 ENV PYTHONUNBUFFERED=1 \

@@ -36,6 +36,10 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --frozen --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/personal-os-requirements.txt"
+          uvx pip-audit==2.10.1 --requirement "$RUNNER_TEMP/personal-os-requirements.txt" --no-deps --disable-pip
       - name: Migrations on PostgreSQL (upgrade, model check, downgrade, re-upgrade)
         env:
           DATABASE_URL: postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_test
@@ -67,9 +71,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: frontend/.node-version
       - run: corepack enable
       - run: yarn install --frozen-lockfile
+      - run: yarn audit --level moderate
       - run: yarn lint
       - run: yarn typecheck
       - run: yarn test
