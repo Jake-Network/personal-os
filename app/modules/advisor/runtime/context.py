@@ -138,7 +138,9 @@ class ContextAssembler:
             query = self.options.web_query.strip()
             self.session.commit()
         try:
-            result = await WebSearchService(api_key=settings.web_search_api_key).search(query)
+            result = await WebSearchService(
+                api_key=settings.web_search_api_key, provider=settings.web_search_provider,
+                searxng_url=settings.searxng_url).search(query)
         except WebSearchError as exc:
             raise WebResearchError(str(exc), exc.code) from exc
         async with self.lock:

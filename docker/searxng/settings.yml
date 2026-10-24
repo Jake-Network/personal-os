@@ -1,0 +1,18 @@
+# Local SearXNG for Personal OS web research. Only the explicit public query reaches it.
+# server.secret_key comes from SEARXNG_SECRET (docker/.env).
+use_default_settings: true
+
+server:
+  # Single local client; the bot limiter would need Valkey and block the backend.
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  # Personal OS reads /search?format=json.
+  formats:
+    - html
+    - json
+
+ui:
+  query_in_title: false

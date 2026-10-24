@@ -52,6 +52,8 @@ services:
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
       # The OAuth redirect lands on the host port, not the container port.
       OAUTH_CALLBACK_PORT: ${API_PORT:-8000}
+      # Used only when PERSONAL_OS_WEB_SEARCH_PROVIDER=searxng (`--profile search`).
+      PERSONAL_OS_SEARXNG_URL: ${PERSONAL_OS_SEARXNG_URL:-http://searxng:8080}
       # Bind mounts from a Windows drive (WSL /mnt/c) deliver no change events.
       WATCHFILES_FORCE_POLLING: "true"
     # Dev: live reload from the mounted source. Drop `command` and the ../app mount for an immutable image.
@@ -74,7 +76,21 @@ services:
     volumes:
       - embedding_data:/root/.ollama
 
+  # Keyless metasearch for advisor web research: --profile search
+  searxng:
+    image: searxng/searxng:2026.10.4-d48c4b555
+    profiles: ["search"]
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng_cache:/var/cache/searxng
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8888}:8080"
+
 volumes:
   db_data:
   app_data:
   embedding_data:
+  searxng_cache:

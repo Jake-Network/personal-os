@@ -34,7 +34,10 @@ class Settings:
 
     openai_api_base: str = "https://api.openai.com/v1"
     default_model: str = field(default_factory=lambda: _env("ADVISOR_DEFAULT_MODEL", ""))
+    # "brave" (API key) or "searxng" (keyless local instance). Never switched automatically.
+    web_search_provider: str = field(default_factory=lambda: _env("PERSONAL_OS_WEB_SEARCH_PROVIDER", "brave"))
     web_search_api_key: str = field(default_factory=lambda: _env("PERSONAL_OS_WEB_SEARCH_API_KEY", ""), repr=False)
+    searxng_url: str = field(default_factory=lambda: _env("PERSONAL_OS_SEARXNG_URL", "http://127.0.0.1:8888"))
 
     # Private Google Sheets connection; separate from ChatGPT OAuth.
     google_oauth_client_id: str = field(default_factory=lambda: _env("GOOGLE_OAUTH_CLIENT_ID", ""))

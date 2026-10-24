@@ -168,9 +168,9 @@ Only the nginx entry gateway publishes `127.0.0.1:5173`. Next.js, backend, Postg
 
 Security updates must include the runtime images as well as `uv.lock` and `frontend/yarn.lock`. Python is pinned in `.python-version`, Node in `frontend/.node-version`, and the Dockerfiles pin patched runtime releases. CI audits both dependency locks; those package audits do not scan container OS packages. Use a current `uv` release (the Docker build uses 0.13.5) to install the pinned Python version. After backing up an existing installation and stopping application writes as described above, build replacement images with `docker compose --env-file docker/.env -f docker/compose.production.yml build --pull`, pull the pinned embeddings image with `docker compose --env-file docker/.env -f docker/compose.production.yml pull embeddings`, then start the stack with `docker compose --env-file docker/.env -f docker/compose.production.yml up -d`. A restart alone keeps the old image and its old dependencies. Verify the running versions after replacement; updating source files does not patch existing containers.
 
-Checkpoint deserialization restricts object reconstruction to safe built-in types and explicitly allowlisted schema types. Revision `0016_checkpoint_task_path` adds the patched SQLite saver's pending-task path column while preserving existing checkpoint bytes and pending writes; PostgreSQL already has this column. Apply the migration before running the updated backend; runtime saver setup never creates or alters tables.
+Checkpoint deserialization restricts object reconstruction to safe built-in types and explicitly allowlisted schema types. Revision `0016_checkpoint_task_path` adds the patched SQLite saver's pending-task path column while preserving existing checkpoint bytes and pending writes; PostgreSQL already has this column. The single head `0017_merge_agent_security` joins this revision with `0016_agent_playbooks_inbox`, preserving installations on either branch. Apply the migration before running the updated backend; runtime saver setup never creates or alters tables.
 
-The frontend selectively resolves Tailwind 3's `postcss-selector-parser` dependency to the patched 7.x release. Yarn reports the upstream 6.x range mismatch; the application build validates compatibility. Keep this override until an upstream dependency update provides a patched parser without it.
+The frontend selectively resolves Tailwind 3's `postcss-selector-parser` dependency to the patched 7.x release, `fast-uri` to 3.1.9, and Orval's nested `undici` to the patched 7.30.1 release. Yarn reports upstream range/pin mismatches for these security overrides; API generation and the application build validate compatibility. Keep the overrides until upstream dependencies provide patched releases without them.
 
 Use `/settings/security` (설정 → 보안·백업) for read-only diagnostics. `unverified` does not prove encryption or firewall protection. In Windows/WSL, check BitLocker/device encryption and the actual WSL/Docker virtual disk location, plus DB/document/vector/temp/key storage. The app never changes OS security settings. Volumes and staging must reside on an OS-encrypted disk; Docker volumes alone do not supply this guarantee.
 
@@ -277,9 +277,19 @@ The API-key and Codex app-server providers exist behind the same interface. They
 ### 웹 검색과 본문 근거
 
 로컬 실행과 개발 Docker에서는 상담 입력의 `웹 검색`을 켜고 별도의 `공개 검색어`를 입력할 수 있습니다.
-서버 환경에 `PERSONAL_OS_WEB_SEARCH_API_KEY`로 [Brave Search API 키](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)를 설정한 뒤 백엔드를 다시 시작하세요.
-네이티브 실행은 `.env`를 자동으로 읽지 않으므로 실행 환경에 변수를 전달해야 합니다.
+검색 제공자는 `PERSONAL_OS_WEB_SEARCH_PROVIDER`로 명시적으로 고르며(기본 `brave`), 실패해도 다른 제공자로 자동 전환하지 않습니다.
+
+- **SearXNG(키 없음, 무료):** 로컬에서 실행하는 메타검색 서버입니다. `docker/.env`에 `SEARXNG_SECRET`
+  (`python -c "import secrets; print(secrets.token_hex(32))"`)을 채우고 `docker compose --env-file docker/.env -f docker/docker-compose.yml --profile search up -d searxng`로
+  시작한 뒤 `PERSONAL_OS_WEB_SEARCH_PROVIDER=searxng`를 설정하세요. 네이티브 백엔드는 기본 `PERSONAL_OS_SEARXNG_URL=http://127.0.0.1:8888`,
+  개발 Docker의 `app`은 `http://searxng:8080`을 사용합니다. 백엔드는 `/search?format=json`을 읽으므로 직접 운영하는 인스턴스는
+  [docker/searxng/settings.yml](docker/searxng/settings.yml)처럼 `search.formats`에 `json`을 허용해야 합니다.
+  검색어는 SearXNG를 거쳐 그 인스턴스가 사용하는 검색 엔진(Google·Bing·DuckDuckGo 등)에 전달되며, 엔진이 자동 요청을 제한하면 결과가 줄어들 수 있습니다.
+- **Brave Search API:** `PERSONAL_OS_WEB_SEARCH_API_KEY`에 [Brave Search API 키](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)를 설정합니다.
+
+설정 후 백엔드를 다시 시작하세요. 네이티브 실행은 `.env`를 자동으로 읽지 않으므로 실행 환경에 변수를 전달해야 합니다.
 검색 서비스 사용에는 해당 제공자의 별도 이용 조건·요금이 적용되며, ChatGPT 연결이 검색 권한을 제공하지는 않습니다.
+SearXNG가 돌려준 결과 URL도 Brave와 같은 공개 주소 검사·본문 수집 경로를 거치며, 검색 결과 요약문은 근거로 쓰지 않습니다.
 
 외부 검색에는 공개 검색어만 전송합니다. 상담 질문·개인 DB·문서·대화 이력을 검색어로 자동 확장하지 않습니다.
 검색 결과에서 최대 3개 페이지의 HTML·일반 텍스트 본문을 수집하고 메뉴·스크립트를 정제한 뒤 질문과 관련된 발췌를 고릅니다.
