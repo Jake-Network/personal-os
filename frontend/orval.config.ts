@@ -11,14 +11,15 @@ export default defineConfig({
       target: 'src/api-client/generated',
       schemas: 'src/api-client/model',
       client: 'react-query',
+      httpClient: 'axios',
       clean: true,
       override: {
         mutator: {
           path: 'src/api-client/custom-client.ts',
           name: 'customInstance',
         },
-        // Retry/refetch defaults live on the QueryClient (src/lib/react-query-hooks).
-        query: { useQuery: true },
+        // Orval selects query/mutation hooks by HTTP method. Retry/refetch
+        // defaults live on the QueryClient (src/lib/react-query-hooks).
       },
     },
   },

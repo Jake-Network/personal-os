@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from psycopg.rows import dict_row
 from sqlalchemy import inspect, text, bindparam
@@ -27,7 +28,9 @@ _successful_node_writes = ContextVar("successful_checkpoint_node_writes", defaul
 
 class _SqliteSaver(SqliteSaver):
     def __init__(self, conn, binding):
-        super().__init__(conn)
+        # Checkpoint bytes are not authority to import/reconstruct arbitrary
+        # Python objects, even if an attacker gains write access to the DB.
+        super().__init__(conn, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
         self.binding = binding
 
     def setup(self):
@@ -35,7 +38,7 @@ class _SqliteSaver(SqliteSaver):
         # validates; Alembic owns every schema change.
         for table, columns in {
             "checkpoints": "thread_id,checkpoint_ns,checkpoint_id,parent_checkpoint_id,type,checkpoint,metadata",
-            "writes": "thread_id,checkpoint_ns,checkpoint_id,task_id,idx,channel,type,value",
+            "writes": "thread_id,checkpoint_ns,checkpoint_id,task_id,task_path,idx,channel,type,value",
         }.items():
             self.conn.execute(f"SELECT {columns} FROM {table} LIMIT 0")
 
@@ -71,7 +74,7 @@ class _SqliteSaver(SqliteSaver):
 
 class _PostgresSaver(PostgresSaver):
     def __init__(self, conn, binding):
-        super().__init__(conn)
+        super().__init__(conn, serde=JsonPlusSerializer(allowed_msgpack_modules=None))
         self.binding = binding
 
     def setup(self):
@@ -109,6 +112,11 @@ class RunCheckpointer(BaseCheckpointSaver):
         super().__init__(serde=saver.serde)
         self.saver = saver
         self.run_id = run_id
+
+    def with_allowlist(self, extra_allowlist):
+        # Reads are delegated to the underlying saver. Cloning only this
+        # facade's serde would leave its actual deserializer unchanged.
+        return RunCheckpointer(self.saver.with_allowlist(extra_allowlist), self.run_id)
 
     def _check(self, config):
         if config is None or str(config.get("configurable", {}).get("thread_id")) != self.run_id:

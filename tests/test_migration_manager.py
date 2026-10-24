@@ -41,7 +41,7 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(tmp_p
                 batch.drop_column("source_message_id")
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0015_decision_source_message"
+    assert plan.head == "0016_checkpoint_task_path"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "writes"}.issubset(inspect(engine).get_table_names())

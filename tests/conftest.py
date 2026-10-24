@@ -87,6 +87,7 @@ def checkpoint_schema(session):
         if "checkpoints" not in inspect(connection).get_table_names():
             with Operations.context(MigrationContext.configure(connection)):
                 importlib.import_module("migrations.versions.0011_advisor_checkpoints").upgrade()
+                importlib.import_module("migrations.versions.0016_checkpoint_task_path").upgrade()
 
 
 @pytest.fixture
