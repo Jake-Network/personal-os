@@ -138,7 +138,7 @@ class LLMUsageEvent(Base):
     provider: Mapped[str] = mapped_column(String(32))
     model: Mapped[str | None] = mapped_column(String(80))
     conversation_id: Mapped[int | None] = mapped_column(Integer)
-    outcome: Mapped[str] = mapped_column(String(24))  # completed | incomplete | failed | quota_exceeded | auth_error
+    outcome: Mapped[str] = mapped_column(String(24))  # completed | incomplete | failed | quota_exceeded | auth_error | blocked | cancelled
     error_code: Mapped[str | None] = mapped_column(String(80))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)

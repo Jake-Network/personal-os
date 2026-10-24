@@ -52,6 +52,16 @@ class PlaybookRevisionItem(BaseModel):
     stale: bool = False
 
 
+class PlaybookOutcomes(BaseModel):
+    """Local counts over recent answers that used the playbook; not statistics."""
+    uses: int = 0
+    counted: int = 0
+    positive_ratings: int = 0
+    negative_ratings: int = 0
+    corrected_next_turn: int = 0
+    decisions_reviewed: int = 0
+
+
 class PlaybookItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -64,6 +74,7 @@ class PlaybookItem(BaseModel):
     active_revision: PlaybookRevisionItem | None = None
     pending_count: int = 0
     usage_count: int = 0
+    outcomes: PlaybookOutcomes = Field(default_factory=PlaybookOutcomes)
 
 
 class PlaybookDetail(PlaybookItem):

@@ -67,7 +67,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - 재무, 커리어, 일정과 목표 간의 제약을 연결한다. 검증 가능한 통계 없이 투자 성과나 합격 확률을 만들어내지 않는다.
 - 읽기 도구와 쓰기 경로를 분리한다. 현재 허용된 제안은 `create_task`, `calendar_update`, `goal_update`이며 실제 반영은 명시적 사용자 승인 후에만 한다. LLM에는 재무 테이블이나 Sheets 변경 경로를 제공하지 않는다.
 - 제안 payload는 서버에서 검증한다. 중복 승인, 승인·거절 경합, 실패 시 롤백과 감사 기록을 보호한다. 도구나 action을 추가할 때 허용 목록과 회귀 검증도 함께 변경한다.
-- 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, 탐색 목록도 크기를 제한한 `data.playbook_catalog`와 정확한 revision 참조로 기록한다. 회고의 원문·결정 결과는 스냅샷에 포함하고, 학습한 절차와 기억은 그 스냅샷 출처를 승인 후에도 보존한다. revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
+- 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, 탐색 목록도 크기를 제한한 `data.playbook_catalog`와 정확한 revision 참조(`catalog_references`)로 기록하되, 목록은 전송 시 검사 대상일 뿐 답변의 근거 의존성이 아니다. 플레이북 삭제는 근거 스냅샷을 무효화하지 않으며 참조에 남긴 출처 범주로 공유 제한을 계속 적용한다. 회고의 원문·결정 결과는 스냅샷에 포함하고, 학습한 절차와 기억은 그 스냅샷 출처를 승인 후에도 보존한다. revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
 - LLM이 추출한 장기 기억은 사용자가 확인하기 전에는 확정하지 않는다. 의사결정 기록은 당시 근거·기대 결과·실제 결과를 구분해 회고할 수 있게 한다.
 - **개발 에이전트의 자율 작업 권한은 제품 안의 승인 절차를 생략할 권한이 아니다.**
 
@@ -96,16 +96,20 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - SQLite와 PostgreSQL 모두 지원 대상이다. 모델 변경에는 Alembic revision을 포함하고 기존 DB의 업그레이드·데이터 보존을 검증한다. `create_all()` 통과는 마이그레이션 검증이 아니다.
 - Docker entrypoint는 DB 준비와 migration 잠금을 기다린 뒤 커밋된 Alembic `head`까지 자동 업그레이드하고, 실패하면 서버를 시작하지 않는다. 대기 한도는 `PERSONAL_OS_MIGRATION_TIMEOUT_SECONDS`(기본 60초), 정비 명령의 자동 적용 우회는 `PERSONAL_OS_AUTO_MIGRATE=0`이다. 기존 설치는 이미지 교체 전에 백업한다. 이력이 없는 기존 DB의 명시적 채택과 알 수 없는 revision 검증을 유지하며 자동 stamp·downgrade하지 않는다. 네이티브 앱 시작은 빈 DB만 초기화하며 기존 DB 업그레이드는 `app.modules.database.migration_manager`와 기존 운영 절차를 따른다.
 - 스키마 불일치를 `alembic stamp head`, 테이블 재생성, 볼륨 삭제로 덮지 않는다. 실제 DB 변경·복원·이미지 전환은 백업과 호환성 확인을 선행한다. 토큰 암호화 키와 개인 데이터 볼륨도 함께 보호한다.
-- **pytest fixture는 테이블을 삭제한다.** `TEST_DATABASE_URL`에는 폐기 가능한 전용 테스트 DB만 사용한다. 개인 운영 DB를 테스트 대상으로 지정하지 않는다.
+- **pytest fixture는 테이블을 삭제한다.** 테스트는 `TEST_DATABASE_URL`로 지정한 폐기 가능한 전용 PostgreSQL에서만 실행하고 SQLite로는 테스트하지 않는다. 개인 운영 DB(compose의 `db` 볼륨 포함)를 테스트 대상으로 지정하지 않는다.
 
 ## 검증
 
 변경한 동작을 입증하는 가장 작은 의미 있는 검증부터 실행한다. 보안·숫자·마이그레이션·동시성 변경에는 관련 회귀 검증을 포함하고, 영향이 넓으면 전체 검증으로 확장한다. 문서만 변경했으면 경로·명령·코드와의 일치 및 diff를 확인한다.
 
 ```bash
-# 백엔드: 기본값은 격리된 메모리 SQLite
+# 백엔드: 폐기용 PostgreSQL 컨테이너에서만 실행한다(운영 DB 컨테이너와 별개)
 uv sync --frozen
-uv run pytest -q
+docker run -d --rm --name personal-os-test-pg -e POSTGRES_USER=personal_os -e POSTGRES_PASSWORD=personal_os \
+  -e POSTGRES_DB=personal_os_test -p 127.0.0.1:55432:5432 pgvector/pgvector:pg17
+# 준비된 뒤 한 번: ORM 스키마 fixture가 쓰는 vector 확장을 public에 둔다
+docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREATE EXTENSION IF NOT EXISTS vector"
+TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test uv run pytest -q
 
 # 프런트엔드: frontend/에서 실행
 corepack yarn install --frozen-lockfile
@@ -124,7 +128,7 @@ corepack yarn generate-api
 | 상담에 전달되는 데이터 | `tests/test_advisor_product_context.py`, `test_context_routing.py`, `test_context_budget.py`, `test_calendar_context.py` |
 | 공유·문서 근거 | `tests/test_privacy_history.py`, `test_advisor_documents.py`, `test_document_evidence.py`, `test_documents.py` |
 | 승인·연결·신뢰 경계 | `tests/test_proposal_race.py`, `test_oauth.py`, `test_google_oauth.py`, `test_llm_failures.py`, `test_local_trust.py` |
-| 플레이북·학습·브리핑 | `tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_migration.py` |
+| 플레이북·학습·브리핑 | `tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_followups.py`, `test_agent_migration.py` |
 | DB 변경 | `tests/test_migration_manager.py`, `test_legacy_database.py`, 도메인 migration 테스트 및 `.github/workflows/ci.yml`의 PostgreSQL 검증 |
 
 테스트는 결과뿐 아니라 **모델에 실제로 전달되는 payload**를 검사한다. 예를 들어 최신 잔고 반영, 공유 제외 후 과거 턴 차단, 요청한 일정 범위, 정확한 계산 결과와 불완전성 플래그를 합성 데이터와 가짜 제공자로 확인한다. 모킹된 요청 경로 통과와 실제 LLM의 답변 품질·OAuth·Sheets 연동 성공을 구별한다. 실제 연동 또는 품질 평가가 필요한 작업에서는 측정한 환경과 결과를 별도로 보고한다.

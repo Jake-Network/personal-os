@@ -107,7 +107,8 @@ async def process_one(database):
                             if source_id:
                                 require_live_request_sources(session, LLMRequest(model=run.model, instructions='', input=[],
                                     source_snapshot_id=source_id,
-                                    excluded_categories=tuple(str(c) for c in advisor_manager.sharing_exclusions(session, body.options()))))
+                                    excluded_categories=tuple(str(c) for c in advisor_manager.sharing_exclusions(session, body.options()))),
+                                    outbound=False)
                             selected = {'title': scenario.title, 'assumptions': scenario.assumptions,
                                         'constraints': scenario.constraints, 'source_snapshot_id': source_id,
                                         'prior_results': scenario.results}

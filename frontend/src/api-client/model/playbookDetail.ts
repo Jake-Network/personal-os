@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { PlaybookDetailActiveRevision } from './playbookDetailActiveRevision';
+import type { PlaybookOutcomes } from './playbookOutcomes';
 import type { PlaybookRevisionItem } from './playbookRevisionItem';
 
 export interface PlaybookDetail {
@@ -18,5 +19,6 @@ export interface PlaybookDetail {
   active_revision?: PlaybookDetailActiveRevision;
   pending_count?: number;
   usage_count?: number;
+  outcomes?: PlaybookOutcomes;
   revisions?: PlaybookRevisionItem[];
 }

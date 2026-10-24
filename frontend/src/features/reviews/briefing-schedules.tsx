@@ -198,7 +198,7 @@ export function BriefingSchedules() {
     mutation: {
       onSuccess: async result => {
         await refresh();
-        const state = (result as { state?: string }).state;
+        const { state, model } = result as { state?: string; model?: string };
         notify.success(
           state === 'silent'
             ? '지금 확인할 항목이 없습니다'
@@ -206,7 +206,9 @@ export function BriefingSchedules() {
               ? '브리핑을 준비하고 있습니다. 알림에서 확인하세요'
               : state === 'paused'
                 ? '연결이 바뀌어 예약을 멈췄습니다'
-                : '확인할 항목을 알림에 표시했습니다',
+                : model === 'schedule_disabled'
+                  ? '확인할 항목을 알림에 표시했습니다. AI 브리핑은 예약을 켜면 실행됩니다'
+                  : '확인할 항목을 알림에 표시했습니다',
         );
       },
       onError: notify.error,

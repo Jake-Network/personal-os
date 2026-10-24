@@ -8,15 +8,13 @@ from collections import deque
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from alembic import command
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 
 from app.modules.agent import briefing, reflection
 from app.modules.advisor.runtime.worker import process_one
 from app.modules.database.database import Database, get_session
-from app.modules.database.migration_manager import alembic_config
 from app.modules.database.model import (
     AdvisorConversation, DecisionJournalEntry, InboxItem, PersonalMemory, PlaybookRevision, PlaybookUsage,
 )
@@ -24,6 +22,7 @@ from app.modules.database.model.advisor_runtime import AdvisorRun
 from app.modules.database.model.review_jobs import BackgroundJob, JobSchedule, DecisionReviewRecord
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
 from app.modules.llm.types import StreamEvent
+from tests.conftest import migrated_database_url
 
 FINAL = {"answer": "합성 상담 결과입니다.", "proposals": [], "memories": []}
 PLAN = {"objective": "합성", "tasks": [], "scenarios": []}
@@ -50,13 +49,16 @@ class ScriptedProvider:
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
+    database = Database()
+    with migrated_database_url(tmp_path, "agent") as url:
+        database.init(url)
+        yield from _environment(database, monkeypatch)
+
+
+def _environment(database, monkeypatch):
     from app.modules.llm import transfer_policy
     from app.router import advisor_runtime_router, agent_router, jobs_router, playbook_router
 
-    database = Database()
-    url = f"sqlite:///{tmp_path / 'agent.db'}"
-    command.upgrade(alembic_config(url), "head")
-    database.init(url)
     provider = ScriptedProvider()
     monkeypatch.setitem(llm_gateway_manager.providers, "chatgpt_plan", provider)
     monkeypatch.setattr(transfer_policy, "account_binding", lambda session, provider: "synthetic-account")
@@ -64,6 +66,10 @@ def env(tmp_path, monkeypatch):
     with database.session() as session:
         session.add(AdvisorConversation(id=1, title="합성 상담"))
         session.commit()
+        if session.bind.dialect.name == "postgresql":
+            # An explicit ID does not advance PostgreSQL's sequence; later conversations need fresh IDs.
+            session.execute(text("SELECT setval(pg_get_serial_sequence('advisor_conversations', 'id'), 1)"))
+            session.commit()
         transfer_policy.confirm(session, "chatgpt_plan", True, True)
     app = FastAPI()
     for module in (advisor_runtime_router, agent_router, jobs_router, playbook_router):
@@ -164,11 +170,15 @@ def test_deep_plan_selects_from_the_catalog_only(env):
                  body="1. 잔고 기준일을 확인한다.")
     review = {"valid": True, "issues": [], "retry_tasks": []}
     run, requests = consult(client, database, provider, "pb-deep", "이번 달 재무 상태를 심층 분석해 줘",
-                            replies=({**PLAN, "playbooks": ["월말-점검"]}, review, FINAL), depth="deep")
+                            replies=({**PLAN, "playbooks": ["월말-점검"]}, PLAN, review, FINAL), depth="deep")
     assert run["status"] == "completed", run
     plan_request = requests[0]
     assert "playbook_catalog" in outbound(plan_request) and "1. 잔고 기준일을 확인한다." not in outbound(plan_request)
+    # The chosen procedure is loaded and the research is planned again from its steps.
+    replan = package(requests[1])
+    assert "playbook_catalog" not in replan["data"] and "data.playbooks에 방금 선택한" in requests[1].instructions
     assert all("1. 잔고 기준일을 확인한다." in outbound(request) for request in requests[1:])
+    assert len(requests) == 4
     # A slug outside the catalog is dropped and disclosed; the consultation still answers.
     run, requests = consult(client, database, provider, "pb-deep-bad", "이번 달 재무 상태를 심층 분석해 줘",
                             replies=({**PLAN, "playbooks": ["없는-절차"]}, review, FINAL), depth="deep")

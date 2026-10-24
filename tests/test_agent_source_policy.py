@@ -50,7 +50,7 @@ def test_catalog_provenance_blocks_plan_after_playbook_sharing_revocation(env, m
     run, requests = consult(client, database, provider, 'catalog-revoke', '현재 상황을 심층 분석해 줘',
         replies=({**PLAN, 'objective':'합성 절차 요약'}, {'valid':True,'issues':[],'retry_tasks':[]}, FINAL), depth='deep')
     assert len(requests) == 1, 'A derived plan must not be sent after its catalog source is revoked'
-    assert run['status'] == 'blocked'
+    assert run['status'] == 'blocked', run
     assert run['result'] is None
 
 
@@ -274,7 +274,7 @@ def test_optional_catalog_yields_to_the_full_request_budget(env, monkeypatch, wi
         assembler = ContextAssembler(session, advisor_manager, session.get(AdvisorConversation, 1), AskOptions(), 'fake-model')
         request, _ = asyncio.run(assembler.assemble('합성 질문', instruction=instruction))
         size = len(json.dumps({'instructions':request.instructions,'input':request.input},ensure_ascii=False))
-        limit = size + 400
+        limit = size + 900
         constrained = replace(settings, request_char_limit=limit)
         monkeypatch.setattr(config, 'settings', constrained)
         monkeypatch.setattr(request_module, 'settings', constrained)
@@ -285,8 +285,12 @@ def test_optional_catalog_yields_to_the_full_request_budget(env, monkeypatch, wi
         assert any(flag['code']=='playbook_catalog_omitted' for flag in evidence.data_quality_flags)
         snapshot = session.get(ContextSnapshot, evidence.snapshot_id)
         sent_refs = set(evidence.payload['data']['playbook_catalog']['items'])
-        assert {f"playbook_revisions:{r['id']}" for r in snapshot.record_references
-                if r['table']=='playbook_revisions'} == sent_refs
+        assert sent_refs, 'Some catalog entries must still fit for this check to mean anything'
+        # Offered entries are transport-checked payload, never evidence the answer depends on.
+        catalog_refs = [r for r in snapshot.record_references if r['table'] == 'playbook_revisions']
+        assert {f"playbook_revisions:{r['id']}" for r in catalog_refs} == sent_refs
+        assert all(r['role'] == 'catalog' for r in catalog_refs)
+        assert 'catalog_references' not in json.dumps(request.input, ensure_ascii=False)
 
 
 def test_learning_an_old_answer_uses_the_current_explicit_model(env):

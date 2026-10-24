@@ -47,7 +47,9 @@ def claim(session: Session, owner: str, now=None):
 
 
 def expire_exhausted(session: Session, now):
+    # Model-calling jobs are expired by their own worker, which warns that the call may have been sent.
     session.execute(update(BackgroundJob).where(
+        BackgroundJob.kind.not_in(LLM_KINDS),
         BackgroundJob.status == "running", BackgroundJob.lease_until <= now,
         BackgroundJob.attempts >= BackgroundJob.max_attempts).values(
             status="failed", lease_owner=None, lease_until=None, last_error="attempts_exhausted"))

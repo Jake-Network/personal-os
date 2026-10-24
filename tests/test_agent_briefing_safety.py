@@ -3,13 +3,13 @@ import asyncio
 from datetime import date, timedelta
 
 import pytest
-from alembic import command
 from sqlalchemy import select
+
+from tests.conftest import migrated_database_url
 
 from app.modules.agent import briefing
 from app.modules.agent.inbox_manager import mark
 from app.modules.database.database import Database
-from app.modules.database.migration_manager import alembic_config
 from app.modules.database.model import InboxItem, JobApplication, Interview
 from app.modules.database.model.advisor_runtime import AdvisorRun
 from app.modules.database.model.base import utcnow
@@ -24,15 +24,14 @@ from app.schema.review_jobs_schema import BriefingCreate
 @pytest.fixture
 def database(tmp_path, monkeypatch):
     database = Database()
-    url = f"sqlite:///{tmp_path / 'briefing.db'}"
-    command.upgrade(alembic_config(url), "head")
-    database.init(url)
-    monkeypatch.setattr(transfer_policy, "account_binding", lambda session, provider: "synthetic-account")
-    monkeypatch.setattr(llm_gateway_manager, "resolve_model", synthetic_model)
-    with database.session() as session:
-        transfer_policy.confirm(session, "chatgpt_plan", True, True)
-    yield database
-    database.engine.dispose()
+    with migrated_database_url(tmp_path, "briefing") as url:
+        database.init(url)
+        monkeypatch.setattr(transfer_policy, "account_binding", lambda session, provider: "synthetic-account")
+        monkeypatch.setattr(llm_gateway_manager, "resolve_model", synthetic_model)
+        with database.session() as session:
+            transfer_policy.confirm(session, "chatgpt_plan", True, True)
+        yield database
+        database.engine.dispose()
 
 
 async def synthetic_model(session):

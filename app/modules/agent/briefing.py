@@ -88,6 +88,10 @@ def run(session: Session, schedule: JobSchedule, local_date: date, *, key: str, 
            summary="\n".join(lines), links={"signals": found, "schedule_id": schedule.id})
     if not schedule.options.get("llm_enabled"):
         return {"state": "signals", "signals": found}
+    if not schedule.enabled:
+        # A paused schedule holds no pinned authority; run-now shows signals without treating
+        # the pause as a changed connection or overwriting the user's pause reason.
+        return {"state": "signals", "signals": found, "model": "schedule_disabled"}
     shared_signals = _shared_signals(session, schedule, found)
     categories = sorted({str(c) for signal in shared_signals
                          for c in briefing_signals.CATEGORIES[signal["kind"]]})

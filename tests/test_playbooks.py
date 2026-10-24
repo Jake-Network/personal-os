@@ -144,8 +144,8 @@ def test_deleting_the_origin_conversation_withdraws_learned_revisions(session):
     assert pending.status == "rejected"
     notice = session.scalar(select(InboxItem).where(InboxItem.kind == "playbook_source_purged"))
     assert notice is not None and notice.links["playbook_revision_id"] == learned.id
-    from app.modules.playbooks.selection import catalog
-    assert catalog(session, frozenset()) == []
+    from app.modules.playbooks.selection import eligible_revisions
+    assert eligible_revisions(session, frozenset()) == []
 
 
 def test_model_memory_candidates_with_instructions_are_not_staged(session):

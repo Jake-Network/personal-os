@@ -58,6 +58,8 @@ class ContextAssembler:
         self.last_context = {}
         self.last_history = []
         self.baseline_snapshot_id = None
+        # Playbook catalog entries offered earlier in this run (persisted by the graph state).
+        self.run_catalog_refs = []
         self.memory_store = ConfirmedMemoryStore(session,
             allowed=frozenset(ALL_CATEGORIES) - manager.sharing_exclusions(session, options),
             document_scope={'enabled': options.document_search, 'document_ids': options.document_ids or []})
@@ -112,7 +114,8 @@ class ContextAssembler:
         for snapshot_id in snapshots:
             require_live_request_sources(self.session, LLMRequest(
                 model=self.model, instructions='', input=[], source_snapshot_id=snapshot_id,
-                excluded_categories=tuple(str(c) for c in self.manager.sharing_exclusions(self.session, self.options))))
+                excluded_categories=tuple(str(c) for c in self.manager.sharing_exclusions(self.session, self.options))),
+                outbound=False)
 
     async def history_overflow(self, query):
         await self.check()
@@ -145,6 +148,15 @@ class ContextAssembler:
             self.session.commit()
             return snapshot_id
 
+    async def search_sessions(self, query):
+        """Filtered past-session excerpts and their refs; assemble() snapshots and budgets them."""
+        from app.modules.advisor.memory_history_manager import search_sessions
+        async with self.lock:
+            await self.check()
+            options = self.manager.document_options(self.session, self.conversation, self.options)
+            return search_sessions(self.session, query, self.conversation.id,
+                                   self.manager.sharing_exclusions(self.session, options), options)
+
     def saved_history_summary(self, overflow):
         options = self.manager.document_options(self.session, self.conversation, self.options)
         return history_service.saved_summary(self.session, self.conversation.id, overflow,
@@ -159,11 +171,6 @@ class ContextAssembler:
             await self.check()
             self.validate_sources(sources)
             from app.modules.context.source_policy import source_allowed
-            if not source_allowed(self.session, list(record_sources),
-                    self.manager.sharing_exclusions(self.session, self.options),
-                    document_scope={'enabled': self.options.document_search,
-                                    'document_ids': list(self.options.document_ids or [])}):
-                raise AdvisorError('회고 근거의 공유 설정이나 원본이 변경되었습니다.', provider_code='source_policy_changed')
             route, package, options, history = self.manager.prepare_context(
                 self.session, query, self.conversation, self.options, self.conversation.id)
             summary = None
@@ -186,7 +193,8 @@ class ContextAssembler:
                 if row is None:
                     raise AdvisorError('비교 기준 근거가 삭제되었습니다.', provider_code='source_policy_changed')
                 package = to_package(row, True)
-            if sources or summary is not None or history_source_ids or context_data or record_sources or context_flags:
+            if (sources or summary is not None or history_source_ids or context_data or record_sources or context_flags
+                    or self.run_catalog_refs):
                 from app.modules.context.snapshots import content_hash, to_package
                 from app.modules.database.model import ContextSnapshot
                 snapshot_id = str(uuid.uuid4())
@@ -292,12 +300,19 @@ class ContextAssembler:
                         omission['count'] += 1
                     catalog_refs = [{'table': 'playbook_revisions', 'id': int(ref.split(':')[1])}
                                     for ref in catalog['items']]
-                    if not source_allowed(self.session, catalog_refs,
-                            self.manager.sharing_exclusions(self.session, options),
-                            document_scope={'enabled': options.document_search,
-                                            'document_ids': list(options.document_ids or [])}):
+                else:
+                    catalog_refs = []
+                # Discovery metadata is checked at transport, but is never evidence of the answer:
+                # revoking a listed procedure later must not withhold answers that never used it.
+                # Every later call of this run carries the catalog it was planned from.
+                catalog_refs = list({(ref['table'], ref['id']): ref for ref in
+                                     [*self.run_catalog_refs, *catalog_refs]}.values())
+                if catalog_refs:
+                    from app.modules.context.source_policy import procedures_sendable
+                    if not procedures_sendable(self.session, catalog_refs, self.manager.sharing_exclusions(self.session, options)):
                         raise AdvisorError('상담 절차의 공유 설정이 변경되었습니다.', provider_code='source_policy_changed')
-                    refs.extend(stamp_references(self.session, catalog_refs))
+                    # Kept beside the evidence (never in the sent payload), marked so history checks skip it.
+                    refs.extend({**ref, 'role': 'catalog'} for ref in stamp_references(self.session, catalog_refs))
                 row = ContextSnapshot(id=snapshot_id, conversation_id=self.conversation.id,
                     context_categories=package.categories, excluded_categories=package.excluded_categories,
                     record_references=refs, source_updated_at=package.source_updated_at,

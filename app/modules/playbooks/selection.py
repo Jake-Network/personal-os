@@ -24,23 +24,22 @@ def explicit_slug(message: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _eligible(session: Session, excluded) -> list[tuple[Playbook, PlaybookRevision]]:
+def eligible_revisions(session: Session, excluded) -> list[tuple[Playbook, PlaybookRevision]]:
+    """Active revisions the current sharing policy allows; compute once and pass it along per request."""
     rows = session.execute(select(Playbook, PlaybookRevision).join(
         PlaybookRevision, PlaybookRevision.playbook_id == Playbook.id).where(
             Playbook.status == "active", PlaybookRevision.status == "active")
         .order_by(Playbook.slug)).all()
+    # Learned revisions often cite the same snapshots; one memo walks each shared origin once.
+    memo = {}
     return [(playbook, revision) for playbook, revision in rows
-            if source_allowed(session, [{"table": "playbook_revisions", "id": revision.id}], excluded)]
+            if source_allowed(session, [{"table": "playbook_revisions", "id": revision.id}], excluded, memo=memo)]
 
 
-def catalog(session: Session, excluded) -> list[dict]:
-    return [{"slug": playbook.slug, "title": revision.title, "summary": revision.summary,
-             "triggers": revision.triggers} for playbook, revision in _eligible(session, excluded)]
-
-
-def catalog_context(session: Session, excluded, query: str, *, exclude_slugs=(), max_chars=4000):
+def catalog_context(session: Session, excluded, query: str, *, exclude_slugs=(), max_chars=4000, eligible=None):
     """Bound discovery metadata and retain the exact revisions offered to the model."""
-    rows = [(p, r) for p, r in _eligible(session, excluded) if p.slug not in exclude_slugs]
+    eligible = eligible_revisions(session, excluded) if eligible is None else eligible
+    rows = [(p, r) for p, r in eligible if p.slug not in exclude_slugs]
     text = query.casefold()
     rows.sort(key=lambda pair: (-sum(term.casefold() in text for term in
         [pair[0].slug, *pair[1].triggers] if len(term) >= 2), pair[0].slug))
@@ -57,9 +56,9 @@ def catalog_context(session: Session, excluded, query: str, *, exclude_slugs=(),
     return {"procedural_not_facts": True, "items": items}, flags
 
 
-def select_playbooks(session: Session, query: str, excluded, explicit_ids=(), explicit_slugs=()):
+def select_playbooks(session: Session, query: str, excluded, explicit_ids=(), explicit_slugs=(), eligible=None):
     """Return (revisions, flags). Explicitly requested but unavailable playbooks are disclosed."""
-    eligible = _eligible(session, excluded)
+    eligible = eligible_revisions(session, excluded) if eligible is None else eligible
     by_id = {playbook.id: (playbook, revision) for playbook, revision in eligible}
     by_slug = {playbook.slug: (playbook, revision) for playbook, revision in eligible}
     chosen, flags = [], []

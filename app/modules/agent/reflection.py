@@ -12,7 +12,6 @@ model may have been reached, and no exception text persisted.
 import asyncio
 import json
 import logging
-import re
 from contextlib import suppress
 from datetime import timedelta
 from typing import Literal
@@ -27,11 +26,11 @@ from app.modules.crud.review_jobs_handler import LLM_KINDS, by_request
 from app.modules.database.model.base import utcnow
 from app.modules.database.model.review_jobs import BackgroundJob
 from app.modules.llm.errors import AdvisorError
+from app.modules.playbooks.usage import CORRECTION
 
 logger = logging.getLogger(__name__)
 KIND = "advisor_reflection"
 LEASE = timedelta(seconds=90)
-CORRECTION = re.compile(r"아니(?:야|라|요)|틀렸|잘못\s*(?:됐|되었|계산|이해)|정정|다시\s*(?:계산|생각|확인)|그게\s*아니|사실은")
 
 REFLECTION_PROMPT = (
     "이번 요청은 답변이 아니라 학습 회고입니다. 위 상담(또는 결정의 기대 결과와 실제 결과)을 돌아보고, 다음 상담에서 "
@@ -39,6 +38,8 @@ REFLECTION_PROMPT = (
     "개인 사실을 넣지 말고, 어떤 근거를 어떤 순서로 확인하고 무엇을 주의할지 단계로 쓰세요. "
     "기존 플레이북을 고칠 때는 existing_playbooks에 있는 slug와 active_revision_id를 base_revision_id로 그대로 쓰고 "
     "전체 수정본을 body에 쓰세요. 새 플레이북은 playbook_catalog에 없는 slug(소문자·숫자·한글·하이픈)를 쓰세요. "
+    "playbook_usage는 기존 플레이북을 쓴 최근 답변의 결과 집계(평가·다음 턴 정정·회고한 결정 수)입니다. 정정이나 "
+    "낮은 평가가 반복된 절차는 원인이 된 단계를 고치는 patch를 우선 검토하고, 건수가 적으면 단정하지 마세요. "
     "사용자가 명시한 장기 선호·제약이 있을 때만 memories 후보를 만드세요. 재사용할 교훈이 없으면 "
     "nothing_to_learn=true로 비워 두세요. 모든 제안은 사용자가 승인해야 적용됩니다.")
 
@@ -151,6 +152,24 @@ def after_run(session: Session, run_id: str, state: dict) -> None:
             enqueue(session, request_id=f"reflect:run:{run_id}", source="run", run_id=run_id, automatic=True)
     except Exception as exc:  # consent, provider or source changes simply skip learning
         logger.info("Automatic reflection skipped: %s", type(exc).__name__)
+
+
+def after_feedback(session: Session, message_id: int, recommendation_id: int, rating: int | None) -> None:
+    """A negative rating of an answer that used a procedure is the clearest signal to revisit it."""
+    from app.modules.agent.settings_manager import learning
+    from app.modules.database.model.advisor_runtime import AdvisorRun
+    try:
+        if rating != -1 or not learning(session).enabled:
+            return
+        run = session.scalar(select(AdvisorRun).where(AdvisorRun.assistant_message_id == message_id,
+                                                      AdvisorRun.status == "completed").limit(1))
+        if run is None or not (run.result or {}).get("playbooks"):
+            return
+        with session.begin_nested():
+            enqueue(session, request_id=f"reflect:feedback:{recommendation_id}", source="run", run_id=run.id,
+                    automatic=True)
+    except Exception as exc:
+        logger.info("Feedback reflection skipped: %s", type(exc).__name__)
 
 
 def after_outcome(session: Session, decision_id: int, review_id: int) -> None:
@@ -326,6 +345,11 @@ async def reflect(session: Session, job_id: int, payload: dict, *, owner: str) -
         options, question = body.options(), body.message
         result = run.result or {}
         used_slugs = [item.get("slug") for item in result.get("playbooks", []) if item.get("slug")]
+        if run.user_message_id and CORRECTION.search(question or ""):
+            # A correction is feedback on the previous answer: review the procedures that answer used.
+            from app.modules.playbooks.usage import used_by_previous_answer
+            used_slugs = list(dict.fromkeys([*used_slugs, *used_by_previous_answer(
+                session, conversation.id, run.user_message_id)]))
         message_id = run.assistant_message_id
         from app.modules.database.model.advisor_runtime import AdvisorWorkspace
         workspace = session.get(AdvisorWorkspace, conversation.id)
@@ -368,7 +392,9 @@ async def reflect(session: Session, job_id: int, payload: dict, *, owner: str) -
         # The old question and diagnostic strings may themselves contain revoked data.
         # Review only freshly assembled, permitted context in that case.
         question = "공유가 허용된 현재 기록에서 재사용할 상담 절차가 있는지 회고해 주세요."
-        derived, sources, used_slugs = {}, [], []
+        # Memory candidates need the user's own statement, which is exactly what is withheld;
+        # nothing learned here may cite the restricted message as its source.
+        derived, sources, used_slugs, message_id = {}, [], [], None
         source_flags.append({"code": "reflection_source_withheld", "category": "system",
             "detail": "공유 제한으로 선택한 과거 상담 대신 현재 공유된 기록만 회고했습니다."})
     elif payload["source"] == "run":
@@ -378,18 +404,25 @@ async def reflect(session: Session, job_id: int, payload: dict, *, owner: str) -
             "role": message.role, "content": message.content, "historical": True}
             for ref in sources if ref["table"] == "advisor_messages"
             if (message := session.get(AdvisorMessage, ref["id"])) is not None]
-    related, _ = select_playbooks(session, question, excluded, explicit_slugs=used_slugs)
+    from app.modules.playbooks.selection import eligible_revisions
+    eligible = eligible_revisions(session, excluded)
+    related, _ = select_playbooks(session, question, excluded, explicit_slugs=used_slugs, eligible=eligible)
     related_slugs = {}
     for revision in related:
         playbook = playbook_handler.get(session, revision.playbook_id)
         related_slugs[playbook.slug] = revision
+    from app.modules.playbooks import usage
+    # Counts only, over answers whose provenance the current sharing policy still allows.
+    playbook_usage = usage.for_slugs(session, related_slugs, excluded)
+    if playbook_usage:
+        derived["playbook_usage"] = playbook_usage
     derived["existing_playbooks"] = [{"slug": slug, "active_revision_id": revision.id, "title": revision.title,
         "summary": revision.summary}
         for slug, revision in related_slugs.items()]
     from dataclasses import replace
     # Full procedures use the regular snapshot/budget path; discovery carries only bounded metadata.
     options = replace(options, playbook_ids=(), playbook_slugs=tuple(related_slugs))
-    catalog, catalog_flags = catalog_context(session, excluded, question, exclude_slugs=related_slugs)
+    catalog, catalog_flags = catalog_context(session, excluded, question, exclude_slugs=related_slugs, eligible=eligible)
     derived["playbook_catalog"] = catalog
     catalog_flags = [*source_flags, *catalog_flags]
     sources.extend({"table": "playbook_revisions", "id": revision.id} for revision in related_slugs.values())

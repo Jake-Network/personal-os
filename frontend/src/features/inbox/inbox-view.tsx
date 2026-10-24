@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import { useQueryClient } from '@tanstack/react-query';
 import { Bell, CalendarClock, Lightbulb, PauseCircle, Sparkles, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
@@ -12,6 +14,8 @@ import {
   useReadAllInbox,
   useReadInboxItem,
 } from '@/api-client/generated/agent/agent';
+import { useListMemories } from '@/api-client/generated/memory/memory';
+import { useListPendingPlaybookRevisions } from '@/api-client/generated/playbooks/playbooks';
 import type { InboxItemView } from '@/api-client/model';
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
@@ -19,8 +23,12 @@ import { PageContainer, PageHeader } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { MEMORY_KIND_LABEL } from '@/lib/labels';
 import { relative } from '@/lib/utils/format';
+
+import { approvalKey, useBatchDecision, type ApprovalKey } from '@/features/approvals/batch';
 
 /** Each kind is a different state: local signals, a briefing, learning to review, a paused schedule, a failure. */
 const KIND: Record<string, { label: string; icon: typeof Bell; tone: 'default' | 'accent' | 'warning' | 'destructive' }> = {
@@ -61,6 +69,92 @@ function NextActions({ item }: { item: InboxItemView }) {
           {action.label}
         </Link>
       ))}
+    </div>
+  );
+}
+
+const ids = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is number => typeof id === 'number') : []);
+
+/**
+ * Review a learning result where it is announced: each proposal's text is shown before it can be
+ * selected, and nothing is preselected. Diffs and history stay on the approvals page.
+ */
+function LearningProposals({ item }: { item: InboxItemView }) {
+  const links = item.links as Record<string, unknown>;
+  const revisionIds = ids(links.playbook_revision_ids);
+  const memoryIds = ids(links.memory_ids);
+  const revisions = useListPendingPlaybookRevisions({ query: { enabled: revisionIds.length > 0 } });
+  const memories = useListMemories({ status: 'proposed' }, { query: { enabled: memoryIds.length > 0 } });
+  const [selected, setSelected] = useState<Set<ApprovalKey>>(new Set());
+  const batch = useBatchDecision(() => setSelected(new Set()));
+  const rows = [
+    ...(revisions.data ?? [])
+      .filter(r => revisionIds.includes(r.id))
+      .map(r => ({
+        key: approvalKey('playbook', r.id),
+        label: r.base_revision_id ? '플레이북 수정' : '새 플레이북',
+        title: r.title,
+        detail: r.summary,
+        blocked: r.stale || r.source_purged,
+      })),
+    ...(memories.data ?? [])
+      .filter(m => memoryIds.includes(m.id))
+      .map(m => ({
+        key: approvalKey('memory', m.id),
+        label: `기억 후보 · ${MEMORY_KIND_LABEL[m.kind] ?? m.kind}`,
+        title: m.content,
+        detail: '',
+        blocked: false,
+      })),
+  ];
+  if (revisionIds.length + memoryIds.length === 0 || revisions.isPending || memories.isPending) return null;
+  if (rows.length === 0) return <p className='mt-1.5 text-2xs text-faint'>이 알림의 제안은 모두 처리했습니다.</p>;
+  const chosen = rows.filter(row => selected.has(row.key));
+  const approvable = chosen.filter(row => !row.blocked).map(row => row.key);
+  return (
+    <div className='mt-2 rounded-md border bg-muted/30 p-2'>
+      <ul className='flex flex-col gap-1.5'>
+        {rows.map(row => (
+          <li key={row.key} className='flex items-start gap-2'>
+            <Checkbox
+              className='mt-0.5'
+              checked={selected.has(row.key)}
+              aria-label={`${row.title} 선택`}
+              onCheckedChange={value =>
+                setSelected(current => {
+                  const next = new Set(current);
+                  if (value === true) next.add(row.key);
+                  else next.delete(row.key);
+                  return next;
+                })
+              }
+            />
+            <div className='min-w-0 text-xs'>
+              <span className='text-faint'>{row.label}</span> <span className='font-medium'>{row.title}</span>
+              {row.detail && <p className='text-muted-foreground'>{row.detail}</p>}
+              {row.blocked && <p className='text-warning'>그 사이 바뀌었거나 근거가 삭제되어 승인할 수 없습니다.</p>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+        <Button size='sm' variant='primary' disabled={batch.isPending || approvable.length === 0} onClick={() => batch.decide(approvable, 'approve')}>
+          선택 승인
+        </Button>
+        <Button
+          size='sm'
+          variant='ghost'
+          disabled={batch.isPending || chosen.length === 0}
+          onClick={() =>
+            batch.decide(
+              chosen.map(row => row.key),
+              'reject',
+            )
+          }>
+          선택 거절
+        </Button>
+        <span className='text-2xs text-faint'>바뀐 내용 비교는 제안 검토에서 볼 수 있습니다.</span>
+      </div>
     </div>
   );
 }
@@ -115,6 +209,7 @@ export function InboxView() {
                 <span className='ml-auto text-2xs text-faint'>{relative(item.created_at)}</span>
               </div>
               {item.summary && <p className='mt-1 whitespace-pre-line text-ui text-muted-foreground'>{item.summary}</p>}
+              {item.kind === 'learning_proposals' && <LearningProposals item={item} />}
               <NextActions item={item} />
               <div className='mt-2 flex gap-1'>
                 {item.status === 'unread' && (

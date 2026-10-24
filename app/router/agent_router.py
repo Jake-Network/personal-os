@@ -8,6 +8,7 @@ from app.modules.agent import inbox_manager, reflection, settings_manager
 from app.modules.crud.playbook_handler import inbox_handler
 from app.modules.database import get_session
 from app.modules.database.model import LLMUsageEvent, PlaybookRevision, PlaybookUsage
+from app.modules.llm.llm_gateway_manager import FAILED_OUTCOMES
 from app.modules.database.model.base import utcnow
 from app.modules.llm.errors import AdvisorError
 from app.schema.playbook_schema import (
@@ -94,7 +95,9 @@ def get_agent_activity(days: int = Query(30, ge=1, le=365), session: Session = D
         PlaybookRevision.source == "advisor", PlaybookRevision.created_at >= since).group_by(PlaybookRevision.status)).all())
     uses = session.scalar(select(func.count()).select_from(PlaybookUsage).where(PlaybookUsage.created_at >= since)) or 0
     total = sum(outcomes.values())
-    return AgentActivity(days=days, model_calls=total, failed_calls=total - outcomes.get("completed", 0),
+    # Stopped by the user or by a consent/sharing change is not a failed call.
+    failed = sum(count for outcome, count in outcomes.items() if outcome in FAILED_OUTCOMES)
+    return AgentActivity(days=days, model_calls=total, failed_calls=failed,
                          input_tokens=tokens[0], output_tokens=tokens[1], playbook_uses=uses,
                          learning_proposals=sum(learned.values()),
                          learning_approved=learned.get("active", 0) + learned.get("superseded", 0),

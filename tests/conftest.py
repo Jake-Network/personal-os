@@ -1,7 +1,9 @@
 import os
 from collections.abc import AsyncIterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,6 +46,34 @@ class ExplodingProvider(FakeProvider):
 
 # Set to run the suite against PostgreSQL, e.g. the compose DB (a dedicated test database: tables are dropped).
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
+
+
+@contextmanager
+def migrated_database_url(tmp_path, name):
+    """A disposable database upgraded to Alembic head: an isolated schema on PostgreSQL when configured."""
+    from alembic import command
+    from sqlalchemy import create_engine, make_url, text
+    from app.modules.database.migration_manager import alembic_config
+    if not TEST_DATABASE_URL.startswith("postgresql"):
+        url = "sqlite:///" + str(tmp_path / (name + ".db"))
+        command.upgrade(alembic_config(url), "head")
+        yield url
+        return
+    schema = name + "_" + uuid4().hex
+    admin = create_engine(TEST_DATABASE_URL)
+    with admin.begin() as connection:
+        connection.execute(text('CREATE SCHEMA "' + schema + '"'))
+    url = make_url(TEST_DATABASE_URL).update_query_dict(
+        {"options": "-csearch_path=" + schema + ",public"}).render_as_string(hide_password=False)
+    migration = alembic_config(url)
+    migration.attributes["version_table_schema"] = schema
+    try:
+        command.upgrade(migration, "head")
+        yield url
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text('DROP SCHEMA "' + schema + '" CASCADE'))
+        admin.dispose()
 
 
 @pytest.fixture

@@ -45,12 +45,15 @@ class PlaybookManager:
 
     def describe(self, session: Session, playbooks: list[Playbook], detail: bool = False) -> list:
         pending, usage = playbook_handler.pending_counts(session), playbook_handler.usage_counts(session)
+        from app.modules.playbooks.usage import outcomes as usage_outcomes
+        outcomes = usage_outcomes(session, [playbook.id for playbook in playbooks])
         views = []
         for playbook in playbooks:
             active = playbook_handler.active_revision(session, playbook.id)
             values = {**PlaybookItem.model_validate(playbook).model_dump(),
                       "active_revision": self.revision_view(session, active) if active else None,
-                      "pending_count": pending.get(playbook.id, 0), "usage_count": usage.get(playbook.id, 0)}
+                      "pending_count": pending.get(playbook.id, 0), "usage_count": usage.get(playbook.id, 0),
+                      "outcomes": {key: value for key, value in outcomes[playbook.id].items() if key != "by_revision"}}
             if detail:
                 values["revisions"] = [self.revision_view(session, r) for r in playbook_handler.revisions(session, playbook.id)]
                 views.append(PlaybookDetail.model_validate(values))

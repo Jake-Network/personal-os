@@ -248,7 +248,7 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
                   <TableCell>{u.model ?? '—'}</TableCell>
                   <TableCell>
                     <Badge
-                      variant={u.outcome === 'completed' ? 'success' : u.outcome === 'quota_exceeded' ? 'warning' : 'destructive'}
+                      variant={u.outcome === 'completed' ? 'success' : u.outcome === 'quota_exceeded' ? 'warning' : u.outcome === 'blocked' || u.outcome === 'cancelled' ? 'default' : 'destructive'}
                       title={u.error_code ?? undefined}>
                       {OUTCOME[u.outcome] ?? u.outcome}
                     </Badge>

@@ -136,6 +136,8 @@ export const TABLE_LABEL: Record<string, string> = {
 
 export const TOOL_LABEL: Record<string, string> = {
   search_documents: '문서 검색',
+  search_sessions: '이전 상담 검색',
+  search_history: '과거 대화 검색',
   get_accounts_summary: '계좌·자산·부채',
   get_cashflow_summary: '현금흐름',
   get_portfolio_summary: '포트폴리오',

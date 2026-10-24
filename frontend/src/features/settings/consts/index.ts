@@ -10,6 +10,8 @@ export const OUTCOME: Record<string, string> = {
   failed: '실패',
   quota_exceeded: '한도 초과',
   auth_error: '인증 오류',
+  blocked: '설정 변경으로 중지',
+  cancelled: '사용자 중지',
 };
 
 export const CALLBACK_ERROR: Record<string, string> = {

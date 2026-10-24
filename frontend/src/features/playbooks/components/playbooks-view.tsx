@@ -15,7 +15,7 @@ import {
   useRestorePlaybook,
   useSetPlaybookSharing,
 } from '@/api-client/generated/playbooks/playbooks';
-import type { PlaybookItem } from '@/api-client/model';
+import type { PlaybookItem, PlaybookOutcomes } from '@/api-client/model';
 import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { Markdown } from '@/components/markdown';
@@ -78,6 +78,7 @@ function PlaybookSheet({ playbookId, onClose }: { playbookId: number; onClose: (
               <span>상담에서 {playbook.usage_count}번 사용</span>
               {playbook.source === 'advisor' && <span>상담에서 배움</span>}
             </div>
+            <OutcomeLine outcomes={playbook.outcomes} />
             {active?.source_purged && (
               <Alert>학습 근거가 된 대화나 결정이 삭제되어 이 플레이북을 상담에 보내지 않습니다. 내용을 확인하고 수정해 저장하면 다시 사용합니다.</Alert>
             )}
@@ -253,5 +254,22 @@ export function PlaybooksView({ recordId }: { recordId: number | null }) {
       {creating && <PlaybookEditor open onClose={() => setCreating(false)} />}
       {openId !== null && <PlaybookSheet playbookId={openId} onClose={() => setOpenId(null)} />}
     </div>
+  );
+}
+
+/** What followed recent answers that used this procedure. Counts only; the learning review reads the same. */
+function OutcomeLine({ outcomes }: { outcomes?: PlaybookOutcomes }) {
+  if (!outcomes?.uses) return null;
+  const parts = [
+    outcomes.positive_ratings && `좋아요 ${outcomes.positive_ratings}`,
+    outcomes.negative_ratings && `아쉬워요 ${outcomes.negative_ratings}`,
+    outcomes.corrected_next_turn && `다음 질문에서 정정 ${outcomes.corrected_next_turn}`,
+    outcomes.decisions_reviewed && `회고한 결정 ${outcomes.decisions_reviewed}`,
+  ].filter(Boolean);
+  return (
+    <p className='text-xs text-muted-foreground'>
+      최근 사용 {outcomes.uses}번의 결과: {parts.length ? parts.join(' · ') : '평가나 정정 기록 없음'}
+      {(!!outcomes.negative_ratings || !!outcomes.corrected_next_turn) && ' — 자동 학습을 켜 두면 다음 회고에서 이 절차의 수정을 검토합니다.'}
+    </p>
   );
 }

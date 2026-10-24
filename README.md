@@ -16,16 +16,24 @@ cd frontend && corepack yarn install && corepack yarn dev # FE runs on the host,
 - Before starting the server, the container waits for the database, acquires a migration lock, and upgrades it to the image's Alembic `head`. A failed migration prevents server startup. Back up an existing installation before deploying a newer image.
 - Volumes: `db_data` (PostgreSQL) and `app_data` (generated token-encryption key, `0600`). `down -v` deletes both.
 - Ports bind to `127.0.0.1` only. If you change `API_PORT`, the OAuth redirect follows it (`http://127.0.0.1:${API_PORT}/auth/callback`).
-- Tests against the compose DB use a dedicated database, because the suite drops tables:
-  `createdb personal_os_test` inside the db container, then
-  `TEST_DATABASE_URL=postgresql+psycopg://personal_os:<pw>@127.0.0.1:5432/personal_os_test uv run pytest`
+- Never point tests at the compose DB (or any personal database): the suite drops tables. See [Tests](#tests).
 
 ## Run natively (SQLite)
 
 ```bash
 uv sync
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log # port must equal OAUTH_CALLBACK_PORT
-uv run pytest
+```
+
+### Tests
+
+Tests run only on a disposable PostgreSQL container, separate from the operating DB, and never on SQLite:
+
+```bash
+docker run -d --rm --name personal-os-test-pg -e POSTGRES_USER=personal_os -e POSTGRES_PASSWORD=personal_os \
+  -e POSTGRES_DB=personal_os_test -p 127.0.0.1:55432:5432 pgvector/pgvector:pg17
+docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREATE EXTENSION IF NOT EXISTS vector"
+TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test uv run pytest -q
 ```
 
 Export the backend contract locally before generating the authenticated API client:
@@ -71,7 +79,7 @@ Financial figures distinguish net worth, investable assets, cash and cash equiva
 *spendable liquidity* (cash-kind accounts marked liquid). Cash runway uses spendable liquidity only
 and is reported as unavailable when the last three full months of expenses are not all recorded.
 
-CI (`.github/workflows/ci.yml`, Linux) runs pytest on SQLite and PostgreSQL (plus Alembic
+CI (`.github/workflows/ci.yml`, Linux) runs pytest on a PostgreSQL service (plus Alembic
 upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), Vitest and build.
 
 ## 화면 구성
@@ -118,13 +126,17 @@ LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 
 
 상담 결과를 다음 상담의 절차로 쌓고, 사용자가 묻기 전에 확인할 일을 알려 줍니다. 모든 학습 결과는 제안으로만 저장되며 사용자가 승인하기 전에는 상담에 쓰이지 않습니다.
 
-- **플레이북(`/reflect/playbooks`):** 상담에서 따를 확인 순서입니다. 로컬 DB에 수정 기록으로 보관하며 내용은 고쳐 쓰지 않고 새 버전을 쌓습니다. 사용자가 직접 쓰거나 고친 버전은 바로 쓰이고, 상담에서 나온 제안은 기준 버전과 비교(diff)한 뒤 승인합니다. 그 사이 플레이북이 바뀌었으면 승인할 수 없습니다. 질문에 트리거 단어가 있거나 입력창에서 `/짧은이름`으로 부르면 최대 두 개를 보냅니다. 깊게 분석에서는 계획 단계가 제목·요약 목록만 보고 고르고, 고른 절차의 본문만 근거 데이터(`data.playbooks`)에 넣습니다. 목록은 질문 관련성 순으로 최대 12개·4,000자까지 제공하고, 생략 수를 표시합니다. 목록에 제공한 버전도 근거 스냅샷에 남겨 공유 해제 후 파생 계획이 다시 전송되지 않게 합니다. 답변 당시 쓴 버전은 근거 스냅샷과 사용 기록에 남습니다. 관련 영역 중 하나라도 공유를 막았거나, `상담에 보내기`를 껐거나, 보관했거나, 학습 근거가 삭제된 플레이북은 보내지 않습니다. 예산이 부족하면 플레이북 전체를 빼고 `context_section_omitted`로 알리며 절차 중간을 자르지 않습니다.
+- **플레이북(`/reflect/playbooks`):** 상담에서 따를 확인 순서입니다. 로컬 DB에 수정 기록으로 보관하며 내용은 고쳐 쓰지 않고 새 버전을 쌓습니다. 사용자가 직접 쓰거나 고친 버전은 바로 쓰이고, 상담에서 나온 제안은 기준 버전과 비교(diff)한 뒤 승인합니다. 그 사이 플레이북이 바뀌었으면 승인할 수 없습니다. 질문에 트리거 단어가 있거나 입력창에서 `/짧은이름`으로 부르면 최대 두 개를 보냅니다. 분석 계획 단계는 제목·요약 목록만 보고 고르고, 고른 절차의 본문만 근거 데이터(`data.playbooks`)에 넣습니다. 새로 고른 절차가 있으면 본문을 불러온 뒤 그 단계에 맞춰 조사 계획을 한 번 다시 세웁니다(호출 예산이 부족하면 답변에만 쓰고 한계로 알립니다). 목록은 질문 관련성 순으로 최대 12개·4,000자까지 제공하고, 생략 수를 표시합니다. 목록에 제공한 버전은 그 실행의 이후 요청마다 전송 직전에 다시 검사해 공유 해제 후 파생 계획이 전송되지 않게 하지만, 목록에만 보인 절차는 답변의 근거가 아니므로 나중에 공유를 바꿔도 과거 답변을 막지 않습니다. 답변 당시 쓴 버전은 근거 스냅샷과 사용 기록에 남습니다. 플레이북을 삭제하면 절차와 사용 기록만 지우고, 그 절차를 쓴 답변의 근거 스냅샷은 보존합니다. 삭제한 절차의 출처 영역은 참조에 남아 그 영역의 공유를 막으면 해당 답변도 계속 보내지 않습니다. 관련 영역 중 하나라도 공유를 막았거나, `상담에 보내기`를 껐거나, 보관했거나, 학습 근거가 삭제된 플레이북은 보내지 않습니다. 예산이 부족하면 플레이북 전체를 빼고 `context_section_omitted`로 알리며 절차 중간을 자르지 않습니다.
 - **저장 규칙:** 플레이북은 기록이 아니라 교훈입니다. AI가 제안한 내용에 금액·특정 날짜·레코드 참조·지시 변경 문장·비밀값·보이지 않는 제어 문자가 있으면 저장하지 않습니다. 사용자가 직접 쓴 내용은 경고와 함께 저장합니다. AI가 제안한 기억 후보에도 같은 지시·비밀값 검사를 적용합니다. 검사는 패턴 기반 보조 장치이며 통과한 내용의 안전을 보증하지 않습니다.
-- **상담에서 배우기:** 답변의 `이 상담에서 배우기`는 그 상담을 다시 읽어 플레이북·기억 후보를 제안받는 AI 호출을 한 번 더 만듭니다. `/settings/agent`에서 켜면 분석이 길었거나(도구 3회 이상·재계획·확인 질문) 사용자가 정정한 상담, 결과를 기록한 결정 회고에 대해 자동으로 요청합니다(기본 꺼짐). 회고 요청도 상담과 같은 `ContextAssembler` 경로를 거치므로 **요청 시점의** 공유 범위·이력 차단·예산·스냅샷이 적용됩니다. 학습에는 과거 답변의 모델이 아닌 현재 선택한 모델을 사용합니다. 실행 권한은 요청할 때 고정되고, 앱 잠금·연결 계정·모델이 바뀌면 호출 없이 취소합니다. 상담 실행과 같은 전역 1개 실행 규칙을 따르며, 앱이 실행 중 멈춰 호출 결과가 불확실하면 자동으로 다시 호출하지 않고 실패로 두어 `/settings/jobs`에서 명시적으로 재시도하게 합니다. 선택한 답변은 최근 대화 범위를 벗어나도 원문을 예산 안에서 제공하고, 결정 회고는 요청 당시의 정확한 결과 기록을 고정합니다. 학습된 절차와 기억은 실제 회고 스냅샷의 출처를 보존하므로, 근거의 공유를 막거나 삭제하면 승인 후에도 보내지 않습니다.
+- **상담에서 배우기:** 답변의 `이 상담에서 배우기`는 그 상담을 다시 읽어 플레이북·기억 후보를 제안받는 AI 호출을 한 번 더 만듭니다. `/settings/agent`에서 켜면 분석이 길었거나(도구 3회 이상·재계획·확인 질문) 사용자가 정정한 상담, 결과를 기록한 결정 회고에 대해 자동으로 요청합니다(기본 꺼짐). 회고 요청도 상담과 같은 `ContextAssembler` 경로를 거치므로 **요청 시점의** 공유 범위·이력 차단·예산·스냅샷이 적용됩니다. 학습에는 과거 답변의 모델이 아닌 현재 선택한 모델을 사용합니다. 실행 권한은 요청할 때 고정되고, 앱 잠금·연결 계정·모델이 바뀌면 호출 없이 취소합니다. 상담 실행과 같은 전역 1개 실행 규칙을 따르며, 앱이 실행 중 멈춰 호출 결과가 불확실하면 자동으로 다시 호출하지 않고 실패로 두어 `/settings/jobs`에서 명시적으로 재시도하게 합니다. 선택한 답변은 최근 대화 범위를 벗어나도 원문을 예산 안에서 제공하고, 결정 회고는 요청 당시의 정확한 결과 기록을 고정합니다. 학습된 절차와 기억은 실제 회고 스냅샷의 출처를 보존하므로, 근거의 공유를 막거나 삭제하면 승인 후에도 보내지 않습니다. 선택한 과거 답변이 지금 공유 범위에서 제외되면 현재 기록만 회고하고, 그 답변을 출처로 한 기억 후보는 만들지 않습니다.
+- **사용 결과를 학습에 반영:** 회고는 관련 플레이북을 쓴 최근 답변(최대 50개)의 👍/👎, 다음 질문의 정정, 결과를 기록한 결정 수를 건수로만 받아(`playbook_usage`) 반복해서 정정·낮은 평가를 받은 단계를 고치는 수정 제안을 검토합니다. 지금 공유할 수 없는 답변은 세지 않으며 대화 원문은 보내지 않습니다. 자동 학습을 켜면 플레이북을 쓴 답변에 👎를 누를 때 회고를 요청하고, 정정 질문을 회고할 때는 직전 답변이 쓴 플레이북도 함께 검토합니다. 같은 건수는 플레이북 화면에도 표시합니다.
+- **이전 상담 검색:** "지난번 상담"처럼 과거 상담을 묻는 질문은 분석 계획으로 넘어가며, 계획 단계가 `search_sessions` 조회로 다른 대화를 검색합니다. 결과는 상담별 질문·답변 쌍(각 600자, 최대 4개 상담·6,000자)이고, 각 메시지가 현재 공유 범위·로컬 전용 설정·문서 범위를 통과할 때만 포함합니다. 대화 제목은 보내지 않습니다. 발췌는 근거 스냅샷에 출처로 남고 당시 기록으로 표시되며, 과거 숫자로 새 수치를 뒷받침하지 않습니다. 예산을 넘거나 일부를 생략하면 `session_search_*` 플래그로 알립니다.
 - **브리핑(`/settings/jobs`):** 매일·매주 정한 시각(`PERSONAL_OS_TIMEZONE`)에 회고할 결정, 다시 확인할 기억, 다가오는 면접·목표 마감, 오래된 시세·잔고, 승인 대기 항목을 모델 없이 계산해 알림에 표시합니다. 항목이 없으면 아무것도 하지 않습니다. `AI 정리`를 켠 경우에만 항목이 있는 날 새 상담(`origin=schedule`)을 만들어 분석하고, 이전 브리핑 대화는 다시 보내지 않습니다. 보내는 영역은 항목에 필요한 범주와 사용자가 고른 범주의 교집합입니다. 회고할 결정·다시 확인할 기억·승인 대기처럼 상담 근거로 제공되지 않는 항목은 알림으로만 보여 주며 모델을 호출하지 않습니다. 켤 때의 연결·모델로만 실행하고, 바뀌면 예약을 멈추고 알립니다. 결과 제안은 승인 대기로만 들어갑니다. 앱이 꺼져 있어 놓친 날은 몰아서 실행하지 않고 가장 최근 1회만 실행합니다(기간 회고는 놓친 기간을 순서대로 처리합니다). 예약이나 AI 정리·공유 범위를 수정하면 기존 미완료 실행을 취소하며, 전송 직전에도 현재 동의를 다시 검사합니다. 모델을 깨우는 신호는 선택한 모든 관련 범주의 공유가 허용되고 해당 기록이 로컬 전용이 아닐 때만 사용합니다. 알림용 신호의 제목·개수는 모델 메시지에 넣지 않습니다.
 - **상담 방식:** 말투·답변 길이·결론 우선·추가 메모를 정합니다. 시스템 규칙 뒤에 "규칙을 바꾸지 않는다"는 표시와 함께 붙으며 데이터·공유·승인 규칙은 그대로입니다.
 
-준비 알림을 읽었어도 완료·확인 필요·실패·중지 상태는 새 알림으로 갱신됩니다. 열린 알림·승인 목록은 30초마다 갱신합니다. 알림은 이 기기에서만 표시하며 모델에 보내지 않습니다. 메신저·외부 알림 연동은 없습니다. 이 기능의 회귀 검증(`tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_migration.py`)은 합성 데이터와 가짜 제공자로 전송 payload를 확인하며, 실제 모델의 학습 제안 품질은 평가하지 않습니다.
+`/approvals`에서는 여러 항목을 골라 한 번에 승인·거절할 수 있고, 학습 제안 알림에서는 제안 내용을 보고 바로 고를 수 있습니다. 아무것도 미리 선택하지 않으며, 각 항목은 서버에서 따로 처리되어 바뀌었거나 이미 처리된 항목만 실패로 표시됩니다. 일시정지한 브리핑의 `지금 실행`은 알림만 만들고 AI 정리는 하지 않습니다.
+
+준비 알림을 읽었어도 완료·확인 필요·실패·중지 상태는 새 알림으로 갱신됩니다. 열린 알림·승인 목록은 30초마다 갱신합니다. 알림은 이 기기에서만 표시하며 모델에 보내지 않습니다. 메신저·외부 알림 연동은 없습니다. 이 기능의 회귀 검증(`tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_followups.py`, `test_agent_migration.py`)은 합성 데이터와 가짜 제공자로 전송 payload를 확인하며, 실제 모델의 학습 제안 품질은 평가하지 않습니다.
 
 ## Portfolio and monthly history
 

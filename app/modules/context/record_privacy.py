@@ -99,9 +99,11 @@ def invalidate_deleted_source(session, table, record_id):
         identities.update(("memory_revisions", str(key)) for key in session.scalars(select(MemoryRevision.id).where(MemoryRevision.memory_id == record_id)))
     if table == "advisor_conversations":
         identities.update(("advisor_messages", str(key)) for key in session.scalars(select(AdvisorMessage.id).where(AdvisorMessage.conversation_id == record_id)))
-    if table == "playbooks":
-        from app.modules.database.model import PlaybookRevision
-        identities.update(("playbook_revisions", str(key)) for key in session.scalars(select(PlaybookRevision.id).where(PlaybookRevision.playbook_id == record_id)))
+    # A procedure is not personal evidence. Deleting it removes the procedure and its usage
+    # records; answers that used it keep their snapshots, and the origin categories stamped on
+    # each reference keep tainting them (source_policy.deleted_procedure).
+    if table in {"playbooks", "playbook_revisions"}:
+        return
     if table not in TABLES and table != "advisor_conversations":
         return
     from app.modules.playbooks.playbook_manager import purge_sources
@@ -130,6 +132,9 @@ def stamp_references(session, refs):
             created = next((getattr(row, key, None) for key in ("created_at", "recorded_at", "generated_at") if getattr(row, key, None)), None) if row else None
             if created:
                 ref["source_created_at"] = created.isoformat()
+            if ref.get("table") == "playbook_revisions" and row is not None and "categories" not in ref:
+                # Kept with the reference so taint survives the procedure's deletion.
+                ref["categories"] = sorted(row.categories or [])
         result.append(ref)
     return result
 
