@@ -2,7 +2,7 @@
 
 import re
 
-from app.modules.advisor.data_command_intent import instruction_text
+from app.modules.advisor.commands.intent import instruction_text
 
 
 _REFRESH = re.compile(

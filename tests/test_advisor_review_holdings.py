@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.advisor.data_commands import execute_commands
+from app.modules.advisor.commands.execution import execute_commands
 from app.modules.context.record_privacy import set_record_policy
 from app.modules.database.model import Account, AdvisorConversation, AdvisorMessage, Holding, ManualValueChange
 from test_advisor_runtime_execution import runtime_env  # noqa: F401

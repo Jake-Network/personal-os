@@ -161,7 +161,7 @@ async def process_one(database):
                         if not previous_analysis:
                             previous_analysis = needs_analysis(initial_state(
                                 previous.input_payload.get('message', ''), previous.depth))
-                    from app.modules.advisor.pending_commands import find_pending_commands
+                    from app.modules.advisor.commands.pending import find_pending_commands
                     pending = find_pending_commands(session, conversation_id=run.conversation_id,
                         message_id=run.user_message_id, query=body.message,
                         excluded=advisor_manager.sharing_exclusions(session, body.options())) if not saved.values else None

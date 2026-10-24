@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.modules.advisor.data_commands import execute_commands
+from app.modules.advisor.commands.execution import execute_commands
 from app.modules.database.model import Account, AdvisorConversation, AdvisorMessage, AuditLog, Holding, LocalPosition
 
 

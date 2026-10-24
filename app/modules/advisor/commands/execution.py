@@ -36,7 +36,7 @@ class CommandInputError(ValueError):
 
 def separate_position_authorized(query):
     """Only the user's own separate-position request can bypass a ticker duplicate."""
-    from app.modules.advisor.data_command_intent import factual_write_authorized, instruction_text, operation_authorized
+    from app.modules.advisor.commands.intent import factual_write_authorized, instruction_text, operation_authorized
     if not isinstance(query, str):
         return False
     text = instruction_text(query)

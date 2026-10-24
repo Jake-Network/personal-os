@@ -8,7 +8,7 @@ from app.modules.database.model import (Account, AdvisorConversation, AdvisorMes
 
 
 def execute(session, commands, excluded=()):
-    from app.modules.advisor.data_commands import execute_commands
+    from app.modules.advisor.commands.execution import execute_commands
     conversation_id, message_id = source(session)
     return execute_commands(session, commands=commands, conversation_id=conversation_id,
                             message_id=message_id, excluded=set(excluded))
@@ -25,7 +25,7 @@ def source(session):
 
 
 def test_workout_create_replay_and_rollback_share_the_callers_transaction(session):
-    from app.modules.advisor.data_commands import execute_commands
+    from app.modules.advisor.commands.execution import execute_commands
 
     conversation_id, message_id = source(session)
     command = {"operation": "create", "resource": "workout-logs", "selector": {},
@@ -154,7 +154,7 @@ def test_new_position_reuses_only_shared_unique_local_symbol_and_currency(sessio
 
 
 def test_confirmed_holding_total_becomes_original_addition_without_changing_cost(session):
-    from app.modules.advisor.data_commands import confirmed_holding_addition
+    from app.modules.advisor.commands.execution import confirmed_holding_addition
     row = Holding(symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7), avg_cost=Decimal("11.25"))
     session.add(row)
     session.flush()
@@ -176,7 +176,7 @@ def test_confirmed_holding_total_becomes_original_addition_without_changing_cost
 
 
 def test_legacy_confirmed_addition_parses_only_its_own_ticker_line_and_total(session):
-    from app.modules.advisor.data_commands import confirmed_holding_addition
+    from app.modules.advisor.commands.execution import confirmed_holding_addition
     from app.modules.context.record_privacy import set_record_policy
     row = Holding(symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7))
     session.add(row)
@@ -201,7 +201,7 @@ def test_legacy_confirmed_addition_parses_only_its_own_ticker_line_and_total(ses
 
 def test_sharing_blocks_read_update_and_cached_receipts(session):
     from app.modules.context.record_privacy import set_record_policy
-    from app.modules.advisor.data_commands import execute_commands
+    from app.modules.advisor.commands.execution import execute_commands
     account = Account(name="비공개 합성 계좌", kind="cash", currency="USD", balance=Decimal(100), balance_as_of=date(2026, 10, 24))
     session.add(account)
     session.flush()
@@ -256,7 +256,7 @@ def test_read_budget_is_disclosed_and_write_failures_do_not_undo_successful_sibl
 
 
 def test_delta_uses_exact_server_arithmetic_and_receipt_replay_is_not_added_twice(session):
-    from app.modules.advisor.data_commands import execute_commands
+    from app.modules.advisor.commands.execution import execute_commands
     account = Account(name="합성 증감 계좌", kind="cash", currency="USD", balance=Decimal("100.0001"), balance_as_of=date(2026, 10, 24))
     holding = Holding(symbol="NASDAQ:AAPL", currency="USD", quantity=Decimal(10), avg_cost=Decimal("150.15"))
     session.add_all([account, holding])
@@ -276,7 +276,7 @@ def test_delta_uses_exact_server_arithmetic_and_receipt_replay_is_not_added_twic
 def test_concurrent_replay_serializes_the_same_message_receipt(session):
     from concurrent.futures import ThreadPoolExecutor
     from sqlalchemy.orm import Session
-    from app.modules.advisor.data_commands import execute_commands
+    from app.modules.advisor.commands.execution import execute_commands
 
     conversation_id, message_id = source(session)
     session.commit()

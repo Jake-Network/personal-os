@@ -6,7 +6,7 @@ model extraction must prove its target and values against one original input row
 import re
 from decimal import Decimal, InvalidOperation
 
-from app.modules.advisor.data_command_intent import factual_write_authorized, instruction_text, operation_authorized
+from app.modules.advisor.commands.intent import factual_write_authorized, instruction_text, operation_authorized
 
 _NUMBER = r'[-+]?\d[\d,]*(?:\.\d+)?'
 _CURRENCIES = {'USD', 'KRW', 'EUR', 'JPY', 'GBP', 'CAD', 'AUD', 'CHF', 'CNY'}

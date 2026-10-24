@@ -3,7 +3,7 @@
 import pytest
 from datetime import UTC, datetime
 from decimal import Decimal
-from app.modules.advisor.quote_refresh import quote_refresh_requested, split_quote_refresh, refresh_quotes
+from app.modules.advisor.commands.quote_refresh import quote_refresh_requested, split_quote_refresh, refresh_quotes
 from app.modules.database.model import Holding, LocalPosition, MarketSettings
 
 

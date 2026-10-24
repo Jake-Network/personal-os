@@ -1,4 +1,4 @@
-from app.modules.advisor.data_command_intent import command_requested, operation_authorized, observation_authorized, factual_write_authorized
+from app.modules.advisor.commands.intent import command_requested, operation_authorized, observation_authorized, factual_write_authorized
 
 
 def test_explicit_personal_data_requests_authorize_the_requested_operation():

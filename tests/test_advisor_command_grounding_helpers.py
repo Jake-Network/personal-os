@@ -1,6 +1,6 @@
 import pytest
 
-from app.modules.advisor.command_grounding import legacy_command_grounded
+from app.modules.advisor.commands.grounding import legacy_command_grounded
 
 
 def holding(symbol='QAFIRST', quantity=3, avg_cost='12.34', **extra):

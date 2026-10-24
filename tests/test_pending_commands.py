@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.advisor.pending_commands import find_pending_commands, is_data_followup, resolution_allowed
+from app.modules.advisor.commands.pending import find_pending_commands, is_data_followup, resolution_allowed
 from app.modules.database.model import AdvisorConversation, AdvisorMessage, ContextSnapshot
 from app.modules.database.model.advisor_runtime import AdvisorRun
 from app.modules.database.model.base import utcnow

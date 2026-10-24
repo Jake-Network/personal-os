@@ -74,7 +74,7 @@ def test_quote_thread_owns_session_and_read_auth_cannot_commit_staged_data(runti
         with original_factory() as independent:
             assert independent.scalar(select(Holding.id).where(Holding.symbol == 'QASTAGED')) is None
         raise RuntimeError('synthetic later quote stage failure')
-    monkeypatch.setattr('app.modules.advisor.quote_refresh.refresh_quotes', refresh)
+    monkeypatch.setattr('app.modules.advisor.commands.quote_refresh.refresh_quotes', refresh)
     created = client.post('/api/advisor/conversations/1/runs', json={
         'request_id': 'quote-owned-session-rollback', 'message': '시세 갱신해줘', 'depth': 'auto'})
     finish(database)
@@ -114,7 +114,7 @@ def test_cancel_waits_for_quote_thread_to_close_its_own_session(runtime_env, mon
         assert not closed.is_set()
         return {'operation': 'update', 'resource': 'holdings', 'quote_refresh': True,
                 'status': 'needs_input', 'refresh_state': 'not_connected', 'message': 'synthetic connection needed'}
-    monkeypatch.setattr('app.modules.advisor.quote_refresh.refresh_quotes', refresh)
+    monkeypatch.setattr('app.modules.advisor.commands.quote_refresh.refresh_quotes', refresh)
     assert client.post('/api/advisor/conversations/1/runs', json={
         'request_id': 'quote-cancel-owned-session', 'message': '시세 갱신해줘', 'depth': 'auto'}).status_code == 201
 
@@ -160,7 +160,7 @@ def test_explicit_exchange_cannot_be_changed_by_model(runtime_env):
 
 
 def test_direction_cannot_be_borrowed_from_another_targets_only_trade():
-    from app.modules.advisor.command_direction import delta_direction
+    from app.modules.advisor.commands.direction import delta_direction
     query = 'AAPL 10주 매도하고 TSLA 보유량 5주로 수정해줘'
     candidate = {'selector': {'symbol': 'TSLA'}, 'values': {'delta': '-5'}}
     assert delta_direction(candidate, query) is None
@@ -170,7 +170,7 @@ def test_quote_batch_rolls_back_all_prices_if_later_stage_fails_after_auth_check
     from datetime import UTC, datetime
     from app.modules.database.model import LocalPosition, MarketSettings, MarketObservation
     from app.modules.portfolio import portfolio_manager, market_data_manager
-    from app.modules.advisor import quote_refresh as quotes
+    from app.modules.advisor.commands import quote_refresh as quotes
     from test_advisor_runtime_execution import FINAL, finish
     client, database, provider = runtime_env
     monkeypatch.setattr(portfolio_manager, '_source', lambda _: ('synthetic-owned-quotes', False))
@@ -221,7 +221,7 @@ def test_quote_batch_rolls_back_all_prices_if_later_stage_fails_after_auth_check
 def test_quote_error_cleanup_preserves_the_original_write_authority_error(session, monkeypatch):
     from app.modules.database.model import LocalPosition, MarketSettings
     from app.modules.portfolio import portfolio_manager
-    from app.modules.advisor.quote_refresh import refresh_quotes
+    from app.modules.advisor.commands.quote_refresh import refresh_quotes
     monkeypatch.setattr(portfolio_manager, '_source', lambda _: ('synthetic-cleanup', False))
     row = Holding(symbol='KRX:000001', currency='KRW', quantity=1, last_price=19)
     session.add(row)
@@ -289,14 +289,14 @@ def test_trade_citation_cannot_swap_its_explicit_exchange(runtime_env):
 
 
 def test_short_citation_cannot_borrow_direction_from_a_mixed_target_clause():
-    from app.modules.advisor.command_direction import delta_direction
+    from app.modules.advisor.commands.direction import delta_direction
     candidate = {'selector': {'symbol': 'TSLA'}, 'values': {'delta': '-10'}}
     query = 'AAPL 10주 매도 및 TSLA 5주 매수했어'
     assert delta_direction(candidate, '10주 매도', original_query=query) is None
 
 
 def test_named_unambiguous_citation_stays_valid_inside_a_mixed_target_clause():
-    from app.modules.advisor.command_direction import delta_direction
+    from app.modules.advisor.commands.direction import delta_direction
     candidate = {'selector': {'symbol': 'TSLA'}, 'values': {'delta': '5'}}
     query = 'AAPL 10주 매도 및 TSLA 5주 매수했어'
     assert delta_direction(candidate, 'TSLA 5주 매수했어', original_query=query) == 1

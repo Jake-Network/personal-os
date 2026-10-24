@@ -1,7 +1,7 @@
 """Bind delta direction to the command's own user-cited target and action."""
 import re
 
-from app.modules.advisor.data_command_intent import instruction_text
+from app.modules.advisor.commands.intent import instruction_text
 
 _DECREASE = re.compile(r'팔|매도|출금|줄여|줄어|감소|차감|빼')
 _INCREASE = re.compile(r'매수|매입|샀|입금|늘려|늘어|증가|추가|더\s*(?:있|보유|갖)')
@@ -22,7 +22,7 @@ def bind_visible_delta_target(session, command, excluded):
     The caller uses this copy only for validation, and retains the canonical
     identity in the final write selector only after validation succeeds.
     """
-    from app.modules.advisor.data_commands import _matches, _visible, CommandInputError, DELTA_FIELDS
+    from app.modules.advisor.commands.execution import _matches, _visible, CommandInputError, DELTA_FIELDS
     from app.modules.personal_data.personal_data_manager import RESOURCES
     name = command.get('resource')
     resource = RESOURCES.get(name)

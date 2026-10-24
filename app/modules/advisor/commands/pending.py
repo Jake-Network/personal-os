@@ -9,7 +9,7 @@ import re
 
 from sqlalchemy import select
 
-from app.modules.advisor.data_command_intent import instruction_text, operation_authorized
+from app.modules.advisor.commands.intent import instruction_text, operation_authorized
 from app.modules.context.record_privacy import RECORD_CATEGORY
 from app.modules.context.source_policy import source_allowed
 from app.modules.database.model import AdvisorMessage
@@ -26,7 +26,7 @@ def _assent(text):
 
 def is_data_followup(query: str) -> bool:
     text = instruction_text(query).strip()
-    from app.modules.advisor.quote_refresh import split_quote_refresh
+    from app.modules.advisor.commands.quote_refresh import split_quote_refresh
     remainder, refresh = split_quote_refresh(text)
     if refresh:
         text = remainder.strip()
@@ -37,7 +37,7 @@ def is_data_followup(query: str) -> bool:
         return False
     if _assent(text):
         return True
-    from app.modules.advisor.data_commands import separate_position_authorized
+    from app.modules.advisor.commands.execution import separate_position_authorized
     if separate_position_authorized(text):
         return True
     completion = re.sub(r'^(?:응|네|예|그래|좋아|맞아|확인|오케이|ok|yes)(?:[,，]\s*|\s+)(?=\S)', '', text, count=1, flags=re.I)
@@ -82,7 +82,7 @@ def _legacy_rejections(operations):
 
 
 def _failed_legacy_refresh_followup(run, metadata, operations):
-    from app.modules.advisor.quote_refresh import split_quote_refresh
+    from app.modules.advisor.commands.quote_refresh import split_quote_refresh
     if 'data_command_validation_version' in metadata:
         return False
     query = run.input_payload.get('message', '')
@@ -147,7 +147,7 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
             # Recover old releases' lost assent turns, but stop as soon as another
             # real topic or an already successful data request intervenes.
             previous_query = run.input_payload.get('message', '')
-            from app.modules.advisor.data_commands import separate_position_authorized
+            from app.modules.advisor.commands.execution import separate_position_authorized
             account_clarification = (_holding_account_clarification(previous_query)
                                      or separate_position_authorized(previous_query))
             if operations or not (is_data_followup(previous_query) or account_clarification):
@@ -180,7 +180,7 @@ def find_pending_commands(session, *, conversation_id, message_id, query, exclud
             # Version 2 stored successful commands but could omit a rejected row's
             # slot. Recover only its original ticker, never its rejected numbers.
             if commands and isinstance(original_query, str):
-                from app.modules.advisor.command_grounding import legacy_command_grounded
+                from app.modules.advisor.commands.grounding import legacy_command_grounded
                 used = indices | {operation['command_index'] for operation in operations
                     if isinstance(operation.get('command_index'), int) and not isinstance(operation['command_index'], bool)}
                 recovered_symbols = set()
@@ -364,7 +364,7 @@ def resolution_allowed(original: dict, candidate: dict, clarification: str = '',
     if original.get('resource') != candidate.get('resource'):
         return False
     operation = original.get('operation')
-    from app.modules.advisor.data_commands import separate_position_authorized
+    from app.modules.advisor.commands.execution import separate_position_authorized
     separate_create = (original.get('resource') == 'holdings' and operation == 'update'
                        and candidate.get('operation') == 'create' and candidate.get('separate_position') is True
                        and separate_position_authorized(authorization_query if authorization_query is not None else clarification))

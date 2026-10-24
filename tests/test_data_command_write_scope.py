@@ -1,6 +1,6 @@
 import pytest
 
-from app.modules.advisor.data_command_intent import shared_write_authorized
+from app.modules.advisor.commands.intent import shared_write_authorized
 
 
 def test_bulk_holding_header_authorizes_each_unadorned_source_line():

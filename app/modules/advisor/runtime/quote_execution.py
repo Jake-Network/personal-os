@@ -6,7 +6,7 @@ from copy import deepcopy
 def _refresh_owned(session_factory, *, run_id, owner, generation, authorization,
                    sources, options, model, client_factory=None):
     from app.modules.advisor.advisor_manager import advisor_manager
-    from app.modules.advisor.quote_refresh import refresh_quotes
+    from app.modules.advisor.commands.quote_refresh import refresh_quotes
     from app.modules.advisor.runtime.persistence import RunRepository, LeaseLost
     from app.modules.database.model.advisor_runtime import AdvisorRun
     from app.modules.database.model.base import utcnow

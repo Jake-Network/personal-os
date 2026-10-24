@@ -40,7 +40,7 @@ def test_bulk_save_cannot_borrow_another_rows_numbers(runtime_env):
 
 def test_legacy_rejected_batch_confirmation_saves_before_quote_refresh(runtime_env, monkeypatch):
     from app.modules.database.model.advisor_runtime import AdvisorRun
-    from app.modules.advisor.data_command_intent import command_requested
+    from app.modules.advisor.commands.intent import command_requested
     from test_advisor_runtime_execution import FINAL
 
     client, database, provider = runtime_env
@@ -66,7 +66,7 @@ def test_legacy_rejected_batch_confirmation_saves_before_quote_refresh(runtime_e
         calls.append(True)
         return {'operation': 'update', 'resource': 'holdings', 'quote_refresh': True,
                 'target_label': '시세 갱신', 'status': 'saved', 'refresh_state': 'updated', 'message': '합성 시세 갱신'}
-    monkeypatch.setattr('app.modules.advisor.quote_refresh.refresh_quotes', refresh)
+    monkeypatch.setattr('app.modules.advisor.commands.quote_refresh.refresh_quotes', refresh)
     reply = '응 해줘 그리고 최신 현재가 시세 갱신해줘'
     assert command_requested(reply)
     resolved = command('create', 'holdings', '응 해줘', values={
@@ -91,7 +91,7 @@ def test_quote_only_request_uses_existing_refresh_without_model_command_extracti
         calls.append(True)
         return {'operation': 'update', 'resource': 'holdings', 'quote_refresh': True,
                 'status': 'needs_input', 'refresh_state': 'not_connected', 'message': '합성 연결 필요'}
-    monkeypatch.setattr('app.modules.advisor.quote_refresh.refresh_quotes', refresh)
+    monkeypatch.setattr('app.modules.advisor.commands.quote_refresh.refresh_quotes', refresh)
     provider.replies.append(FINAL)
     response = client.post('/api/advisor/conversations/1/runs', json={
         'request_id': 'only-quotes', 'message': '최신 현재가 시세 갱신해줘', 'depth': 'auto'})
@@ -126,7 +126,7 @@ def test_quote_refresh_receipts_stream_and_answer_retry_never_repeats_external_e
         calls.append(True)
         return {'operation': 'update', 'resource': 'holdings', 'quote_refresh': True,
                 'status': 'saved', 'refresh_state': 'updated', 'message': '합성 갱신 완료'}
-    monkeypatch.setattr('app.modules.advisor.quote_refresh.refresh_quotes', refresh)
+    monkeypatch.setattr('app.modules.advisor.commands.quote_refresh.refresh_quotes', refresh)
     provider.replies.append(RuntimeError('synthetic answer failure after completed quote refresh'))
     response = client.post('/api/advisor/conversations/1/runs', json={
         'request_id': 'quotes-answer-fails', 'message': '시세 갱신해줘', 'depth': 'auto'})

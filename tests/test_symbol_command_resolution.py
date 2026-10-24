@@ -1,6 +1,6 @@
 import asyncio
 
-from app.modules.advisor.symbol_resolution import resolve_command_symbol
+from app.modules.advisor.commands.symbol_resolution import resolve_command_symbol
 
 
 def test_lookup_failure_cannot_preserve_a_model_guessed_exchange(monkeypatch):
