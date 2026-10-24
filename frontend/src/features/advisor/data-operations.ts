@@ -13,6 +13,7 @@ export interface DataOperation {
   record_id?: number;
   record_ref?: { table: string; id: number; updated_at?: string | null; category?: string };
   message: string;
+  target_label?: string;
 }
 
 export function readDataOperations(value: unknown): DataOperation[] {
@@ -22,7 +23,8 @@ export function readDataOperations(value: unknown): DataOperation[] {
     ['create', 'read', 'update', 'delete'].includes(item.operation) &&
     ['saved', 'read', 'needs_input', 'failed'].includes(item.status) &&
     typeof item.resource === 'string' && typeof item.message === 'string',
-  );
+  ).map(item => item.target_label === undefined || typeof item.target_label === 'string'
+    ? item : { ...item, target_label: undefined });
 }
 
 const MANAGEMENT_PATH: Record<string, string> = {

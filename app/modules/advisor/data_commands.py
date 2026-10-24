@@ -6,10 +6,11 @@ with the data changes, so replay after a checkpoint does not repeat a write.
 """
 import hashlib
 import json
+import re
 from decimal import Decimal, InvalidOperation, localcontext
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import Numeric, String, inspect, select
+from sqlalchemy import Numeric, String, inspect, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.modules.context.record_privacy import RECORD_CATEGORY
@@ -33,9 +34,18 @@ class CommandInputError(ValueError):
     pass
 
 
+def command_target_label(command):
+    for group in (command.get('values', {}), command.get('selector', {})):
+        for key in ('symbol', 'ticker', 'name', 'title', 'activity'):
+            label = group.get(key)
+            if isinstance(label, str) and label.strip():
+                return label.strip()[:120]
+    return None
+
+
 def _result(command, status, message, **fields):
     return {"operation": command.get("operation"), "resource": command.get("resource"),
-            "status": status, "message": message, **fields}
+            "status": status, "message": message, "target_label": command_target_label(command), **fields}
 
 
 def _reference(resource, obj):
@@ -73,8 +83,26 @@ def _serialized(resource, obj):
     return result
 
 
+def _holding_fields(values):
+    if not isinstance(values, dict):
+        raise CommandInputError("종목 입력 형식을 확인해 주세요.")
+    fields = dict(values)
+    for alias, canonical in (("ticker", "symbol"), ("label", "name")):
+        if alias in fields:
+            if canonical in fields and fields[canonical] != fields[alias]:
+                raise CommandInputError("서로 다른 종목 입력이 있습니다. 종목과 이름을 확인해 주세요.")
+            fields[canonical] = fields.pop(alias)
+    if isinstance(fields.get("symbol"), str):
+        fields["symbol"] = fields["symbol"].strip().upper()
+    if isinstance(fields.get("currency"), str):
+        fields["currency"] = fields["currency"].strip().upper()
+    return fields
+
+
 def _matches(session, resource, selector, *, lock=False):
     model = resource.handler.model
+    if model.__tablename__ == "holdings":
+        selector = _holding_fields(selector)
     columns = {column.key: column for column in inspect(model).columns}
     if not isinstance(selector, dict) or set(selector) - (SELECTOR_FIELDS & set(columns)):
         raise CommandInputError("조회 대상 필드를 확인해 주세요.")
@@ -86,17 +114,137 @@ def _matches(session, resource, selector, *, lock=False):
             expected = TypeAdapter(columns[field].type.python_type).validate_python(value)
         except (ValueError, TypeError):
             raise CommandInputError("조회 대상 값의 형식을 확인해 주세요.") from None
-        filters.append(getattr(model, field) == expected)
+        if model.__tablename__ == "holdings" and field == "symbol" and ":" not in expected:
+            # A bare ticker identifies a local position only when all supplied
+            # conditions leave one row. Never guess its exchange from a model.
+            filters.append(or_(model.symbol == expected, model.symbol.endswith(":" + expected, autoescape=True)))
+        else:
+            filters.append(getattr(model, field) == expected)
     statement = select(model).where(*filters).order_by(model.id).limit(101).execution_options(populate_existing=True)
     if lock:
         statement = statement.with_for_update()
     return list(session.scalars(statement))
 
 
+def _holding_values(session, resource, values, obj, excluded):
+    values = _holding_fields(values)
+    symbol = values.get("symbol")
+    if not isinstance(symbol, str) or ":" in symbol:
+        return values
+    if obj is not None and obj.symbol.rsplit(":", 1)[-1] == symbol:
+        values["symbol"] = obj.symbol
+        return values
+    identity = {key: values[key] for key in ("symbol", "currency") if values.get(key) is not None}
+    rows = _matches(session, resource, identity)
+    identities = {(row.symbol, row.currency) for row in rows if _visible(session, resource, row, excluded)}
+    if len(identities) == 1:
+        known_symbol, known_currency = next(iter(identities))
+        values["symbol"] = known_symbol
+        values.setdefault("currency", known_currency)
+    return values
+
+
+def confirmed_holding_addition(session, command: dict, *, original_query: str,
+                               original_command: dict | None, clarification: str, excluded: set) -> dict:
+    """Recover an approved total as its original addition, never a model-derived set.
+
+    The caller binds the pending request and the current affirmative response. This
+    helper only accepts a unique, currently shared position whose locked quantity
+    plus the original input equals the proposed total named in the prior question.
+    """
+    values = command.get("values", {})
+    if (command.get("resource") != "holdings" or command.get("operation") != "update"
+            or not isinstance(values, dict) or "quantity" not in values or "delta" in values
+            or original_command is not None and original_command.get("resource") != "holdings"
+            or not re.search(r"추가|더\s*(?:있|샀|매수|보유|갖)", original_query)):
+        return command
+
+    def quantity(value):
+        if not isinstance(value, (str, int, Decimal)) or isinstance(value, bool):
+            raise ValueError("not an exact quantity")
+        result = Decimal(str(value).replace(",", ""))
+        if not result.is_finite() or result <= 0 or result >= Decimal("1e20") or result != result.to_integral_value():
+            raise ValueError("not a positive whole quantity")
+        return Decimal(int(result))
+
+    def symbol_pattern(symbol):
+        return re.compile(r"(?<![A-Za-z0-9.:-])(?:[A-Za-z][A-Za-z0-9]*:)?" + re.escape(symbol) + r"(?![A-Za-z0-9.:-])", re.I)
+
+    def other_symbol(text, symbol, currency):
+        from app.modules.portfolio.quotes_sheet import EXCHANGES
+        allowed = EXCHANGES | {symbol, currency, "USD", "KRW", "EUR", "JPY", "TOTAL"}
+        return any(token.rsplit(":", 1)[-1].upper() not in allowed
+                   for token in re.findall(r"(?<![A-Z0-9.:-])[A-Z][A-Z0-9.:-]*(?![A-Z0-9.:-])", text))
+
+    try:
+        total = quantity(values["quantity"])
+        resource = RESOURCES["holdings"]
+        selector = command.get("selector", {})
+        if not selector:
+            return command
+        rows = _matches(session, resource, selector, lock=True)
+        if len(rows) != 1 or not _visible(session, resource, rows[0], excluded):
+            return command
+        row = rows[0]
+        symbol = row.symbol.rsplit(":", 1)[-1].upper()
+        pattern = symbol_pattern(symbol)
+        original_values = _holding_fields((original_command or {}).get("values", {}))
+        original_selector = _holding_fields((original_command or {}).get("selector", {}))
+        original_symbol = original_values.get("symbol") or original_selector.get("symbol")
+        if original_symbol and (original_symbol != row.symbol if ":" in original_symbol else original_symbol != symbol):
+            return command
+        if original_values.get("currency", row.currency) != row.currency:
+            return command
+        if original_selector.get("id") is not None and str(original_selector["id"]) != str(row.id):
+            return command
+        if original_values.get("account_id", row.account_id) != row.account_id:
+            return command
+        added = quantity(original_values["quantity"]) if "quantity" in original_values else None
+        parsed = []
+        for line in re.split(r"[\n;]", original_query):
+            for match in pattern.finditer(line):
+                if ":" in match.group() and ":" in row.symbol and match.group().upper() != row.symbol.upper():
+                    return command
+                tail = line[match.end():]
+                amount = re.search(r"(?<![\d,.+−–-])([\d,]+(?:\.\d+)?)\s*주", tail)
+                if amount and not other_symbol(tail[:amount.start()], symbol, row.currency):
+                    if re.search(r"팔|매도|차감|감소", tail[:amount.end()]):
+                        return command
+                    parsed.append(quantity(amount.group(1)))
+        if parsed:
+            if len(set(parsed)) != 1 or added is not None and added != parsed[0]:
+                return command
+            added = parsed[0]
+        with localcontext() as context:
+            context.prec = 100
+            if added is None or Decimal(row.quantity) + added != total:
+                return command
+        total_pattern = re.compile(r"(?<![\d,.+−–-])([\d,]+(?:\.\d+)?)\s*주")
+        confirmed = False
+        for clause in re.split(r"[\n;!?。]|(?<=\.)\s+", clarification):
+            for match in pattern.finditer(clause):
+                if ":" in match.group() and ":" in row.symbol and match.group().upper() != row.symbol.upper():
+                    continue
+                tail = clause[match.end():]
+                for amount in total_pattern.finditer(tail):
+                    if quantity(amount.group(1)) == total and not other_symbol(tail[:amount.start()], symbol, row.currency):
+                        confirmed = True
+        if not confirmed:
+            return command
+        resolved = dict(values)
+        resolved.pop("quantity")
+        resolved["delta"] = format(added, "f")
+        return {**command, "values": resolved}
+    except (CommandInputError, InvalidOperation, TypeError, ValueError):
+        return command
+
+
 def _validate_values(session, name, resource, values, obj, excluded):
     if not isinstance(values, dict) or not values:
         raise CommandInputError("저장할 필드를 알려주세요.")
     values = dict(values)
+    if name == "holdings":
+        values = _holding_values(session, resource, values, obj, excluded)
     if "delta" in values:
         field = DELTA_FIELDS.get(name)
         if obj is None or field is None or field in values:
@@ -189,10 +337,12 @@ def _validate_values(session, name, resource, values, obj, excluded):
     if name == "holdings" and (obj is None or data["symbol"] != obj.symbol):
         from app.schema.holdings_schema import HoldingInput
         try:
-            HoldingInput(position_id="advisor-validation", ticker=data["symbol"], label=data.get("name") or data["symbol"],
-                         currency=data["currency"], quantity=data["quantity"], avg_cost=data.get("avg_cost"))
+            # Recording a holding does not require setting up automatic quotes.
+            # Reuse the public symbol syntax without inventing an exchange or a
+            # manual market price just to satisfy the separate quote-input form.
+            TypeAdapter(HoldingInput.model_fields["ticker"].rebuild_annotation()).validate_python(data["symbol"])
         except ValidationError:
-            raise CommandInputError("종목·거래소·통화를 확인해 주세요. 예: NASDAQ:AAPL, USD") from None
+            raise CommandInputError("종목 코드 형식을 확인해 주세요. 예: AAPL 또는 NASDAQ:AAPL") from None
     return data, trade_date
 
 
@@ -207,6 +357,18 @@ def _execute(session, command, excluded):
     selector = command.get("selector", {})
     if operation in {"update", "delete"} and not selector:
         return _result(command, "needs_input", "변경할 기록 하나를 지정해 주세요.")
+    if name == "holdings" and operation == "create":
+        values = _holding_values(session, resource, command.get("values", {}), None, excluded)
+        command = {**command, "values": values}
+        if values.get("symbol"):
+            identity = {key: values[key] for key in ("symbol", "currency", "account_id") if values.get(key) is not None}
+            matches = _matches(session, resource, identity, lock=True)
+            if matches:
+                visible_matches = [row for row in matches if _visible(session, resource, row, excluded)]
+                return _result(command, "needs_input", "기존 보유 기록이 있습니다. 현재 총 보유량으로 바꿀지 추가 수량을 더할지 알려주세요.",
+                    candidates=[{"id": row.id, "label": row.name or row.symbol, "symbol": row.symbol,
+                                 "currency": row.currency, "quantity": _serialized(resource, row)["quantity"]}
+                                for row in visible_matches[:10]])
     rows = _matches(session, resource, selector, lock=operation != "read") if operation != "create" else []
     visible = [row for row in rows if _visible(session, resource, row, excluded)]
     if operation == "read":
@@ -264,8 +426,16 @@ def _execute(session, command, excluded):
         if symbol_changed:
             mapping.quote_mode = "auto"
     session.flush()
-    return _result(command, "saved", "저장했습니다.", record_id=obj.id,
-                   record_ref=_reference(resource, obj), record=_serialized(resource, obj))
+    fields = {}
+    message = "저장했습니다."
+    if name == "holdings":
+        from app.modules.portfolio.quotes_sheet import quote_rows
+        needs_exchange = mapping.quote_mode == "auto" and not quote_rows([obj.symbol])
+        fields = {"quote_status": "ready" if obj.last_price is not None else "pending", "quote_needs_exchange": needs_exchange}
+        if needs_exchange:
+            message = "보유 기록을 저장했습니다. 거래소를 확인하면 자동 시세를 연결할 수 있습니다."
+    return _result(command, "saved", message, record_id=obj.id,
+                   record_ref=_reference(resource, obj), record=_serialized(resource, obj), **fields)
 
 
 def execute_commands(session, *, commands, conversation_id, message_id, excluded, authorization_check=None):

@@ -18,8 +18,10 @@ export function AnswerActions({ messageId, conversationId, question }: { message
   const key = getListRecommendationsQueryKey(conversationId);
   const ratings = useListRecommendations(conversationId);
   const current = ratings.data?.find(item => item.message_id === messageId);
+  const feedback = (reason ?? current?.user_feedback ?? '').trim() || null;
+  const reasonChanged = feedback !== (current?.user_feedback?.trim() || null);
   const save = useMutation({
-    mutationFn: ({ rating, feedback = null }: { rating: -1 | 1 | null; feedback?: string | null }) =>
+    mutationFn: ({ rating, feedback }: { rating: -1 | 1 | null; feedback: string | null; kind: 'rating' | 'reason' }) =>
       rateRecommendation({ message_id: messageId, user_rating: rating, user_feedback: feedback }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
   });
@@ -34,10 +36,10 @@ export function AnswerActions({ messageId, conversationId, question }: { message
         variant='ghost'
         aria-label='도움이 됐어요'
         aria-pressed={current?.user_rating === 1}
+        className='aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary'
         disabled={disabled}
         onClick={() => {
-          setReason(null);
-          save.mutate({ rating: nextRating(current?.user_rating, 1) });
+          save.mutate({ rating: nextRating(current?.user_rating, 1), feedback, kind: 'rating' });
         }}>
         <ThumbsUp />
       </Button>
@@ -46,10 +48,10 @@ export function AnswerActions({ messageId, conversationId, question }: { message
         variant='ghost'
         aria-label='아쉬워요'
         aria-pressed={current?.user_rating === -1}
+        className='aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary'
         disabled={disabled}
         onClick={() => {
-          setReason(null);
-          save.mutate({ rating: nextRating(current?.user_rating, -1) });
+          save.mutate({ rating: nextRating(current?.user_rating, -1), feedback, kind: 'rating' });
         }}>
         <ThumbsDown />
       </Button>
@@ -58,20 +60,28 @@ export function AnswerActions({ messageId, conversationId, question }: { message
           className='flex w-full gap-1'
           onSubmit={event => {
             event.preventDefault();
-            save.mutate({ rating: -1, feedback: (reason ?? current.user_feedback ?? '').trim() || null });
+            if (!disabled && reasonChanged) save.mutate({ rating: -1, feedback, kind: 'reason' });
           }}>
           <Input
             aria-label='답변이 아쉬운 이유'
             placeholder='아쉬운 점을 한 줄로 남겨 주세요 (선택)'
             value={reason ?? current.user_feedback ?? ''}
-            onChange={event => setReason(event.target.value)}
+            disabled={save.isPending}
+            onChange={event => {
+              setReason(event.target.value);
+              save.reset();
+            }}
             maxLength={1000}
           />
-          <Button type='submit' size='sm' disabled={disabled}>
-            사유 저장
+          <Button type='submit' size='sm' disabled={disabled || !reasonChanged}>
+            {save.isPending && save.variables?.kind === 'reason' ? '저장 중…' : !reasonChanged && feedback ? '저장됨' : '사유 저장'}
           </Button>
         </form>
       )}
+      <span role='status' className='text-xs text-faint'>
+        {save.isPending && save.variables?.kind === 'rating' ? '평가 저장 중…' :
+          save.isSuccess ? (save.variables?.kind === 'reason' ? '사유를 저장했습니다.' : '평가를 저장했습니다.') : ''}
+      </span>
       {(save.error || ratings.error) && (
         <Alert variant='destructive'>
           {errorMessage(save.error ?? ratings.error)}

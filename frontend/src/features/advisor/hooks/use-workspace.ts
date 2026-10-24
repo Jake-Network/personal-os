@@ -10,6 +10,7 @@ import { workspaceApi, workspaceKey } from '../api';
 import type { InspectorData } from '../types';
 import { applyRunEvent, type EventCursor } from '../run-events';
 import { invalidateDataOperationQueries, readDataOperations } from '../data-operations';
+import { readInspectorData } from '../utils';
 
 export const isUnfinished = (status?: RunView['status']) => !!status && !['completed', 'failed', 'cancelled'].includes(status);
 export const isExecuting = (status?: RunView['status']) => !!status && ['queued', 'running', 'cancel_requested'].includes(status);
@@ -67,7 +68,8 @@ export function useWorkspace(conversationId: number | null, observe = true) {
                 message: typeof event.payload.message === 'string' ? event.payload.message : '',
               });
             } else if (event.type === 'context') {
-              setContext({ id: runId, data: event.payload as unknown as InspectorData });
+              const data = readInspectorData(event.payload);
+              if (data) setContext({ id: runId, data });
             } else if (event.type === 'delta') {
               setLive({ id: runId, revision: cursor.answerRevision, text: cursor.text });
             } else {
@@ -111,7 +113,7 @@ export function useWorkspace(conversationId: number | null, observe = true) {
     save,
     progress: progress && progress.id === runId ? progress.stage : '',
     progressMessage: progress && progress.id === runId ? progress.message : '',
-    context: context && context.id === runId ? context.data : (run?.result?.context as InspectorData | undefined),
+    context: context && context.id === runId ? context.data : readInspectorData(run?.result?.context),
     liveText: live.id === runId && live.revision === run?.answer_revision ? live.text : '',
     reconnecting: connection.id === runId && connection.reconnecting,
   };

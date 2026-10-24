@@ -93,6 +93,112 @@ def test_holdings_create_and_partial_quantity_edit_preserve_quote_identity_and_c
     assert rejected["status"] == "needs_input"
 
 
+def test_holdings_store_bare_ticker_cost_and_quantity_before_quote_exchange_is_known(session):
+    result = execute(session, [{"operation": "create", "resource": "holdings", "values": {
+        "ticker": "qastock", "label": "합성 보유 종목", "currency": "USD", "quantity": 3,
+        "avg_cost": "19.876543210123"}}])[0]
+    assert result["status"] == "saved"
+    row = session.get(Holding, result["record_id"])
+    assert (row.symbol, row.currency, row.quantity, row.avg_cost) == ("QASTOCK", "USD", Decimal(3), Decimal("19.876543210123"))
+    assert row.last_price is row.price_as_of is None
+    assert result["quote_status"] == "pending"
+    assert result["quote_needs_exchange"] is True
+    assert "거래소" in result["message"]
+    from app.modules.portfolio.quotes_sheet import quote_rows
+    assert quote_rows([row.symbol]) == []
+    missing_currency = execute(session, [{"operation": "create", "resource": "holdings", "values": {
+        "symbol": "QAOTHER", "quantity": 4, "avg_cost": "20.25"}}])[0]
+    assert missing_currency["status"] == "needs_input"
+    assert session.scalar(select(Holding).where(Holding.symbol == "QAOTHER")) is None
+
+
+def test_bare_holding_selector_uses_unique_local_identity_and_rejects_ambiguous_symbols(session):
+    row = Holding(symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7), avg_cost=Decimal("13.5"))
+    session.add(row)
+    session.flush()
+    updated = execute(session, [{"operation": "update", "resource": "holdings", "selector": {"ticker": "qaetf"},
+        "values": {"delta": "5", "avg_cost": "14.25"}}])[0]
+    assert updated["status"] == "saved"
+    assert (row.symbol, row.quantity, row.avg_cost, row.currency) == ("NYSEARCA:QAETF", Decimal(12), Decimal("14.25"), "USD")
+    duplicate = execute(session, [{"operation": "create", "resource": "holdings", "values": {
+        "symbol": "QAETF", "quantity": 5, "avg_cost": "14.25"}}])[0]
+    assert duplicate["status"] == "needs_input"
+    assert len(list(session.scalars(select(Holding)))) == 1
+    session.add(Holding(symbol="NYSE:QAETF", currency="USD", quantity=Decimal(2)))
+    session.flush()
+    ambiguous = execute(session, [{"operation": "update", "resource": "holdings", "selector": {"symbol": "QAETF"},
+        "values": {"quantity": 1}}])[0]
+    assert ambiguous["status"] == "needs_input"
+    assert row.quantity == Decimal(12)
+
+
+def test_new_position_reuses_only_shared_unique_local_symbol_and_currency(session):
+    from app.modules.context.record_privacy import set_record_policy
+    first = Account(name="합성 첫 계좌", kind="cash", currency="USD", balance=Decimal(0), balance_as_of=date(2026, 10, 24))
+    second = Account(name="합성 둘째 계좌", kind="cash", currency="USD", balance=Decimal(0), balance_as_of=date(2026, 10, 24))
+    session.add_all([first, second])
+    session.flush()
+    shared = Holding(account_id=first.id, symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7))
+    hidden = Holding(account_id=first.id, symbol="NASDAQ:QAHIDDEN", currency="USD", quantity=Decimal(2))
+    session.add_all([shared, hidden])
+    session.flush()
+    set_record_policy(session, "holdings", hidden.id, False)
+    result = execute(session, [{"operation": "create", "resource": "holdings", "values": {
+        "account_id": second.id, "symbol": "QAETF", "quantity": 3}}])[0]
+    assert result["status"] == "saved"
+    assert (result["record"]["symbol"], result["record"]["currency"]) == ("NYSEARCA:QAETF", "USD")
+    private = execute(session, [{"operation": "create", "resource": "holdings", "values": {
+        "account_id": second.id, "symbol": "QAHIDDEN", "quantity": 3}}])[0]
+    assert private["status"] == "needs_input"
+    assert session.scalar(select(Holding).where(Holding.account_id == second.id, Holding.symbol.like("%QAHIDDEN"))) is None
+
+
+def test_confirmed_holding_total_becomes_original_addition_without_changing_cost(session):
+    from app.modules.advisor.data_commands import confirmed_holding_addition
+    row = Holding(symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7), avg_cost=Decimal("11.25"))
+    session.add(row)
+    session.flush()
+    query = "주식이 더 있어. QAETF $14.25 5주. 추가로 저장해줘"
+    original = {"operation": "create", "resource": "holdings", "values": {"symbol": "QAETF", "quantity": 5, "avg_cost": "14.25"}}
+    candidate = {"operation": "update", "resource": "holdings", "selector": {"symbol": "QAETF"},
+                 "values": {"quantity": 12, "avg_cost": "14.25"}, "source_quote": "응"}
+    resolved = confirmed_holding_addition(session, candidate, original_query=query, original_command=original,
+        clarification="QAETF는 기존 7주에 5주를 더해 총 12주로 기록하면 될까요?", excluded=set())
+    assert resolved["values"] == {"delta": "5", "avg_cost": "14.25"}
+    assert candidate["values"] == {"quantity": 12, "avg_cost": "14.25"}
+    for invalid in [{**original, "values": {**original["values"], "symbol": "QAOTHER"}},
+                    {**original, "values": {**original["values"], "quantity": 3}}]:
+        assert confirmed_holding_addition(session, candidate, original_query=query, original_command=invalid,
+            clarification="QAETF를 12주로 저장할까요?", excluded=set()) is candidate
+    saved = execute(session, [resolved])[0]
+    assert saved["status"] == "saved" and row.quantity == Decimal(12)
+    assert row.avg_cost == Decimal("14.25")
+
+
+def test_legacy_confirmed_addition_parses_only_its_own_ticker_line_and_total(session):
+    from app.modules.advisor.data_commands import confirmed_holding_addition
+    from app.modules.context.record_privacy import set_record_policy
+    row = Holding(symbol="NYSEARCA:QAETF", currency="USD", quantity=Decimal(7))
+    session.add(row)
+    session.flush()
+    query = "다른 주식도 더 있어 추가로 저장해줘\nQAONE $23.75 2주\nQAETF $14.25 5주"
+    candidate = {"operation": "update", "resource": "holdings", "selector": {"symbol": "QAETF"}, "values": {"quantity": "12"}}
+    def resolve(question, **kwargs):
+        return confirmed_holding_addition(session, candidate, original_query=query,
+            original_command=None, clarification=question, excluded=set(), **kwargs)
+    assert resolve("QAETF는 기존 7주에 5주를 더해 총 12주로 저장할까요?")["values"] == {"delta": "5"}
+    for question in ["QAETF 거래소와 통화를 확인해 주세요.", "QAONE은 기존 10주에 2주를 더해 총 12주입니다. QAETF도 저장할까요?",
+                     "QAETF는 112주로 저장할까요?", "QAETF 7주와 5주가 맞나요?"]:
+        assert resolve(question) is candidate
+    row.quantity = Decimal(8)
+    session.flush()
+    assert resolve("QAETF는 기존 7주에 5주를 더해 총 12주로 저장할까요?") is candidate
+    row.quantity = Decimal(7)
+    session.flush()
+    set_record_policy(session, "holdings", row.id, False)
+    assert resolve("QAETF는 기존 7주에 5주를 더해 총 12주로 저장할까요?") is candidate
+
+
 def test_sharing_blocks_read_update_and_cached_receipts(session):
     from app.modules.context.record_privacy import set_record_policy
     from app.modules.advisor.data_commands import execute_commands

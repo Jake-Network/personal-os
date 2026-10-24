@@ -216,8 +216,13 @@ class ContextAssembler:
                             continue
                         safe_operations.append(operation)
                         refs.extend(stamp_references(self.session, evidence))
-                        if category and has_data and category not in categories:
+                        # A pending command/clarifying answer can contain private input
+                        # even before a row exists. Preserve its category for later sharing checks.
+                        if category and category not in excluded and category not in categories:
                             categories.append(category)
+                        if category and category not in excluded:
+                            payload['history_categories'] = list(dict.fromkeys([
+                                *payload.get('history_categories', []), category]))
                     payload['data'] = {**payload.get('data', {}), 'advisor_data_operations': safe_operations}
                 refs.extend(stamp_references(self.session,
                     [{'table': 'advisor_messages', 'id': key} for key in history_source_ids]))

@@ -23,10 +23,12 @@ export function DataOperationResults({ operations }: { operations: DataOperation
           ? operation.operation === 'delete' ? '삭제됨' : operation.operation === 'update' ? '수정됨' : state.label
           : state.label;
         const href = dataOperationHref(operation);
+        const resourceLabel = RESOURCES.find(meta => meta.name === operation.resource)?.label ?? '개인 기록';
+        const targetLabel = typeof operation.target_label === 'string' ? operation.target_label.trim() : '';
         return (
           <li key={index} className='flex flex-col gap-1.5 py-2.5'>
             <div className='flex flex-wrap items-center gap-2'>
-              <span className='text-ui font-medium'>{RESOURCES.find(meta => meta.name === operation.resource)?.label ?? '개인 기록'}</span>
+              <span className='break-words text-ui font-medium'>{targetLabel ? `${resourceLabel} · ${targetLabel}` : resourceLabel}</span>
               <Badge variant={state.tone}>{label}</Badge>
               {href && <Link href={href} className='ml-auto text-xs text-primary hover:underline'>관리 화면</Link>}
             </div>

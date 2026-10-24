@@ -50,6 +50,13 @@ def source_allowed(session: Session, refs: list[dict], excluded=frozenset(), see
                     for value in derived_ids], excluded, seen, memo, document_scope):
                 return False
             categories = set(snapshot.context_categories) | set(snapshot.payload.get("history_categories", [])) | set(snapshot.payload.get("document_categories", []))
+            # Old command snapshots may precede the category stamp for pending
+            # inputs. No persisted row is required for their private values to matter.
+            operations = snapshot.payload.get("data", {}).get("advisor_data_operations", [])
+            if isinstance(operations, list):
+                categories.update(RECORD_CATEGORY.get(operation.get("resource", "").replace("-", "_"))
+                    for operation in operations if isinstance(operation, dict) and isinstance(operation.get("resource"), str)
+                    and RECORD_CATEGORY.get(operation["resource"].replace("-", "_")) not in snapshot.excluded_categories)
             if categories & {str(c) for c in excluded} or (excluded and snapshot.payload.get("history_provenance_unknown")):
                 return False
             evidence = snapshot.payload.get("document_dependencies", []) + snapshot.payload.get("data", {}).get("search_documents", {}).get("citations", [])

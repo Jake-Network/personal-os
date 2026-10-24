@@ -58,3 +58,123 @@ def operation_authorized(query: str, operation: str) -> bool:
     if operation == 'update':
         return bool(UPDATE.search(text) or CREATE.search(text))
     return operation == 'delete' and bool(DELETE.search(text))
+
+
+_WRITE_SCOPES = {
+    'accounts': r'계좌|통장|잔액|잔고',
+    'holdings': r'주식|보유\s*종목|종목|포트폴리오',
+    'liabilities': r'부채|대출|빚',
+    'other-assets': r'기타\s*자산|부동산|자동차',
+    'cashflow-entries': r'가계부|현금흐름|지출|수입',
+    'planned-expenses': r'예정\s*(?:지출|결제)|지출\s*예정',
+    'job-applications': r'채용\s*지원|입사\s*지원|지원\s*(?:현황|내역|목록)',
+    'interviews': r'면접',
+    'career-criteria': r'(?:커리어|이직|지원)\s*기준',
+    'calendar-events': r'일정|약속|이벤트',
+    'tasks': r'할\s*일|태스크|투두|작업\s*목록',
+    'goals': r'목표',
+    'workout-logs': r'운동|러닝|달리기|수영|라이딩|훈련|산책',
+}
+_BULK_WRITE = re.compile(
+    r'이것들|이(?:거|것|걸)(?:도)?|이\s*(?:내용|항목)|아래|다음(?!\s*(?:달|주|날|해|월|분기))|'
+    r'위(?:의)?(?![가-힣])|목록|내역|전부|모두|일괄|'
+    r'(?:^|\s)다\s*(?:저장|기록|등록|추가|입력|수정|변경)'
+)
+
+
+def _write_scopes(text):
+    matches = [(match.start(), match.end(), name) for name, pattern in _WRITE_SCOPES.items()
+               for match in re.finditer(pattern, text)]
+    scopes = {name for _, _, name in matches}
+    # Compound domain names are more specific than a noun within that name.
+    if 'planned-expenses' in scopes and not re.search(r'가계부|현금흐름', text):
+        scopes.discard('cashflow-entries')
+    if 'interviews' in scopes and re.search(r'면접\s*일정', text):
+        scopes.discard('calendar-events')
+    if 'goals' in scopes and re.search(r'(?:운동|러닝|달리기|수영|훈련)\s*목표', text):
+        scopes.discard('workout-logs')
+    matches = sorted(item for item in matches if item[2] in scopes)
+    if len(scopes) > 1:
+        # A nearby statement about another domain is not a list of targets.
+        # Explicit conjunctions still support "계좌와 주식 목록을 모두 저장".
+        last_start, _, last_scope = matches[-1]
+        connected = {last_scope}
+        for start, end, scope in reversed(matches[:-1]):
+            if scope == last_scope:
+                last_start = start
+                continue
+            if not re.search(r'[,·]|와|과|및|하고', text[end:last_start]):
+                break
+            connected.add(scope)
+            last_start, last_scope = start, scope
+        return connected
+    return scopes
+
+
+def shared_write_authorized(query: str, source_quote: str, resource: str, operation: str) -> bool:
+    """Bind list rows to an explicit shared directive for their own resource.
+
+    This supplements a row's own directive; it never grants delete permission or
+    lets an unrelated fact borrow another domain's save verb.
+    """
+    if operation not in {'create', 'update'} or resource not in _WRITE_SCOPES:
+        return False
+    own = instruction_text(re.sub(r'"[^"]*"|“[^”]*”|「[^」]*」|\'[^\']*\'', '', query))
+    quote = source_quote.strip()
+    if (not quote or quote not in own or quote != instruction_text(quote).strip()
+            or re.search(r'[?？]|만약|가정|예시|샘플', own)
+            or not factual_write_authorized(quote, resource)):
+        return False
+    boundaries = [0, *(match.end() for match in re.finditer(r'\n+|[!?。]+|(?<!\d)\.(?!\d)', own)), len(own)]
+    clauses = [(start, end, own[start:end]) for start, end in zip(boundaries, boundaries[1:])]
+    quote_start, quote_end = own.index(quote), own.index(quote) + len(quote)
+    quote_scopes = _write_scopes(quote)
+    for index, (start, end, clause) in enumerate(clauses):
+        if not _BULK_WRITE.search(clause) or not operation_authorized(clause, operation):
+            continue
+        # Another explicit operation bounds this list in either direction.
+        if any(command_requested(other) for other_start, other_end, other in clauses
+               if other_start != start and (
+                   quote_end <= other_start < start or end <= other_start < quote_start)):
+            continue
+        scopes = _write_scopes(clause)
+        if not scopes and index:
+            # "주식이 더 있어. 이것들 다 저장해줘" keeps its immediate subject.
+            previous = clauses[index - 1][2]
+            if not command_requested(previous):
+                scopes = _write_scopes(previous)
+        if not scopes:
+            scopes = quote_scopes
+            if not scopes and re.search(r'[A-Z][A-Z0-9.:-]*.*\d+(?:\.\d+)?\s*주', quote):
+                scopes = {'holdings'}
+        if resource not in scopes:
+            continue
+        if quote_scopes and resource not in quote_scopes and resource != 'goals':
+            continue
+        return True
+    return False
+
+
+def direct_write_authorized(source_quote: str, resource: str, operation: str) -> bool:
+    """A whole-message citation still binds writes to the instructed domain."""
+    own = instruction_text(source_quote)
+    if not operation_authorized(own, operation):
+        return False
+    if operation not in {'create', 'update', 'delete'}:
+        return True
+    if operation in {'create', 'update'}:
+        # "운동 기록하고 계좌도 저장해줘" contains two explicit actions.
+        # Keep their domains separate while recognizing the coordinated first verb.
+        own = re.sub(r'((?:기록|저장|등록|추가|입력|생성))하고(?!\s*(?:싶|있|나서|보니))\s+',
+                     r'\1해줘. ', own)
+    clauses = re.split(r'\n+|[!?。]+|(?<!\d)\.(?!\d)', own)
+    all_scopes = _write_scopes(own)
+    for index, clause in enumerate(clauses):
+        if not operation_authorized(clause, operation):
+            continue
+        scopes = _write_scopes(clause)
+        if not scopes and index:
+            scopes = _write_scopes(clauses[index - 1])
+        if resource in scopes or not scopes and len(all_scopes) <= 1 and (not all_scopes or resource in all_scopes):
+            return True
+    return False
