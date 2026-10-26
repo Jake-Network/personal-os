@@ -41,7 +41,7 @@ def test_create_all_database_is_stamped_then_gets_checkpoints_and_triggers(postg
         connection.execute(text("DROP TRIGGER manual_value_changes_immutable ON manual_value_changes"))
     plan = mm.plan(url)
     assert plan.action == "stamp" and plan.stamp == "0010_advisor_runtime"
-    assert plan.head == "0018_merge_advisor_records"
+    assert plan.head == "0019_fx_rate_per_pair"
     mm.apply(url, plan)
     assert mm.plan(url).action == "none"
     assert {"checkpoints", "checkpoint_writes", "checkpoint_blobs"}.issubset(inspect(engine).get_table_names(schema=inspect(engine).default_schema_name))

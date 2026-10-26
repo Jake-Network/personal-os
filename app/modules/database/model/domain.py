@@ -7,7 +7,7 @@ not modelled: nothing that must never reach an LLM is stored here in the first p
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event, false
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, event, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.database.model.base import Base, UTCDateTime, utcnow
@@ -102,7 +102,9 @@ def reject_value_change_mutation(mapper, connection, target):
 
 
 class FxRate(Base):
+    """Current rate per currency pair; refreshes overwrite it. Raw quotes stay in market_observations."""
     __tablename__ = "fx_rates"
+    __table_args__ = (UniqueConstraint("base", "quote", name="uq_fx_rates_pair"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     base: Mapped[str] = mapped_column(String(3))  # 1 base = rate quote
     quote: Mapped[str] = mapped_column(String(3))

@@ -47,7 +47,10 @@ def _register(name: str, res: Resource) -> None:
     def update_item(item_id: int, body: Create = Body(...), session: Session = Depends(get_session)):  # type: ignore[valid-type]
         _check_sheet_ownership(session, name)
         _get(session, item_id)
-        return personal_data_manager.update(session, name, res, item_id, body)
+        try:
+            return personal_data_manager.update(session, name, res, item_id, body)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     if name in {"accounts", "liabilities", "other-assets"}:
         @router.post(f"/{name}/{{item_id}}/confirm-value", response_model=Item,

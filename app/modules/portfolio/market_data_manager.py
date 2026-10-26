@@ -7,8 +7,8 @@ from math import ceil
 
 from sqlalchemy import select, update
 
+from app.modules.crud import fx_rate_handler
 from app.modules.database.model import (
-    FxRate,
     Holding,
     LocalPosition,
     MarketObservation,
@@ -374,11 +374,10 @@ def _refresh(session, client=None, *, result_authorization_check=None):
             rate = parse_decimal(row[1])
             if rate is None or rate <= 0:
                 continue
-            currency = row[0][:3]
-            if _observation(
-                session, row[0], "KRW", "googlefinance_fx", {"rate": str(rate)}
-            ):
-                session.add(FxRate(base=currency, quote="KRW", rate=rate, as_of=now))
+            # The observation log dedupes identical values, but the current rate must
+            # still advance its as_of when the market returns to a previously seen value.
+            _observation(session, row[0], "KRW", "googlefinance_fx", {"rate": str(rate)})
+            fx_rate_handler.set_rate(session, row[0][:3], "KRW", rate, now, only_if_newer=True)
         if valid_count:
             settings.last_success_at = now
         settings.last_error = "; ".join(failures) if failures else None

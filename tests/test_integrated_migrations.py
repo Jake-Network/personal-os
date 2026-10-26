@@ -7,12 +7,12 @@ from sqlalchemy import create_engine, inspect, text
 from app.modules.database.migration_manager import alembic_config
 
 
-MERGED_HEAD = "0018_merge_advisor_records"
+HEAD = "0019_fx_rate_per_pair"
 
 
 def test_agent_and_checkpoint_branches_have_one_successor(postgres_url):
     script = ScriptDirectory.from_config(alembic_config(postgres_url))
-    assert script.get_heads() == [MERGED_HEAD]
+    assert script.get_heads() == [HEAD]
 
 
 @pytest.mark.parametrize("revision", ["0016_agent_playbooks_inbox", "0016_checkpoint_task_path", "0017_merge_agent_security", "0017_workout_duration_seconds"])
@@ -49,7 +49,7 @@ def test_upgrade_from_either_branch_preserves_records(postgres_url, revision):
         command.upgrade(config, "head")
         command.check(config)
         with engine.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == MERGED_HEAD
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD
             assert connection.execute(text("SELECT title,origin FROM advisor_conversations WHERE id=501")).one() == (
                 "synthetic retained conversation", "user")
             if agent_branch:
