@@ -49,7 +49,8 @@ function Selectable({
   );
 }
 
-export function ApprovalsView() {
+/** Pending approvals; `embedded` renders the body only, inside the review inbox. */
+export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
   const proposals = useListProposals({ status: 'pending' }, { query: { refetchInterval: 30000 } });
   const memories = useListMemories({ status: 'proposed' }, { query: { refetchInterval: 30000 } });
   const playbooks = useListPendingPlaybookRevisions({ query: { refetchInterval: 30000 } });
@@ -100,13 +101,12 @@ export function ApprovalsView() {
     );
   };
 
-  return (
-    <PageContainer className='max-w-[820px]'>
-      <PageHeader title='승인 대기' description='상담에서 나온 변경 제안, 기억 후보와 배운 절차입니다. 승인한 것만 반영됩니다.' />
+  const body = (
+    <>
       <QueryStatus pending={proposals.isPending} error={proposals.error} retry={proposals.refetch} label='변경 제안' />
       <QueryStatus pending={memories.isPending} error={memories.error} retry={memories.refetch} label='기억 후보' />
       <QueryStatus pending={playbooks.isPending} error={playbooks.error} retry={playbooks.refetch} label='플레이북 제안' />
-      {empty && <EmptyState icon={Inbox} title='기다리는 항목이 없습니다' className='rounded-lg border bg-card' />}
+      {empty && <EmptyState icon={Inbox} title='승인을 기다리는 항목이 없습니다' className='rounded-lg border bg-card' />}
 
       {chosen.length > 0 && (
         <div
@@ -202,6 +202,13 @@ export function ApprovalsView() {
           </div>
         </Section>
       )}
+    </>
+  );
+  if (embedded) return body;
+  return (
+    <PageContainer className='max-w-[820px]'>
+      <PageHeader title='승인 대기' description='상담에서 나온 변경 제안, 기억 후보와 배운 절차입니다. 승인한 것만 반영됩니다.' />
+      {body}
     </PageContainer>
   );
 }

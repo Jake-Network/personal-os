@@ -6,8 +6,10 @@
  */
 import type { AdvisorStyle } from './advisorStyle';
 import type { LearningSettings } from './learningSettings';
+import type { RecordingSettings } from './recordingSettings';
 
 export interface AgentSettings {
   learning?: LearningSettings;
   style?: AdvisorStyle;
+  recording?: RecordingSettings;
 }

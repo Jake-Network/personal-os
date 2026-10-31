@@ -5,4 +5,6 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type DashboardSummaryComputed = { [key: string]: unknown };
+export interface RecordingSettings {
+  default_enabled?: boolean;
+}

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.modules.context.record_privacy import RECORD_CATEGORY
 from app.modules.context.source_policy import source_allowed
 from app.modules.database.model import AdvisorMessage, AuditLog, Base, LocalPosition
+from app.modules.advisor.commands.references import has_dependents
 from app.modules.finance.clock import local_today
 from app.modules.finance.value_history import capture, split_history_fields, tracks
 from app.modules.finance.value_history_manager import value_history_manager
@@ -446,14 +447,8 @@ def _execute(session, command, excluded, *, separate_authority=False):
     if operation == "delete":
         # Cascades/SET NULL can silently change other records. Ask the user to resolve
         # links first rather than letting a single-record request delete a collection.
-        table = resource.handler.model.__tablename__
-        for mapper in Base.registry.mappers:
-            if mapper.class_ is LocalPosition:
-                continue
-            for column in mapper.columns:
-                if any(foreign.column.table.name == table for foreign in column.foreign_keys):
-                    if session.scalar(select(mapper.class_).where(getattr(mapper.class_, column.key) == obj.id).limit(1)) is not None:
-                        return _result(command, "needs_input", "다른 기록에서 참조 중입니다. 연결된 기록을 먼저 정리해 주세요.")
+        if has_dependents(session, obj):
+            return _result(command, "needs_input", "다른 기록에서 참조 중입니다. 연결된 기록을 먼저 정리해 주세요.")
         record = _serialized(resource, obj)
         reference = _reference(resource, obj)
         if tracks(name):
@@ -462,6 +457,9 @@ def _execute(session, command, excluded, *, separate_authority=False):
         return _result(command, "saved", "삭제했습니다.", record_id=record["id"], record_ref=reference, record={"id": record["id"]})
     data, trade_date = _validate_values(session, name, resource, command.get("values", {}), obj, excluded)
     before = capture(name, obj) if obj is not None and tracks(name) else None
+    # Kept on the receipt only (never in the result sent to the model) so the user can undo this edit.
+    # Untruncated, unlike _serialized: restoring a clipped note would lose data.
+    previous = resource.item_schema.model_validate(obj).model_dump(mode="json") if obj is not None else None
     symbol_changed = name == "holdings" and obj is not None and (obj.symbol != data["symbol"] or obj.currency != data["currency"])
     if symbol_changed:
         data["last_price"], data["price_as_of"] = None, None
@@ -496,7 +494,7 @@ def _execute(session, command, excluded, *, separate_authority=False):
             if needs_exchange:
                 message += " 거래소를 확인하면 자동 시세를 연결할 수 있습니다."
     return _result(command, "saved", message, record_id=obj.id,
-                   record_ref=_reference(resource, obj), record=_serialized(resource, obj), **fields)
+                   record_ref=_reference(resource, obj), record=_serialized(resource, obj), _previous=previous, **fields)
 
 
 def execute_commands(session, *, commands, conversation_id, message_id, excluded, authorization_check=None,
@@ -530,6 +528,10 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
         if existing:
             if existing.detail.get("fingerprint") != fingerprint:
                 results.append(_result(command, "failed", "같은 메시지의 작업 내용이 달라졌습니다. 새 메시지로 요청해 주세요."))
+            elif existing.detail.get("undone_at"):
+                # The user reverted this write; a retry must not report it as in effect or offer undo again.
+                results.append({**_result(command, "saved", "이 작업은 반영된 뒤 사용자가 되돌렸습니다. 현재 기록에는 적용되어 있지 않습니다."),
+                                "receipt_id": existing.id, "undone": True, "replayed": True})
             else:
                 prior = existing.detail["result"]
                 resource = RESOURCES.get(prior.get("resource"))
@@ -550,11 +552,15 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
         try:
             with session.begin_nested():
                 result = _execute(session, command, current_excluded, separate_authority=separate_authority)
+                previous = result.pop("_previous", None)
                 if result["status"] == "saved":
                     receipt = AuditLog(actor="advisor", action="advisor.data_command", target=target,
                         detail={"conversation_id": conversation_id, "index": index, "fingerprint": fingerprint, "result": result})
                     session.add(receipt)
                     receipts.append(receipt)
+                    session.flush()
+                    result = {**result, "receipt_id": receipt.id}
+                    receipt.detail = {**receipt.detail, "result": result, "previous": previous}
                     session.flush()
             results.append(result)
             if separate_key is not None and result["status"] == "saved":

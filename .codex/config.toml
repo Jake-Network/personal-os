@@ -1,0 +1,17 @@
+# Personal OS only; global memories, generation settings and other repositories stay unchanged.
+[memories]
+use_memories = false
+
+# This CLI applies skills.config enablement only from user/session layers.
+# Bound the catalog here instead of storing ineffective project-level per-skill overrides.
+[skills]
+max_context_tokens = 1000
+
+[plugins."pages@openai-curated"]
+enabled = false
+
+[plugins."sites@openai-curated"]
+enabled = false
+
+[plugins."work-pets@openai-curated"]
+enabled = false

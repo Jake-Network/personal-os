@@ -7,7 +7,7 @@ not modelled: nothing that must never reach an LLM is stored here in the first p
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, event, false
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, event, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.database.model.base import Base, UTCDateTime, utcnow
@@ -102,7 +102,9 @@ def reject_value_change_mutation(mapper, connection, target):
 
 
 class FxRate(Base):
+    """Current rate per currency pair; refreshes overwrite it. Raw quotes stay in market_observations."""
     __tablename__ = "fx_rates"
+    __table_args__ = (UniqueConstraint("base", "quote", name="uq_fx_rates_pair"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     base: Mapped[str] = mapped_column(String(3))  # 1 base = rate quote
     quote: Mapped[str] = mapped_column(String(3))
@@ -119,6 +121,33 @@ class CashflowEntry(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="KRW")
     category: Mapped[str | None] = mapped_column(String(64))
     description: Mapped[str | None] = mapped_column(String(200))
+
+
+class CashflowCategoryRule(TimestampMixin, Base):
+    """User-confirmed category for a ledger description; only suggests, never rewrites stored entries."""
+
+    __tablename__ = "cashflow_category_rules"
+    __table_args__ = (UniqueConstraint("match_kind", "match_text", name="uq_cashflow_category_rules_match"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_text: Mapped[str] = mapped_column(String(200))  # stored casefolded
+    match_kind: Mapped[str] = mapped_column(String(16))  # equals | contains
+    category: Mapped[str] = mapped_column(String(64))
+
+
+class RecurringCashflow(TimestampMixin, Base):
+    """A repeating income or expense. Never posts itself; the user records each month explicitly."""
+
+    __tablename__ = "recurring_cashflows"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(16))  # income | expense
+    amount: Mapped[Decimal] = mapped_column(Money)
+    currency: Mapped[str] = mapped_column(String(3), default="KRW")
+    category: Mapped[str | None] = mapped_column(String(64))
+    day_of_month: Mapped[int] = mapped_column(Integer)  # 1-31; short months use their last day
+    start_on: Mapped[date] = mapped_column(Date)
+    end_on: Mapped[date | None] = mapped_column(Date)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
 
 
 class PlannedExpense(TimestampMixin, Base):

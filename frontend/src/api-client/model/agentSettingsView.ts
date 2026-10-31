@@ -6,9 +6,11 @@
  */
 import type { AdvisorStyle } from './advisorStyle';
 import type { LearningSettings } from './learningSettings';
+import type { RecordingSettings } from './recordingSettings';
 
 export interface AgentSettingsView {
   learning?: LearningSettings;
   style?: AdvisorStyle;
+  recording?: RecordingSettings;
   style_warnings?: string[];
 }

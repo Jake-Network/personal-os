@@ -28,3 +28,20 @@ def require(session, authorization):
 def revoke(session):
     app_setting_handler.set_value(session, KEY, {'value': epoch(session) + 1})
     session.flush()
+
+
+def require_execution(session, request):
+    """Validate the caller's run/job lease at the final provider boundary."""
+    if request.run_id:
+        from app.modules.database.model.advisor_runtime import AdvisorRun
+        from app.modules.database.model.base import utcnow
+        from app.modules.agent.briefing import require_run_authorized
+        run = session.get(AdvisorRun, request.run_id, populate_existing=True)
+        if (run is None or run.status != "running" or not request.run_owner
+                or run.lease_owner != request.run_owner or run.lease_generation != request.run_generation
+                or run.lease_until is None or run.lease_until <= utcnow()):
+            raise AdvisorError("상담 실행이 중지되었거나 변경되었습니다.", provider_code="run_authorization_changed")
+        require_run_authorized(session, run)
+    if request.background_job_id is not None:
+        from app.modules.agent.reflection import require_job_authorized
+        require_job_authorized(session, request.background_job_id, request.background_job_owner)

@@ -52,7 +52,7 @@ function NextActions({ item }: { item: InboxItemView }) {
   const signals = (Array.isArray(links.signals) ? links.signals : []) as Signal[];
   const actions: { href: string; label: string }[] = [];
   if (typeof links.conversation_id === 'number') actions.push({ href: `/advisor/${links.conversation_id}`, label: '상담 보기' });
-  if (item.kind === 'learning_proposals' && (Array.isArray(links.playbook_revision_ids) || Array.isArray(links.memory_ids))) actions.push({ href: '/approvals', label: '제안 검토' });
+  if (item.kind === 'learning_proposals' && (Array.isArray(links.playbook_revision_ids) || Array.isArray(links.memory_ids))) actions.push({ href: '/review?view=approvals', label: '제안 검토' });
   if (item.kind === 'schedule_paused' || item.kind === 'job_failed') actions.push({ href: '/settings/jobs', label: '자동 작업 확인' });
   if (typeof links.playbook_id === 'number') actions.push({ href: `/reflect/playbooks?record=${links.playbook_id}`, label: '플레이북 보기' });
   return (
@@ -159,7 +159,8 @@ function LearningProposals({ item }: { item: InboxItemView }) {
   );
 }
 
-export function InboxView() {
+/** Local notifications; `embedded` renders the body only, inside the review inbox. */
+export function InboxView({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient();
   const items = useListInboxItems(undefined, { query: { refetchInterval: 30000 } });
   const refresh = () =>
@@ -170,19 +171,14 @@ export function InboxView() {
   const readAll = useReadAllInbox(options);
   const unread = items.data?.filter(item => item.status === 'unread').length ?? 0;
 
-  return (
-    <PageContainer className='max-w-[820px]'>
-      <PageHeader
-        title='알림'
-        description='자동 작업과 학습 결과입니다. 이 기기에서만 보이며 AI에 보내지 않습니다.'
-        actions={
-          unread > 0 && (
-            <Button size='sm' disabled={readAll.isPending} onClick={() => readAll.mutate()}>
-              모두 읽음
-            </Button>
-          )
-        }
-      />
+  const readAllButton = unread > 0 && (
+    <Button size='sm' disabled={readAll.isPending} onClick={() => readAll.mutate()}>
+      모두 읽음
+    </Button>
+  );
+  const body = (
+    <>
+      {embedded && readAllButton && <div className='mb-2 flex justify-end'>{readAllButton}</div>}
       <QueryStatus pending={items.isPending} error={items.error} retry={items.refetch} label='알림' rows={3} />
       {items.data?.length === 0 && (
         <EmptyState
@@ -225,6 +221,13 @@ export function InboxView() {
           );
         })}
       </ul>
+    </>
+  );
+  if (embedded) return body;
+  return (
+    <PageContainer className='max-w-[820px]'>
+      <PageHeader title='알림' description='자동 작업과 학습 결과입니다. 이 기기에서만 보이며 AI에 보내지 않습니다.' actions={readAllButton} />
+      {body}
     </PageContainer>
   );
 }

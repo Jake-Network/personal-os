@@ -16,7 +16,7 @@ def test_apply_requires_a_backup_before_any_migration(monkeypatch, postgres_url)
     monkeypatch.setattr(mm.command, 'stamp', lambda *a, **k: touched.append('stamp'))
     monkeypatch.setattr(mm.command, 'upgrade', lambda *a, **k: touched.append('upgrade'))
     with pytest.raises(RuntimeError, match='pg_dump'):
-        mm.apply(postgres_url, MigrationPlan(current='0001_baseline', head='0018_merge_advisor_records'))
+        mm.apply(postgres_url, MigrationPlan(current='0001_baseline', head='0019_fx_rate_per_pair'))
     assert touched == []
 
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ApiError, errorMessage } from '@/api-client/api-error';
+import { useGetAgentSettings } from '@/api-client/generated/agent/agent';
 import { createConversation, getListConversationsQueryKey, previewContext } from '@/api-client/generated/advisor/advisor';
 import { getListProposalsQueryKey } from '@/api-client/generated/proposals/proposals';
 import type { Category, ConversationCreateDomain, RunCreate } from '@/api-client/model';
@@ -48,7 +49,14 @@ export function useAdvisorSend({
 }: Options) {
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
-  const [draft, setDraft] = useState<DraftOptions>(() => initialDraft(conversationId, documentParam));
+  const [rawDraft, setDraft] = useState<DraftOptions>(() => initialDraft(conversationId, documentParam));
+  // Until the user flips the switch in this view, it follows the saved default ("자동 기록" settings).
+  const [recordingChosen, setRecordingChosen] = useState(false);
+  const recordingDefault = useGetAgentSettings().data?.recording?.default_enabled ?? false;
+  const draft = useMemo(
+    () => (recordingChosen ? rawDraft : { ...rawDraft, allowDataRecording: recordingDefault }),
+    [rawDraft, recordingChosen, recordingDefault],
+  );
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uncertainRetry, setUncertainRetry] = useState(false);
@@ -128,7 +136,10 @@ export function useAdvisorSend({
     setForcedOff(off);
   }
 
-  const updateDraft = (patch: Partial<DraftOptions>) => setDraft(d => ({ ...d, ...patch }));
+  const updateDraft = (patch: Partial<DraftOptions>) => {
+    if ('allowDataRecording' in patch) setRecordingChosen(true);
+    setDraft(d => ({ ...d, ...patch }));
+  };
 
   async function send(textArg?: string) {
     const text = (textArg ?? input).trim();

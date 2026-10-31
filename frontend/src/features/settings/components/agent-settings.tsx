@@ -39,7 +39,7 @@ function StyleForm({ settings }: { settings: AgentSettingsView }) {
       className='flex flex-col gap-3'
       onSubmit={event => {
         event.preventDefault();
-        update.mutate({ data: { learning: settings.learning, style } });
+        update.mutate({ data: { learning: settings.learning, style, recording: settings.recording } });
       }}>
       <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
         <div className='flex flex-col gap-1'>
@@ -122,7 +122,33 @@ export function AgentSettings() {
               aria-label='자동 학습 제안'
               checked={settings.data.learning?.enabled ?? false}
               disabled={update.isPending}
-              onCheckedChange={value => update.mutate({ data: { learning: { enabled: value }, style: settings.data.style } })}
+              onCheckedChange={value => update.mutate({ data: { learning: { enabled: value }, style: settings.data.style, recording: settings.data.recording } })}
+            />
+          </label>
+        )}
+      </Section>
+
+      <Section
+        title='상담에서 바로 기록하기'
+        info={
+          <p>
+            ‘오늘 10km 뛰었어’, ‘급여 통장 300만원이야’처럼 말하면 자신의 완료한 운동·현재 계좌 잔액·주식 보유량을 저장합니다. 계획·가정·다른 사람의 실적은 저장하지
+            않고, 삭제는 직접 요청해야 합니다. 저장한 기록은 답변에서 바로 되돌릴 수 있습니다.
+          </p>
+        }>
+        {settings.data && (
+          <label className='flex items-center gap-3 py-2'>
+            <span className='flex-1'>
+              <span className='block'>새 상담에서 자동 기록을 켠 상태로 시작</span>
+              <span className='block text-xs text-muted-foreground'>입력창의 더보기에서 질문마다 끌 수 있습니다.</span>
+            </span>
+            <Switch
+              aria-label='자동 기록 기본값'
+              checked={settings.data.recording?.default_enabled ?? false}
+              disabled={update.isPending}
+              onCheckedChange={value =>
+                update.mutate({ data: { learning: settings.data.learning, style: settings.data.style, recording: { default_enabled: value } } })
+              }
             />
           </label>
         )}

@@ -107,3 +107,57 @@ def test_expense_signal_requires_strict_increase_and_all_three_months(session):
     session.add(CashflowEntry(occurred_on=date(2026, 8, 1), kind='expense', amount=Decimal('100'), currency='KRW'))
     session.commit()
     assert not dashboard_manager.summary(session, NOW)['signals']
+
+
+def _populate_every_home_section(session):
+    from datetime import timedelta
+    from app.modules.database.model import Account, CalendarEvent, Goal, Interview, JobApplication, Task
+    app = JobApplication(company='Synthetic', role='Engineer', status='applied', next_step='call')
+    session.add(app)
+    session.flush()
+    session.add_all([
+        Account(name='Synthetic cash', kind='checking', currency='KRW', balance=Decimal('1000.50'),
+                balance_as_of=date(2026, 10, 19), is_liquid=True),
+        *[CashflowEntry(occurred_on=date(2026, month, 1), kind='expense', amount=Decimal('100'), currency='KRW')
+          for month in (7, 8, 9, 10)],
+        Goal(title='Synthetic goal', category='personal', target_value='10', current_value='3', unit='km',
+             target_date=date(2026, 10, 25)),
+        Task(title='Synthetic task', due_on=date(2026, 10, 19)),
+        CalendarEvent(title='Synthetic event', starts_at=NOW + timedelta(hours=1), ends_at=NOW + timedelta(hours=2)),
+        CalendarEvent(title='Overlap', starts_at=NOW + timedelta(hours=1), ends_at=NOW + timedelta(hours=3)),
+        Interview(application_id=app.id, stage='first', starts_at=NOW + timedelta(days=1)),
+        WorkoutLog(performed_on=date(2026, 10, 18), activity='run', duration_seconds=2737),
+    ])
+    session.commit()
+
+
+def test_typed_summary_is_the_payload_the_manager_built(session):
+    """The response model types the home fields but must not add, drop or coerce any key."""
+    import json
+    from app.schema.dashboard_schema import DashboardSummary
+
+    for populate in (lambda s: None, _populate_every_home_section):
+        populate(session)
+        built = json.loads(json.dumps(dashboard_manager.summary(session, NOW), default=str))
+        typed = DashboardSummary.model_validate(built).model_dump(mode='json', exclude_unset=True)
+        assert typed == built
+
+
+def test_typed_summary_reads_home_fields(session):
+    from app.schema.dashboard_schema import DashboardSummary
+
+    _populate_every_home_section(session)
+    data = DashboardSummary.model_validate(dashboard_manager.summary(session, NOW)).data
+    assert data.get_accounts_summary.computed.net_worth.spendable_liquidity == '1000.50'
+    assert data.get_cashflow_summary.monthly_expense.available is True
+    assert data.get_tasks.open_tasks[0].overdue is True
+    assert data.get_calendar_events.conflicts
+    assert data.get_job_applications.applications[0].next_step == 'call'
+    assert data.get_health_summary.total_seconds == 2737
+    assert data.cash_runway.available is True
+
+
+def test_onboarding_state_round_trip(client):
+    assert client.get('/api/dashboard/onboarding').json() == {'dismissed': False}
+    assert client.put('/api/dashboard/onboarding', json={'dismissed': True}).json() == {'dismissed': True}
+    assert client.get('/api/dashboard/onboarding').json() == {'dismissed': True}

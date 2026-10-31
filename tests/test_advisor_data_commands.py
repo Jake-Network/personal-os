@@ -295,3 +295,48 @@ def test_concurrent_replay_serializes_the_same_message_receipt(session):
     assert ids[0] == ids[1]
     assert len(list(session.scalars(select(WorkoutLog)))) == 1
     assert len(list(session.scalars(select(AuditLog).where(AuditLog.action == "advisor.data_command")))) == 1
+
+
+def _workout_receipt(session):
+    from app.modules.advisor.commands.execution import execute_commands
+
+    conversation_id, message_id = source(session)
+    command = {"operation": "create", "resource": "workout-logs", "selector": {},
+               "values": {"performed_on": "2026-10-24", "activity": "합성 러닝", "duration_seconds": 2737},
+               "source_quote": "오늘 러닝 45분 37초 기록해줘"}
+    args = dict(commands=[command], conversation_id=conversation_id, message_id=message_id, excluded=set())
+    [first] = execute_commands(session, **args)
+    session.commit()
+    return args, first, conversation_id
+
+
+def test_retry_after_undo_reports_the_write_as_reverted(session):
+    from app.modules.advisor.commands import undo
+    from app.modules.advisor.commands.execution import execute_commands
+
+    args, first, _ = _workout_receipt(session)
+    undo.undo(session, first["receipt_id"])
+    [replayed] = execute_commands(session, **args)
+    assert replayed["undone"] is True and replayed["replayed"] is True
+    assert replayed["receipt_id"] == first["receipt_id"]
+    assert "record" not in replayed and "되돌렸" in replayed["message"]
+    assert not list(session.scalars(select(WorkoutLog)))
+
+
+def test_undo_waits_while_the_conversation_run_is_executing(session):
+    import pytest
+    from app.modules.advisor.commands import undo
+    from app.modules.database.model.advisor_runtime import AdvisorRun
+
+    _, first, conversation_id = _workout_receipt(session)
+    run = AdvisorRun(id="synthetic-run", conversation_id=conversation_id, request_id="r", status="running",
+                     input_payload={})
+    session.add(run)
+    session.commit()
+    with pytest.raises(RuntimeError, match="진행 중"):
+        undo.undo(session, first["receipt_id"])
+    session.rollback()
+    run = session.get(AdvisorRun, "synthetic-run")
+    run.status = "completed"
+    session.commit()
+    assert undo.undo(session, first["receipt_id"])["operation"] == "create"

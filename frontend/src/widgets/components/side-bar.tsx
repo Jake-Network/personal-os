@@ -1,22 +1,17 @@
 'use client';
 
-import { Bell, Inbox } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 
 import { useGetStatus } from '@/api-client/generated/ai-provider/ai-provider';
-import { useCountUnreadInbox } from '@/api-client/generated/agent/agent';
-import { useListPendingPlaybookRevisions } from '@/api-client/generated/playbooks/playbooks';
-import { useListProposals } from '@/api-client/generated/proposals/proposals';
+import { useReviewCounts } from '@/features/review/review-view';
 import { cn } from '@/lib/utils';
 
 import { NAV_ITEMS, SETTINGS_ITEM } from './nav-items';
 import { NavLink } from './nav-link';
 
 export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
-  const pending =
-    (useListProposals({ status: 'pending' }, { query: { refetchInterval: 30000 } }).data?.length ?? 0) +
-    (useListPendingPlaybookRevisions({ query: { refetchInterval: 30000 } }).data?.length ?? 0);
-  // Local-only count; background reflections and briefings land here after the run that triggered them.
-  const unread = useCountUnreadInbox({ query: { refetchInterval: 30000 } }).data?.unread ?? 0;
+  // Local-only counts: approvals, due decision reviews and unread notifications share one entry.
+  const review = useReviewCounts();
   const provider = useGetStatus().data;
   const providerOn = provider?.connected && provider.plan_usage_enabled;
   const providerOff = provider?.status === 'needs_reauth';
@@ -33,29 +28,21 @@ export function SideBar({ onNavigate }: { onNavigate?: () => void }) {
         </NavLink>
       ))}
       <div className='mt-3'>
-        <NavLink href='/inbox' onNavigate={onNavigate}>
-          <Bell className='size-4 shrink-0' aria-hidden />
-          <span className='flex-1'>알림</span>
-          {unread > 0 && (
-            <span className='rounded-full bg-accent px-1.5 text-2xs font-semibold text-accent-foreground'>
-              {unread}
-              <span className='sr-only'>건 읽지 않음</span>
+        <NavLink href='/review' onNavigate={onNavigate}>
+          <Inbox className='size-4 shrink-0' aria-hidden />
+          <span className='flex-1'>검토함</span>
+          {review.total > 0 && (
+            <span
+              className={cn(
+                'rounded-full px-1.5 text-2xs font-semibold',
+                review.approvals > 0 ? 'bg-warning-soft text-warning' : 'bg-accent text-accent-foreground',
+              )}>
+              {review.total}
+              <span className='sr-only'>건 확인 필요</span>
             </span>
           )}
         </NavLink>
       </div>
-      {pending > 0 && (
-        <div>
-          <NavLink href='/approvals' onNavigate={onNavigate}>
-            <Inbox className='size-4 shrink-0' aria-hidden />
-            <span className='flex-1'>승인 대기</span>
-            <span className='rounded-full bg-warning-soft px-1.5 text-2xs font-semibold text-warning'>
-              {pending}
-              <span className='sr-only'>건</span>
-            </span>
-          </NavLink>
-        </div>
-      )}
       <div className='mt-auto pt-4'>
         <NavLink href={SETTINGS_ITEM.href} onNavigate={onNavigate}>
           <SettingsIcon className='size-4 shrink-0' aria-hidden />

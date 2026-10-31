@@ -72,7 +72,9 @@ class PersonalDataManager:
         obj = resource.handler.create(session, data)
         if tracks(name):
             value_history_manager.record(session, name, obj, None, "create", trade_date=trade_date)
-        self._audit(session, name, resource, "create", obj.id)
+        # Upserting handlers (FX pairs) replace an existing row; audit that as an update, not a new record.
+        verb = "update" if getattr(obj, "replaced_existing", False) else "create"
+        self._audit(session, name, resource, verb, obj.id)
         session.commit()
         return obj
 

@@ -26,6 +26,7 @@ from app.modules.llm.providers import (
     ChatGPTPlanProvider,
     CodexAppServerProvider,
     LLMProvider,
+    LocalOpenAICompatibleProvider,
     ResponsesApiClient,
 )
 from app.modules.llm.types import LLMRequest, StreamEvent
@@ -56,6 +57,8 @@ class LLMGatewayManager:
             return bool(status.get("connected") and status.get("plan_usage_enabled"))
         if name == "openai_api_key":
             return bool(os.environ.get("OPENAI_API_KEY", "").strip())
+        if name == "local_densecore":
+            return self.providers[name].configured()
         return False  # Codex app server remains an unwired provider.
 
     async def list_models(self, session: Session) -> list[str]:
@@ -85,24 +88,12 @@ class LLMGatewayManager:
         }
         try:
             session.expire_all()
-            from app.modules.llm.run_policy import require
+            from app.modules.llm.run_policy import require, require_execution
             require(session, request.authorization)
             transfer_policy.require_confirmation(session, provider.name)
             from app.modules.context.source_policy import require_live_request_sources
             require_live_request_sources(session, request)
-            if request.run_id:
-                from app.modules.database.model.advisor_runtime import AdvisorRun
-                from app.modules.agent.briefing import require_run_authorized
-                run = session.get(AdvisorRun, request.run_id, populate_existing=True)
-                from app.modules.database.model.base import utcnow
-                if (run is None or run.status != "running" or not request.run_owner
-                        or run.lease_owner != request.run_owner or run.lease_generation != request.run_generation
-                        or run.lease_until is None or run.lease_until <= utcnow()):
-                    raise AdvisorError("상담 실행이 중지되었거나 변경되었습니다.", provider_code="run_authorization_changed")
-                require_run_authorized(session, run)
-            if request.background_job_id is not None:
-                from app.modules.agent.reflection import require_job_authorized
-                require_job_authorized(session, request.background_job_id, request.background_job_owner)
+            require_execution(session, request)
             async for chunk in provider.stream(session, request):
                 if chunk.type == "completed":
                     record["input_tokens"] = chunk.usage.get("input_tokens")
@@ -151,6 +142,7 @@ llm_gateway_manager = LLMGatewayManager(
         # Read from the environment only; never persisted, never chosen automatically.
         "openai_api_key": ApiKeyProvider(lambda _session: os.environ.get("OPENAI_API_KEY"), _responses),
         "codex_app_server": CodexAppServerProvider(),
+        "local_densecore": LocalOpenAICompatibleProvider(lambda: settings.llm_local_url, lambda: settings.llm_local_model_id, _http),
     },
     default_model=settings.default_model,
 )

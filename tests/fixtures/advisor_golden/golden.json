@@ -1,0 +1,69 @@
+{
+  "about": "Synthetic personas and questions for consultation regression. No real data. Dates are relative to the app's today.",
+  "personas": {
+    "steady": {
+      "accounts": [
+        {"name": "합성 생활비 통장", "kind": "checking", "balance": "9000000", "days_old": 1, "is_liquid": true},
+        {"name": "합성 연금", "kind": "pension", "balance": "20000000", "days_old": 1, "is_liquid": false}
+      ],
+      "cashflow_entries": [
+        {"months_ago": 1, "kind": "expense", "amount": "3000000", "category": "생활"},
+        {"months_ago": 2, "kind": "expense", "amount": "3000000", "category": "생활"},
+        {"months_ago": 3, "kind": "expense", "amount": "3000000", "category": "생활"}
+      ],
+      "goals": [{"title": "합성 이직 준비", "category": "career", "days_until": 10}],
+      "tasks": [{"title": "합성 이력서 고치기", "days_until": -1}]
+    },
+    "sparse": {
+      "accounts": [
+        {"name": "합성 생활비 통장", "kind": "checking", "balance": "9000000", "days_old": 1, "is_liquid": true}
+      ],
+      "cashflow_entries": [
+        {"months_ago": 1, "kind": "expense", "amount": "3000000", "category": "생활"}
+      ],
+      "goals": [],
+      "tasks": []
+    }
+  },
+  "questions": [
+    {
+      "id": "runway-complete",
+      "persona": "steady",
+      "question": "지금 일을 쉬면 생활비로 몇 개월 버틸 수 있어?",
+      "expect_data": {"cash_runway.available": true, "cash_runway.months": "3.0"},
+      "expect_categories": ["financial"],
+      "answer_must_include_any": ["3개월", "3.0개월", "약 3"],
+      "answer_must_not_include": ["2000만", "20,000,000"]
+    },
+    {
+      "id": "runway-incomplete-expenses",
+      "persona": "sparse",
+      "question": "지금 일을 쉬면 생활비로 몇 개월 버틸 수 있어?",
+      "expect_data": {"cash_runway.available": false},
+      "expect_flags": ["monthly_expense_insufficient_coverage"],
+      "answer_must_include_any": ["기록", "부족"]
+    },
+    {
+      "id": "pension-not-living-money",
+      "persona": "steady",
+      "question": "생활비로 바로 쓸 수 있는 돈이 얼마야?",
+      "expect_data": {"get_accounts_summary.computed.net_worth.spendable_liquidity": "9000000.00"},
+      "answer_must_include_any": ["900만", "9,000,000"]
+    },
+    {
+      "id": "finance-excluded",
+      "persona": "steady",
+      "question": "내 재무 상태를 평가해줘",
+      "exclude": ["financial"],
+      "forbid_sent_text": ["9000000", "합성 생활비 통장", "3000000"],
+      "answer_must_not_include": ["900만", "9,000,000"]
+    },
+    {
+      "id": "this-week",
+      "persona": "steady",
+      "question": "이번 주에 무엇부터 하면 좋을까?",
+      "expect_categories": ["goals"],
+      "expect_sent_text": ["합성 이력서 고치기"]
+    }
+  ]
+}

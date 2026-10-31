@@ -218,7 +218,7 @@ export function JobsView() {
                 <span className='text-xs text-muted-foreground'>{dateTime(job.completed_at ?? job.created_at)}</span>
                 {job.status === 'failed' && <span className='text-xs text-muted-foreground'>시도 {job.attempts}/{job.max_attempts}</span>}
                 {!!(job.result?.playbook_revision_ids?.length || job.result?.memory_ids?.length) && (
-                  <Link className='text-ui text-primary hover:underline' href='/approvals'>
+                  <Link className='text-ui text-primary hover:underline' href='/review?view=approvals'>
                     제안 검토
                   </Link>
                 )}

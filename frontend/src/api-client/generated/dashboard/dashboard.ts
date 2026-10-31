@@ -4,23 +4,26 @@
  * Personal OS
  * OpenAPI spec version: 0.2.0
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type {
   DataTag,
   DefinedInitialDataOptions,
   DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
   QueryFunction,
   QueryKey,
   UndefinedInitialDataOptions,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from '@tanstack/react-query';
 
-import type { DashboardSummary } from '../../model';
+import type { DashboardSummary, HTTPValidationError, OnboardingState } from '../../model';
 
 import { customInstance } from '../../custom-client';
-import type { ErrorType } from '../../custom-client';
+import type { ErrorType, BodyType } from '../../custom-client';
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -108,3 +111,127 @@ export function useSummary<TData = Awaited<ReturnType<typeof summary>>, TError =
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+/**
+ * @summary Onboarding
+ */
+export const onboarding = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<OnboardingState>({ url: `/api/dashboard/onboarding`, method: 'GET', signal }, options);
+};
+
+export const getOnboardingQueryKey = () => {
+  return [`/api/dashboard/onboarding`] as const;
+};
+
+export const getOnboardingQueryOptions = <TData = Awaited<ReturnType<typeof onboarding>>, TError = ErrorType<unknown>>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getOnboardingQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof onboarding>>> = ({ signal }) => onboarding(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type OnboardingQueryResult = NonNullable<Awaited<ReturnType<typeof onboarding>>>;
+export type OnboardingQueryError = ErrorType<unknown>;
+
+export function useOnboarding<TData = Awaited<ReturnType<typeof onboarding>>, TError = ErrorType<unknown>>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData>> &
+      Pick<DefinedInitialDataOptions<Awaited<ReturnType<typeof onboarding>>, TError, Awaited<ReturnType<typeof onboarding>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useOnboarding<TData = Awaited<ReturnType<typeof onboarding>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData>> &
+      Pick<UndefinedInitialDataOptions<Awaited<ReturnType<typeof onboarding>>, TError, Awaited<ReturnType<typeof onboarding>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useOnboarding<TData = Awaited<ReturnType<typeof onboarding>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Onboarding
+ */
+
+export function useOnboarding<TData = Awaited<ReturnType<typeof onboarding>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof onboarding>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getOnboardingQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Save Onboarding
+ */
+export const saveOnboarding = (
+  onboardingState: BodyType<OnboardingState>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<OnboardingState>(
+    { url: `/api/dashboard/onboarding`, method: 'PUT', headers: { 'Content-Type': 'application/json' }, data: onboardingState, signal },
+    options,
+  );
+};
+
+export const getSaveOnboardingMutationKey = () => ['saveOnboarding'] as const;
+
+export const getSaveOnboardingMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof saveOnboarding>>, TError, SaveOnboardingMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof saveOnboarding>>, TError, SaveOnboardingMutationVariables, TContext> => {
+  const mutationKey = getSaveOnboardingMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveOnboarding>>, SaveOnboardingMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return saveOnboarding(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof saveOnboarding>>>;
+export type SaveOnboardingMutationBody = BodyType<OnboardingState>;
+export type SaveOnboardingMutationError = ErrorType<HTTPValidationError>;
+export type SaveOnboardingMutationVariables = { data: BodyType<OnboardingState> };
+
+/**
+ * @summary Save Onboarding
+ */
+export const useSaveOnboarding = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof saveOnboarding>>, TError, SaveOnboardingMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof saveOnboarding>>, TError, SaveOnboardingMutationVariables, TContext> => {
+  return useMutation(getSaveOnboardingMutationOptions(options), queryClient);
+};

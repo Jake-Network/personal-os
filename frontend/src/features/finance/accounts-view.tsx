@@ -3,7 +3,7 @@
 import { type ReactNode, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 
 import { toApiError } from '@/api-client/api-error';
 import { todayKey } from '@/lib/utils/zoned';
@@ -27,6 +27,7 @@ import { useRecordParam } from '@/features/personal-data/hooks/use-record-param'
 
 import { type FinanceLine, financeApi } from './api';
 import { AccountValuationStatus, Spendability } from './account-valuation';
+import { BalanceCheckInSheet } from './balance-check-in';
 import { money } from './presentation';
 
 interface ListConfig {
@@ -246,6 +247,7 @@ export function AccountsView({ recordId, showCoverage = true }: { recordId: numb
   const [accountId, setAccountId] = useRecordParam(recordId);
   const [liabilityId, setLiabilityId] = useState<number | null>(null);
   const [otherId, setOtherId] = useState<number | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
   const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
   const lines = portfolio.data?.lines ?? [];
   const selection = [
@@ -256,6 +258,12 @@ export function AccountsView({ recordId, showCoverage = true }: { recordId: numb
 
   return (
     <>
+      <div className='mb-3 flex justify-end'>
+        <Button onClick={() => setCheckingIn(true)}>
+          <RefreshCw /> 잔고 한 번에 업데이트
+        </Button>
+      </div>
+      <BalanceCheckInSheet open={checkingIn} onOpenChange={setCheckingIn} />
       <QueryStatus pending={portfolio.isPending} error={portfolio.error} retry={portfolio.refetch} label='자산 검증' rows={1} />
       {LISTS.map((config, i) => (
         <RecordList

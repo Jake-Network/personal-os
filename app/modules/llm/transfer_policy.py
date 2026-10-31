@@ -34,6 +34,12 @@ def account_binding(session: Session, provider: str) -> str | None:
         if not key:
             return None
         identity = [provider, key]
+    elif provider == "local_densecore":
+        # The answering server and loaded model; changing either needs a fresh confirmation.
+        from app.config import settings
+        if not settings.llm_local_model_id:
+            return None
+        identity = [provider, settings.llm_local_url.rstrip("/"), settings.llm_local_model_id]
     else:
         return None
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()

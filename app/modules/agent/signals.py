@@ -4,10 +4,12 @@ Signals are local counts with links. Only categories and counts decide whether a
 briefing is worth running; the briefing itself reads data through the normal context path.
 """
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.enums.context_category import Category
 
 LABELS = {
@@ -20,6 +22,7 @@ LABELS = {
     "memories_due": "다시 확인할 기억이 있습니다",
     "stale_data": "오래된 시세·잔고가 있습니다",
     "approvals": "승인을 기다리는 제안이 있습니다",
+    "recurring_due": "기록하지 않은 이번 달 반복 거래가 있습니다",
 }
 # Which data a model briefing would need for each signal. Signals whose records no context
 # tool provides (decision journal, memory review dates, approvals) stay local-only: they never
@@ -28,11 +31,11 @@ CATEGORIES = {
     "expenses": {Category.FINANCIAL}, "goals": {Category.GOALS}, "interviews": {Category.CAREER, Category.CALENDAR},
     "interviews_soon": {Category.CAREER, Category.CALENDAR}, "exercise": {Category.HEALTH},
     "decisions_due": set(), "memories_due": set(),
-    "stale_data": {Category.FINANCIAL, Category.INVESTMENT}, "approvals": set(),
+    "stale_data": {Category.FINANCIAL, Category.INVESTMENT}, "approvals": set(), "recurring_due": set(),
 }
 LINKS = {"expenses": "/finance", "goals": "/plan", "interviews": "/career", "interviews_soon": "/career",
          "exercise": "/plan", "decisions_due": "/reflect", "memories_due": "/reflect/memory",
-         "stale_data": "/finance", "approvals": "/approvals"}
+         "stale_data": "/finance", "approvals": "/review?view=approvals", "recurring_due": "/finance/cashflow"}
 
 
 def collect(session: Session, now: datetime | None = None) -> list[dict]:
@@ -65,5 +68,10 @@ def collect(session: Session, now: datetime | None = None) -> list[dict]:
         ProposedAction.status == "pending", PersonalMemory.status == "proposed", PlaybookRevision.status == "proposed"))
     if pending:
         signals.append({"kind": "approvals", "count": pending})
+    from app.modules.finance import recurring
+    today = now.astimezone(ZoneInfo(settings.timezone)).date()
+    unrecorded = [r for r in recurring.due(session, today.strftime("%Y-%m")) if not r["recorded"] and r["scheduled_on"] <= today]
+    if unrecorded:
+        signals.append({"kind": "recurring_due", "count": len(unrecorded)})
     return [{**signal, "title": LABELS.get(signal["kind"], signal["kind"]), "link": LINKS.get(signal["kind"])}
             for signal in signals]
