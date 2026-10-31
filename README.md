@@ -4,6 +4,14 @@ Local, single-user FastAPI backend. The advisor answers from your own Personal O
 models through **Sign in with ChatGPT** (ChatGPT plan usage via the Responses API). It never falls
 back to paid API billing.
 
+## Codex 작업 컨텍스트
+
+Personal OS에서는 [프로젝트 전용 설정](.codex/config.toml)이 전역 메모리의 자동 주입과 스킬 목록의 크기(1,000토큰)·Pages/Sites/Pets 플러그인 노출을 제한한다. 전역 메모리 파일·스킬과 다른 저장소 설정은 유지하며, 메모리 생성 설정도 바꾸지 않는다. 과거 맥락을 명시적으로 요청하면 Personal OS 관련 기록만 찾아 현재 코드와 대조한다. 이 설정은 제품 안의 상담 기억·자동 기록 설정과는 별개다.
+
+설정은 신뢰된 프로젝트의 새 Codex 세션부터 적용된다. 기존 대화에 이미 들어온 내용은 제거되지 않으므로 새 대화를 시작한다. 현재 CLI는 개별 `skills.config` 활성화 설정을 사용자 전역·실행 인자 계층에서만 적용하므로 프로젝트에는 효과 없는 제외 목록을 두지 않는다. 스킬 목록은 짧게 표시하며 필요한 본문은 작업별로 읽는다. 다른 저장소에서 시작하면 해당 저장소의 설정과 전역 기본값을 따른다.
+
+[루트 AGENTS.md](AGENTS.md)는 필수 보호 원칙과 작업별 읽기 경로만 담는다. 백엔드는 [상세 지침](docs/backend-agent-guide.md), 프런트엔드는 [frontend/AGENTS.md](frontend/AGENTS.md)와 [상세 지침](docs/frontend-agent-guide.md)에서 변경 영역에 필요한 절만 읽는다. 상세 가이드 전체·과거 로그·다른 프로젝트 메모리를 작업 시작마다 로딩하지 않는다.
+
 ## Run with Docker (backend + PostgreSQL)
 
 ```bash
