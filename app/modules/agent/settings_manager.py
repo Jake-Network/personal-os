@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.modules.context.content_safety import findings
 from app.modules.crud import app_setting_handler, audit_log_handler
-from app.schema.playbook_schema import AdvisorStyle, AgentSettings, AgentSettingsView, LearningSettings
+from app.schema.playbook_schema import AdvisorStyle, AgentSettings, AgentSettingsView, LearningSettings, RecordingSettings
 
 LEARNING_KEY = "agent.learning"
 STYLE_KEY = "advisor.style"
+RECORDING_KEY = "advisor.recording"
 
 TONE = {"direct": "결론과 위험을 돌려 말하지 않고 직설적으로", "balanced": "차분하고 균형 있게",
         "gentle": "부드럽고 격려하는 어조로"}
@@ -26,18 +27,27 @@ def style(session: Session) -> AdvisorStyle:
     return AdvisorStyle.model_validate(app_setting_handler.get_value(session, STYLE_KEY) or {})
 
 
+def recording(session: Session) -> RecordingSettings:
+    return RecordingSettings.model_validate(app_setting_handler.get_value(session, RECORDING_KEY) or {})
+
+
 def view(session: Session) -> AgentSettingsView:
     current = style(session)
-    return AgentSettingsView(learning=learning(session), style=current, style_warnings=findings(current.custom))
+    return AgentSettingsView(learning=learning(session), style=current, recording=recording(session),
+                             style_warnings=findings(current.custom))
 
 
 def update(session: Session, body: AgentSettings) -> AgentSettingsView:
-    previous = learning(session)
+    previous, previous_recording = learning(session), recording(session)
     app_setting_handler.set_value(session, LEARNING_KEY, body.learning.model_dump())
+    app_setting_handler.set_value(session, RECORDING_KEY, body.recording.model_dump())
     app_setting_handler.set_value(session, STYLE_KEY, {**body.style.model_dump(), "custom": body.style.custom.strip()})
     if previous.enabled != body.learning.enabled:
         audit_log_handler.record(session, "user", "agent.learning", "app_settings:agent.learning",
                                  {"enabled": body.learning.enabled})
+    if previous_recording.default_enabled != body.recording.default_enabled:
+        audit_log_handler.record(session, "user", "advisor.recording_default", "app_settings:advisor.recording",
+                                 {"default_enabled": body.recording.default_enabled})
     session.commit()
     return view(session)
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Plus, Undo2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Undo2, Upload } from 'lucide-react';
 
 import { customInstance } from '@/api-client/custom-client';
 import { notify } from '@/components/notify';
@@ -31,8 +31,10 @@ import { dateOnly } from '@/lib/utils/format';
 import { todayKey } from '@/lib/utils/zoned';
 
 import { CASHFLOW_CATEGORIES, cashflowCategories } from './cashflow-categories';
+import { CashflowImportDialog } from './cashflow-import-dialog';
 import { type LedgerDraft, type LedgerEntry, LedgerEntrySheet } from './ledger-view';
 import { money } from './presentation';
+import { RecurringAndRules } from './recurring-view';
 import { TRANSACTION_KIND_LABEL } from './transaction-kinds';
 
 const recordedMoney = (value: string | null, currency: string) => (value === null ? '미기록' : money(value, currency));
@@ -55,6 +57,7 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useRecordParam(source === 'cashflow_entries' ? recordId : null);
   const [draft, setDraft] = useState<LedgerDraft | null>(null);
   const query = useQuery({
@@ -150,6 +153,9 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
           <TabToolbar>
             <Button variant='primary' onClick={() => setCreating(true)}>
               <Plus /> 기록 추가
+            </Button>
+            <Button onClick={() => setImporting(true)}>
+              <Upload /> 은행·카드 내역 가져오기
             </Button>
             <Button onClick={() => setDraft({ request_id: crypto.randomUUID() })}>거래 추가</Button>
             <Button disabled={observe.isPending} onClick={() => observe.mutate()}>
@@ -387,6 +393,8 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
               </Section>
             </>
           )}
+          <RecurringAndRules />
+          <CashflowImportDialog open={importing} onOpenChange={setImporting} />
           <Section title='CSV로 잔액·보유 종목 가져오기' info={CSV_FORMAT_HELP}>
             <details className='rounded-lg border p-4'>
               <summary className='cursor-pointer'>CSV 붙여넣기</summary>

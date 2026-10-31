@@ -5,18 +5,18 @@
  * OpenAPI spec version: 0.2.0
  */
 import type { DashboardChecklist } from './dashboardChecklist';
+import type { DashboardComputed } from './dashboardComputed';
+import type { DashboardData } from './dashboardData';
 import type { DashboardSignal } from './dashboardSignal';
-import type { DashboardSummaryComputed } from './dashboardSummaryComputed';
-import type { DashboardSummaryData } from './dashboardSummaryData';
 import type { DashboardSummarySourceUpdatedAt } from './dashboardSummarySourceUpdatedAt';
 import type { DataQualityFlag } from './dataQualityFlag';
 
 export interface DashboardSummary {
   generated_at: string;
-  data: DashboardSummaryData;
+  data: DashboardData;
   data_quality_flags: DataQualityFlag[];
   source_updated_at: DashboardSummarySourceUpdatedAt;
-  computed: DashboardSummaryComputed;
+  computed: DashboardComputed;
   signals: DashboardSignal[];
   checklist: DashboardChecklist;
 }

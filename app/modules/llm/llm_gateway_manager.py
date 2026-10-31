@@ -26,6 +26,7 @@ from app.modules.llm.providers import (
     ChatGPTPlanProvider,
     CodexAppServerProvider,
     LLMProvider,
+    LocalOpenAICompatibleProvider,
     ResponsesApiClient,
 )
 from app.modules.llm.types import LLMRequest, StreamEvent
@@ -56,6 +57,8 @@ class LLMGatewayManager:
             return bool(status.get("connected") and status.get("plan_usage_enabled"))
         if name == "openai_api_key":
             return bool(os.environ.get("OPENAI_API_KEY", "").strip())
+        if name == "local_densecore":
+            return self.providers[name].configured()
         return False  # Codex app server remains an unwired provider.
 
     async def list_models(self, session: Session) -> list[str]:
@@ -151,6 +154,7 @@ llm_gateway_manager = LLMGatewayManager(
         # Read from the environment only; never persisted, never chosen automatically.
         "openai_api_key": ApiKeyProvider(lambda _session: os.environ.get("OPENAI_API_KEY"), _responses),
         "codex_app_server": CodexAppServerProvider(),
+        "local_densecore": LocalOpenAICompatibleProvider(lambda: settings.llm_local_url, lambda: settings.llm_local_model_id, _http),
     },
     default_model=settings.default_model,
 )

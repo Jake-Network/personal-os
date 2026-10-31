@@ -1,17 +1,13 @@
 'use client';
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- dashboard summary rows are untyped tool outputs */
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import Link from 'next/link';
 
-import { ArrowRight, Bell, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowRight, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo, Repeat, TriangleAlert, Wallet } from 'lucide-react';
 
-import { useCountUnreadInbox } from '@/api-client/generated/agent/agent';
-import { useListPendingPlaybookRevisions } from '@/api-client/generated/playbooks/playbooks';
 
-import { useListDecisions, useListMemories } from '@/api-client/generated/memory/memory';
-import { useListProposals } from '@/api-client/generated/proposals/proposals';
+import { useRecurringDue } from '@/api-client/generated/portfolio/portfolio';
 import { useSummary } from '@/api-client/generated/dashboard/dashboard';
 import { EmptyState } from '@/components/empty-state';
 import { PageContainer, Section } from '@/components/page-container';
@@ -21,34 +17,23 @@ import { Skeleton } from '@/components/skeleton';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { flagText } from '@/lib/labels';
 import { dateOnly, dateTime, dayLabel, moneyShort, relative, timeOnly } from '@/lib/utils/format';
 import { formatDuration } from '@/lib/utils/duration';
 import { cn } from '@/lib/utils';
 import { addDays, todayKey, zonedDayKey } from '@/lib/utils/zoned';
 
-import { isDecisionReviewDue } from '@/features/memory/review-due';
+import { BalanceCheckInSheet } from '@/features/finance/balance-check-in';
+import { CashflowImportDialog } from '@/features/finance/cashflow-import-dialog';
+import { OnboardingGuide } from '@/features/onboarding/onboarding-guide';
+import { useReviewCounts } from '@/features/review/review-view';
 
 import { recordHref } from '@/features/personal-data/hooks/use-record-param';
 
-import type { DashboardSummary } from '../types';
-
-/** Where each data-quality problem is fixed. */
-const FLAG_FIX: Record<string, string> = {
-  no_accounts: '/finance/accounts',
-  stale_balance: '/finance/accounts',
-  net_worth_incomplete: '/finance',
-  stale_price: '/finance/investments',
-  missing_fx: '/finance/investments',
-  monthly_expense_unknown: '/finance/cashflow',
-  monthly_expense_insufficient_coverage: '/finance/cashflow',
-  cashflow_mixed_sources: '/finance/cashflow',
-  spendable_liquidity_unknown: '/finance/accounts',
-};
+import type { DashboardData, DashboardRunway } from '@/api-client/model';
 
 const refId = (ref: unknown) => (typeof ref === 'string' ? ref.slice(ref.lastIndexOf(':') + 1) : '');
 
-function runwaySub(runway: DashboardSummary['computed']['runway'] | undefined): string {
+function runwaySub(runway: DashboardRunway | null | undefined): string {
   if (runway?.available && runway.months) return `월 지출 기준 약 ${runway.months}개월${runway.understated ? ' (일부 계좌 환산 불가)' : ''}`;
   if (runway?.available) return '지출이 수입 이하';
   if (runway?.reason === 'monthly_expense_insufficient_coverage') return '최근 3개월 지출 기록이 부족해 기간을 계산하지 않음';
@@ -56,16 +41,30 @@ function runwaySub(runway: DashboardSummary['computed']['runway'] | undefined): 
   return '월 지출 기록이 필요합니다';
 }
 
-function AttentionItem({ href, icon: Icon, tone = 'default', children }: { href: string; icon: typeof Inbox; tone?: 'default' | 'warning' | 'destructive'; children: ReactNode }) {
+type Tone = 'default' | 'warning' | 'destructive';
+const toneClass = (tone: Tone) => (tone === 'warning' ? 'text-warning' : tone === 'destructive' ? 'text-destructive' : 'text-primary');
+
+/** One thing to do now: a link, or a button that opens the quick action in place. */
+function AttentionItem({ href, onClick, icon: Icon, tone = 'default', children }: { href?: string; onClick?: () => void; icon: typeof Inbox; tone?: Tone; children: ReactNode }) {
+  const className = 'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  const content = (
+    <>
+      <Icon className={cn('size-4 shrink-0', toneClass(tone))} aria-hidden />
+      <span className='flex-1'>{children}</span>
+      <ChevronRight className='size-4 text-faint' aria-hidden />
+    </>
+  );
   return (
     <li>
-      <Link
-        href={href}
-        className='flex items-center gap-2.5 rounded-md px-2 py-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
-        <Icon className={cn('size-4 shrink-0', tone === 'warning' ? 'text-warning' : tone === 'destructive' ? 'text-destructive' : 'text-primary')} aria-hidden />
-        <span className='flex-1'>{children}</span>
-        <ChevronRight className='size-4 text-faint' aria-hidden />
-      </Link>
+      {href ? (
+        <Link href={href} className={className}>
+          {content}
+        </Link>
+      ) : (
+        <button type='button' className={className} onClick={onClick}>
+          {content}
+        </button>
+      )}
     </li>
   );
 }
@@ -96,28 +95,27 @@ interface AgendaEntry {
 
 /** What needs attention now, the key figures, and the coming week. All values come from the backend summary; no LLM call. */
 export function DashboardView() {
-  const summary = useSummary({ query: { select: d => d as DashboardSummary } });
-  const pending = useListProposals({ status: 'pending' }).data?.length ?? 0;
-  const dueReviews = (useListDecisions().data ?? []).filter(d => isDecisionReviewDue(d)).length;
-  const proposedMemories = useListMemories({ status: 'proposed' }).data?.length ?? 0;
-  const proposedPlaybooks = useListPendingPlaybookRevisions().data?.length ?? 0;
-  const unread = useCountUnreadInbox().data?.unread ?? 0;
+  const summary = useSummary();
+  const review = useReviewCounts();
+  const recurring = useRecurringDue().data ?? [];
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [guideOpen, setGuideOpen] = useState<boolean | undefined>(undefined);
   const data = summary.data;
   const today = todayKey();
 
-  const d = data?.data ?? {};
+  const d: DashboardData = data?.data ?? {};
   const accounts = d.get_accounts_summary;
   const worth = accounts?.computed?.net_worth;
   const expense = d.get_cashflow_summary?.monthly_expense;
-  const apps: any[] = d.get_job_applications?.applications ?? [];
-  const interviews: any[] = d.get_interview_schedule?.interviews ?? [];
-  const events: any[] = d.get_calendar_events?.events ?? [];
-  const conflicts: any[] = d.get_calendar_events?.conflicts ?? [];
-  const tasks: any[] = d.get_tasks?.open_tasks ?? [];
-  const goals: any[] = d.get_goals?.active_goals ?? [];
+  const apps = d.get_job_applications?.applications ?? [];
+  const interviews = d.get_interview_schedule?.interviews ?? [];
+  const events = d.get_calendar_events?.events ?? [];
+  const conflicts = d.get_calendar_events?.conflicts ?? [];
+  const tasks = d.get_tasks?.open_tasks ?? [];
+  const goals = d.get_goals?.active_goals ?? [];
   const health = d.get_health_summary;
   const flags = data?.data_quality_flags ?? [];
-  const fixable = flags.filter(f => FLAG_FIX[f.code]);
   const financeFlags = (codes: string[]) => flags.filter(f => codes.includes(f.code));
 
   const overdue = tasks.filter(t => t.overdue);
@@ -131,55 +129,44 @@ export function DashboardView() {
       kind: e.kind === 'interview' ? '면접' : '일정',
       href: recordHref('/plan/events', refId(e.ref)),
     })),
-    ...tasks.filter(t => t.due_on).map(t => ({ day: t.due_on, time: null, title: t.title, kind: '할 일', href: recordHref('/plan/tasks', refId(t.ref)), overdue: t.overdue })),
+    ...tasks.flatMap(t => (t.due_on ? [{ day: t.due_on, time: null, title: t.title, kind: '할 일', href: recordHref('/plan/tasks', refId(t.ref)), overdue: t.overdue }] : [])),
   ]
     .filter(e => e.day >= today && e.day < weekEnd)
     .sort((a, b) => a.day.localeCompare(b.day) || String(a.time ?? '').localeCompare(String(b.time ?? '')));
   const todayCount = agenda.filter(a => a.day === today && a.kind !== '할 일').length;
   const agendaDays = [...new Set(agenda.map(a => a.day))];
 
-  const attention = [
-    unread > 0 && (
-      <AttentionItem key='inbox' href='/inbox' icon={Bell}>
-        새 알림 <strong>{unread}건</strong>
-      </AttentionItem>
-    ),
-    pending > 0 && (
-      <AttentionItem key='p' href='/approvals' icon={Inbox}>
-        승인을 기다리는 제안 <strong>{pending}건</strong>
-      </AttentionItem>
-    ),
-    dueReviews > 0 && (
-      <AttentionItem key='reviews' href='/reflect' icon={CalendarClock}>
-        회고할 결정 <strong>{dueReviews}건</strong>
-      </AttentionItem>
-    ),
-    proposedMemories > 0 && (
-      <AttentionItem key='m' href='/settings/memory' icon={Sparkles}>
-        확인이 필요한 기억 <strong>{proposedMemories}건</strong>
-      </AttentionItem>
-    ),
-    proposedPlaybooks > 0 && (
-      <AttentionItem key='pb' href='/approvals' icon={Sparkles}>
-        상담에서 배운 절차 제안 <strong>{proposedPlaybooks}건</strong>
-      </AttentionItem>
-    ),
+  const flagCodes = new Set(flags.map(f => f.code));
+  const unrecorded = recurring.filter(r => !r.recorded && r.scheduled_on <= today);
+  const interviewsToday = agenda.filter(a => a.day === today && a.kind === '면접').length;
+  // Today's short list: what has a deadline or goes stale, each with the action that fixes it.
+  const todayItems = [
     overdue.length > 0 && (
-      <AttentionItem key='o' href='/plan/tasks' icon={ListTodo} tone='destructive'>
+      <AttentionItem key='overdue' href='/plan/tasks' icon={ListTodo} tone='destructive'>
         마감이 지난 할 일 <strong>{overdue.length}개</strong>
       </AttentionItem>
     ),
     todayCount > 0 && (
-      <AttentionItem key='t' href='/plan' icon={CalendarClock}>
-        오늘 일정 <strong>{todayCount}건</strong>
+      <AttentionItem key='today' href='/plan' icon={CalendarClock}>
+        오늘 {interviewsToday > 0 ? `면접 ${interviewsToday}건 포함 ` : ''}일정 <strong>{todayCount}건</strong>
         {conflicts.length > 0 && <span className='text-warning'> · 겹치는 일정 {conflicts.length}건</span>}
       </AttentionItem>
     ),
-    ...fixable.slice(0, 4).map((f, i) => (
-      <AttentionItem key={`f${i}`} href={FLAG_FIX[f.code]} icon={TriangleAlert} tone='warning'>
-        {flagText(f.code)}
+    unrecorded.length > 0 && (
+      <AttentionItem key='recurring' href='/finance/cashflow' icon={Repeat}>
+        기록하지 않은 반복 거래 <strong>{unrecorded.length}건</strong> · {unrecorded.map(r => r.name).slice(0, 2).join(', ')}
       </AttentionItem>
-    )),
+    ),
+    (flagCodes.has('stale_balance') || flagCodes.has('spendable_liquidity_unknown')) && worth && (
+      <AttentionItem key='balance' onClick={() => setCheckingIn(true)} icon={Wallet} tone='warning'>
+        오래된 잔고가 있습니다 · <strong>한 번에 업데이트</strong>
+      </AttentionItem>
+    ),
+    (flagCodes.has('monthly_expense_insufficient_coverage') || flagCodes.has('monthly_expense_unknown')) && (
+      <AttentionItem key='expense' onClick={() => setImporting(true)} icon={TriangleAlert} tone='warning'>
+        최근 3개월 지출 기록이 부족합니다 · <strong>은행·카드 내역 가져오기</strong>
+      </AttentionItem>
+    ),
   ].filter(Boolean);
 
   return (
@@ -209,34 +196,60 @@ export function DashboardView() {
 
       {data && (
         <>
-          <Section title='확인 필요' count={attention.length || undefined}>
-            {attention.length ? (
-              <ul className='-mx-2'>{attention}</ul>
+          <Section title='오늘' count={todayItems.length || undefined}>
+            {todayItems.length ? (
+              <ul className='-mx-2'>{todayItems.slice(0, 4)}</ul>
             ) : (
               <p className='flex items-center gap-2 py-2 text-ui text-muted-foreground'>
-                <CheckCircle2 className='size-4 text-success' aria-hidden /> 지금 확인할 항목이 없습니다.
+                <CheckCircle2 className='size-4 text-success' aria-hidden /> 지금 처리할 항목이 없습니다.
               </p>
             )}
+            {review.total > 0 && (
+              <Link href='/review' className='mt-1 flex items-center gap-2 rounded-md px-0 py-1.5 text-ui text-muted-foreground hover:text-foreground'>
+                <Inbox className='size-4' aria-hidden />
+                검토함 <strong className='text-foreground'>{review.total}건</strong>
+                <span className='text-xs text-faint'>
+                  {[review.approvals && `승인 ${review.approvals}`, review.decisions && `회고 ${review.decisions}`, review.inbox && `알림 ${review.inbox}`]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+                <ChevronRight className='size-4 text-faint' aria-hidden />
+              </Link>
+            )}
           </Section>
-
           {!Object.values(data.checklist).every(Boolean) && (
-            <Section title='상담 준비 체크리스트'>
-              <ul className='space-y-2 text-ui'>
+            <Section
+              title='상담 준비'
+              actions={
+                <Button size='sm' variant='ghost' onClick={() => setGuideOpen(true)}>
+                  시작 가이드
+                </Button>
+              }>
+              <ul className='flex flex-wrap gap-x-5 gap-y-2 text-ui'>
                 {([
-                  [data.checklist.ai_configuration_complete, '/settings/ai-provider', '선택한 AI 연결 설정 완료'],
-                  [data.checklist.has_cash_account, '/finance/accounts', '현금 종류 계좌 등록'],
-                  [data.checklist.has_recent_expense, '/finance/cashflow', '최근 30일 지출 기록'],
-                  [data.checklist.has_active_application_or_goal, '/plan/goals', '진행 중 지원 또는 목표 등록'],
+                  [data.checklist.ai_configuration_complete, '/settings/ai-provider', 'AI 연결'],
+                  [data.checklist.has_cash_account, '/finance/accounts', '현금 계좌'],
+                  [data.checklist.has_recent_expense, '/finance/cashflow', '최근 30일 지출'],
+                  [data.checklist.has_active_application_or_goal, '/plan/goals', '목표 또는 지원'],
                 ] as const).map(([complete, href, label]) => (
-                  <li key={label}><Link href={href} className='flex items-center gap-2 hover:underline'>
-                    <CheckCircle2 className={cn('size-4', complete ? 'text-success' : 'text-faint')} aria-hidden />
-                    <span>{label}</span><span className='text-xs text-faint'>{complete ? '완료' : '준비 필요'}</span>
-                  </Link></li>
+                  <li key={label}>
+                    <Link href={href} className='flex items-center gap-1.5 hover:underline'>
+                      <CheckCircle2 className={cn('size-4', complete ? 'text-success' : 'text-faint')} aria-hidden />
+                      <span className={complete ? 'text-muted-foreground' : undefined}>{label}</span>
+                      <span className='sr-only'>{complete ? '완료' : '준비 필요'}</span>
+                    </Link>
+                  </li>
                 ))}
               </ul>
-              <p className='mt-2 text-xs text-faint'>AI 연결 설정 완료는 실제 답변 생성 성공을 의미하지 않습니다.</p>
             </Section>
           )}
+          <OnboardingGuide
+            checklist={data.checklist}
+            open={guideOpen}
+            onOpenChange={open => setGuideOpen(open ? true : undefined)}
+          />
+          <BalanceCheckInSheet open={checkingIn} onOpenChange={setCheckingIn} />
+          <CashflowImportDialog open={importing} onOpenChange={setImporting} />
           {data.signals.length > 0 && (
             <Section title='이번 주 살펴볼 것'>
               <ul className='divide-y'>

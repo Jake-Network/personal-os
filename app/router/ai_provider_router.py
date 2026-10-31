@@ -61,3 +61,13 @@ def usage_events(limit: int = 50, session: Session = Depends(get_session)):
                        created_at=e.created_at.isoformat())
         for e in llm_gateway_manager.recent_usage(session, limit)
     ]
+
+
+from app.modules.llm import connection_test
+from app.schema.llm_schema import ConnectionTestResult
+
+
+@router.post("/test", response_model=ConnectionTestResult)
+async def test_connection(session: Session = Depends(get_session)):
+    """One fixed sentence, only when the user presses the button; no personal data is sent."""
+    return await connection_test.run(session)

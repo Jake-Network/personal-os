@@ -22,6 +22,7 @@ import type {
 
 import type {
   AIProviderStatus,
+  ConnectionTestResult,
   HTTPValidationError,
   LoginStartResponse,
   ProviderSelection,
@@ -409,3 +410,48 @@ export function useUsageEvents<TData = Awaited<ReturnType<typeof usageEvents>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+/**
+ * One fixed sentence, only when the user presses the button; no personal data is sent.
+ * @summary Test Connection
+ */
+export const testConnection = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<ConnectionTestResult>({ url: `/api/settings/ai-provider/test`, method: 'POST', signal }, options);
+};
+
+export const getTestConnectionMutationKey = () => ['testConnection'] as const;
+
+export const getTestConnectionMutationOptions = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError, void, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError, void, TContext> => {
+  const mutationKey = getTestConnectionMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof testConnection>>, void> = () => {
+    return testConnection(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TestConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testConnection>>>;
+
+export type TestConnectionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Test Connection
+ */
+export const useTestConnection = <TError = ErrorType<unknown>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof testConnection>>, TError, void, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof testConnection>>, TError, void, TContext> => {
+  return useMutation(getTestConnectionMutationOptions(options), queryClient);
+};

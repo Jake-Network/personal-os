@@ -26,7 +26,7 @@ def by_request(session: Session, model, request_id: str):
 
 
 # Jobs that call a model run on the async agent worker under the global one-run gate.
-LLM_KINDS = frozenset({"advisor_reflection"})
+LLM_KINDS = frozenset({"advisor_reflection", "connection_test"})
 
 
 def claim(session: Session, owner: str, now=None):

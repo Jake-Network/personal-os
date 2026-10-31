@@ -256,3 +256,20 @@ def unlink_conversation(conversation_id: int, link_id: int, session: Session = D
 def list_recommendations(conversation_id: int, session: Session = Depends(get_session)):
     _conversation(session, conversation_id)
     return latest_feedback(session, conversation_id)
+
+
+from app.modules.advisor.commands import undo as command_undo
+from app.schema.advisor_schema import DataOperationUndo
+
+
+@router.post("/data-operations/{receipt_id}/undo", response_model=DataOperationUndo)
+def undo_data_operation(receipt_id: int, session: Session = Depends(get_session)):
+    """The user's explicit undo of one consultation write that nothing has changed since."""
+    try:
+        return command_undo.undo(session, receipt_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc

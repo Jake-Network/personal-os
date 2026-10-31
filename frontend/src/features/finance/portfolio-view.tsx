@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { dateOnly, money as formatMoney } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
-import type { DashboardSummary } from '@/features/dashboard/types';
+import type { DashboardRunway } from '@/api-client/model';
 import { QuoteRefreshNotice, useQuoteRefresh } from '@/features/holdings/use-quote-refresh';
 
 import { financeApi, type Portfolio } from './api';
@@ -31,7 +31,7 @@ const SPENDABLE_FLAGS = [
   'stale_balance',
 ];
 
-function runwayText(runway: DashboardSummary['computed']['runway'] | undefined): string {
+function runwayText(runway: DashboardRunway | null | undefined): string {
   if (runway?.available && runway.months) return `월평균 지출 기준 약 ${runway.months}개월${runway.understated ? ' (환산 못한 외화 계좌 제외)' : ''}`;
   if (runway?.available) return '지출이 수입보다 적습니다';
   if (runway?.reason === 'monthly_expense_insufficient_coverage') return '최근 3개월 지출 기록이 부족해 버틸 기간은 계산하지 않았습니다';
@@ -119,7 +119,7 @@ function Allocation({ data }: { data: Portfolio }) {
 export function PortfolioView() {
   const refresh = useQuoteRefresh();
   const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
-  const summary = useSummary({ query: { select: d => d as DashboardSummary } });
+  const summary = useSummary();
   const data = portfolio.data;
   const worth = summary.data?.data.get_accounts_summary?.computed?.net_worth;
   const spendableFlags = (summary.data?.data_quality_flags ?? []).filter(f => SPENDABLE_FLAGS.includes(f.code));

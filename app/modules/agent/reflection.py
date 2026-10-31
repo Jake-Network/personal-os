@@ -199,9 +199,11 @@ def claim(session: Session, owner: str):
     # An interrupted call may have reached the provider: fail it for an explicit retry, never replay.
     expired = session.execute(update(BackgroundJob).where(BackgroundJob.kind.in_(LLM_KINDS), BackgroundJob.status == "running",
         BackgroundJob.lease_until <= now).values(status="failed", last_error="interrupted", completed_at=now,
-            lease_owner=None, lease_until=None).returning(BackgroundJob.id, BackgroundJob.payload)).all()
+            lease_owner=None, lease_until=None).returning(BackgroundJob.id, BackgroundJob.payload, BackgroundJob.kind)).all()
     from app.modules.agent.inbox_manager import notify
-    for job_id, payload in expired:
+    for job_id, payload, kind in expired:
+        if kind != "advisor_reflection":
+            continue  # an interrupted connection test has no follow-up for the user
         notify(session, "job_failed", "학습 회고가 중단되었습니다", f"reflection-failed:{job_id}",
             summary="모델 호출의 완료 여부가 불확실해 자동으로 다시 실행하지 않습니다. 자동 작업에서 상태를 확인하세요.",
             severity="warning", links={"job_id": job_id, "conversation_id": payload.get("conversation_id")})

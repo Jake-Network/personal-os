@@ -35,6 +35,7 @@ import {
 } from '@/api-client/generated/ai-provider/ai-provider';
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
+import { ConnectionTest } from './connection-test';
 
 import { CALLBACK_ERROR, OUTCOME, PROVIDER_LABEL, PROVIDERS } from '../consts';
 import { TransferPolicySettings } from './transfer-policy-settings';
@@ -223,6 +224,7 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
             {!models.data && !models.error && <span className='text-xs text-faint'>계정을 연결하면 쓸 수 있는 모델이 나옵니다.</span>}
             {models.error && <span className='text-xs text-destructive'>{models.error.message}</span>}
           </div>
+          {s?.configuration_complete && <ConnectionTest />}
         </div>
       </Section>
 

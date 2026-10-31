@@ -117,9 +117,16 @@ class LearningSettings(BaseModel):
     enabled: bool = False
 
 
+class RecordingSettings(BaseModel):
+    # Initial state of the per-request "자동 기록" switch. The server still checks the
+    # flag sent with each request; this only saves turning it on in every conversation.
+    default_enabled: bool = False
+
+
 class AgentSettings(BaseModel):
     learning: LearningSettings = Field(default_factory=LearningSettings)
     style: AdvisorStyle = Field(default_factory=AdvisorStyle)
+    recording: RecordingSettings = Field(default_factory=RecordingSettings)
 
 
 class AgentSettingsView(AgentSettings):

@@ -84,6 +84,12 @@ def final_answer_ids(session: Session, messages: list[AdvisorMessage]) -> set[in
 def message_items(session: Session, messages: list[AdvisorMessage]) -> list[MessageItem]:
     operations = {}
     metadata = _answer_metadata(session, messages, questions=True, operation_results=operations)
+    from app.modules.advisor.commands.undo import undone_receipts
+    undone = undone_receipts(session, {op['receipt_id'] for ops in operations.values() for op in ops
+                                       if isinstance(op, dict) and isinstance(op.get('receipt_id'), int)})
+    if undone:
+        operations = {key: [{**op, 'undone': True} if isinstance(op, dict) and op.get('receipt_id') in undone else op
+                            for op in ops] for key, ops in operations.items()}
     return [MessageItem.model_validate(message).model_copy(update={
         'is_final_answer': message.id in metadata, 'source_question': metadata.get(message.id),
         'data_operations': operations.get(message.id, []),

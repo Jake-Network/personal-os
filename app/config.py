@@ -34,6 +34,9 @@ class Settings:
 
     openai_api_base: str = "https://api.openai.com/v1"
     default_model: str = field(default_factory=lambda: _env("ADVISOR_DEFAULT_MODEL", ""))
+    # Optional local answer model (DenseCore or another OpenAI-compatible server), used only when selected.
+    llm_local_url: str = field(default_factory=lambda: _env("LLM_LOCAL_URL", "http://127.0.0.1:18081"))
+    llm_local_model_id: str = field(default_factory=lambda: _env("LLM_LOCAL_MODEL_ID", ""))
     # "brave" (API key) or "searxng" (keyless local instance). Never switched automatically.
     web_search_provider: str = field(default_factory=lambda: _env("PERSONAL_OS_WEB_SEARCH_PROVIDER", "brave"))
     web_search_api_key: str = field(default_factory=lambda: _env("PERSONAL_OS_WEB_SEARCH_API_KEY", ""), repr=False)

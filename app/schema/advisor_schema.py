@@ -239,3 +239,10 @@ class ConversationLinkItem(ConversationLinkCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
     conversation_id: int
+
+
+class DataOperationUndo(BaseModel):
+    receipt_id: int
+    operation: str
+    resource: str
+    record_id: int

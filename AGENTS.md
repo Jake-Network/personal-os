@@ -33,7 +33,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 | 개인 상담 | `app/modules/advisor/`, `app/modules/context/`: 질문별 데이터 선택, 공유 필터, 근거 스냅샷, 스트리밍 답변, 제안·기억·결정 기록. |
 | 플레이북·학습·브리핑 | `app/modules/playbooks/`, `app/modules/agent/`: 승인된 상담 절차(DB revision), 상담 후 학습 회고(`advisor_reflection` 잡), 결정적 신호와 예약 브리핑, 로컬 알림, 상담 방식. |
 | 문서 상담 | `app/modules/documents/`: PDF·Markdown·TXT의 버전 관리, 비동기 인덱싱, 검색, 인용과 출처 추적. |
-| 모델·연결 | `app/modules/llm/`, `app/modules/auth/`: 모델 제공자 인터페이스, ChatGPT 연결과 별도 Google OAuth. |
+| 모델·연결 | `app/modules/llm/`, `app/modules/auth/`: 모델 제공자 인터페이스, ChatGPT 연결, 선택 시에만 쓰는 로컬 OpenAI 호환 제공자(`LocalOpenAICompatibleProvider`, DenseCore), 사용자가 누를 때만 보내는 연결 테스트(`connection_test.py`), 별도 Google OAuth. |
 
 현재는 로컬 단일 사용자 제품이다. 모델 제공자 인터페이스의 존재를 실제 연동 완료로 간주하지 않는다. 특히 `CodexAppServerProvider`는 스텁이다. 외부 캘린더 동기화와 증권 거래를 지원한다고 가정하지 않는다. `app/modules/jobs/`의 주기 회고와 시세 갱신, `app/modules/agent/`의 자동 학습 회고와 AI 브리핑은 사용자가 명시적으로 활성화한 작업만 실행한다. 모델을 호출하는 잡(`review_jobs_handler.LLM_KINDS`)은 비동기 에이전트 워커만 가져가며 상담 실행과 같은 전역 1개 실행 게이트(`take_runtime_gate`)를 쓴다. 실행 권한은 요청·활성화 시점에 고정하고 바뀌면 취소·일시정지하며, 호출 완료가 불명확한 중단은 자동 재호출하지 않는다. 새로운 외부 연동이나 자동 실행은 권한·실패·취소 동작까지 별도 설계한다.
 
@@ -123,14 +123,17 @@ corepack yarn build
 
 # API 계약 변경 시: 실행 중인 백엔드 또는 OPENAPI_TARGET의 저장된 스키마 사용
 corepack yarn generate-api
+
+# 브라우저 스모크(가짜 모델 제공자, 이름이 _e2e로 끝나는 폐기용 DB만 허용·시작 시 초기화)
+corepack yarn e2e
 ```
 
 | 변경 영역 | 우선 확인할 기존 회귀 검증 |
 | --- | --- |
-| 재무·Sheets·이력 | `tests/test_financial_calculator.py`, `test_runway_api.py`, `test_portfolio.py`, `test_holdings_sheets.py`, `test_holdings_history.py`, `test_value_history.py` |
-| 상담에 전달되는 데이터 | `tests/test_advisor_product_context.py`, `test_context_routing.py`, `test_context_budget.py`, `test_calendar_context.py` |
+| 재무·Sheets·이력 | `tests/test_financial_calculator.py`, `test_runway_api.py`, `test_portfolio.py`, `test_holdings_sheets.py`, `test_holdings_history.py`, `test_value_history.py`, `test_cashflow_import.py`, `test_recurring_cashflow.py`, `test_balance_check_in.py` |
+| 상담에 전달되는 데이터 | `tests/test_advisor_product_context.py`, `test_context_routing.py`, `test_context_budget.py`, `test_calendar_context.py`, `test_advisor_golden.py`(합성 golden set, 실제 모델 평가는 `scripts/evaluate_advisor.py`) |
 | 공유·문서 근거 | `tests/test_privacy_history.py`, `test_advisor_documents.py`, `test_document_evidence.py`, `test_documents.py` |
-| 승인·연결·신뢰 경계 | `tests/test_proposal_race.py`, `test_oauth.py`, `test_google_oauth.py`, `test_llm_failures.py`, `test_local_trust.py` |
+| 승인·연결·신뢰 경계 | `tests/test_proposal_race.py`, `test_oauth.py`, `test_google_oauth.py`, `test_llm_failures.py`, `test_local_trust.py`, `test_data_command_undo.py`, `test_connection_test.py`, `test_local_llm_provider.py` |
 | 플레이북·학습·브리핑 | `tests/test_playbooks.py`, `test_agent_loop.py`, `test_agent_followups.py`, `test_agent_migration.py` |
 | DB 변경 | `tests/test_migration_manager.py`, `test_legacy_database.py`, 도메인 migration 테스트 및 `.github/workflows/ci.yml`의 PostgreSQL 검증 |
 

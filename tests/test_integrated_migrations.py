@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect, text
 from app.modules.database.migration_manager import alembic_config
 
 
-HEAD = "0019_fx_rate_per_pair"
+HEAD = "0020_cashflow_rules_recurring"
 
 
 def test_agent_and_checkpoint_branches_have_one_successor(postgres_url):

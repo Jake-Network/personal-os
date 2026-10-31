@@ -14,6 +14,15 @@ export interface DataOperation {
   record_ref?: { table: string; id: number; updated_at?: string | null; category?: string };
   message: string;
   target_label?: string;
+  /** Server receipt of a saved write; present on writes saved after undo support. */
+  receipt_id?: number;
+  undone?: boolean;
+}
+
+/** A saved create/update can be undone by the user while nothing has changed it since. */
+export function canUndo(operation: DataOperation): boolean {
+  return operation.status === 'saved' && (operation.operation === 'create' || operation.operation === 'update')
+    && typeof operation.receipt_id === 'number' && !operation.undone;
 }
 
 export function readDataOperations(value: unknown): DataOperation[] {

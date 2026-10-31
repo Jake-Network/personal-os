@@ -16,3 +16,11 @@ class UsageEventItem(BaseModel):
     output_tokens: int | None
     latency_ms: int | None
     created_at: str
+
+
+class ConnectionTestResult(BaseModel):
+    ok: bool
+    code: str
+    message: str
+    provider: str | None = None
+    model: str | None = None

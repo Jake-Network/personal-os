@@ -80,3 +80,44 @@ jobs:
       - run: yarn typecheck
       - run: yarn test
       - run: yarn build
+
+  e2e:
+    name: Browser smoke tests (Playwright, fake model provider)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: personal_os
+          POSTGRES_PASSWORD: personal_os
+          POSTGRES_DB: personal_os_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U personal_os" --health-interval 5s --health-timeout 3s --health-retries 10
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # scripts/e2e_server.py refuses any database not ending in `_e2e` and never calls a real provider.
+      E2E_DATABASE_URL: postgresql+psycopg://personal_os:personal_os@localhost:5432/personal_os_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure E2E data directory
+        run: echo "E2E_DATA_DIR=$RUNNER_TEMP/personal-os-e2e-data" >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+        working-directory: .
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.node-version
+      - run: corepack enable
+      - run: yarn install --frozen-lockfile
+      - run: yarn playwright install --with-deps chromium
+      - run: yarn playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: frontend/test-results
+          retention-days: 7

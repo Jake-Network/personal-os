@@ -224,6 +224,20 @@ function HistoryScope({ send }: { send: AdvisorSend }) {
   );
 }
 
+/** An option that differs from the default; pressing it turns the option back off for this question. */
+function OptionChip({ label, accent = false, disabled, onClear }: { label: string; accent?: boolean; disabled?: boolean; onClear: () => void }) {
+  return (
+    <button
+      type='button'
+      disabled={disabled}
+      onClick={onClear}
+      aria-label={`${label} 끄기`}
+      className={cn('rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-50', accent && 'border-primary/30 bg-accent text-accent-foreground')}>
+      {label} ×
+    </button>
+  );
+}
+
 export function AutomaticRecordingToggle({ send }: { send: Pick<AdvisorSend, 'draft' | 'updateDraft' | 'busy'> }) {
   return (
     <div className='flex items-start gap-2 rounded-md px-2 py-1'>
@@ -306,21 +320,21 @@ export function Composer({
             {!waiting && (
               <>
                 <ShareSummary send={send} privacyBlocked={privacyBlocked} />
-                <button
-                  type='button'
-                  className={cn(toolClass, draft.depth === 'deep' && toolOn)}
-                  aria-pressed={draft.depth === 'deep'}
-                  disabled={busy}
-                  onClick={() => updateDraft({ depth: draft.depth === 'deep' ? 'auto' : 'deep' })}>
-                  <Microscope />
-                  깊게 분석
-                </button>
                 <Popover>
                   <PopoverTrigger className={toolClass} disabled={busy}>
                     <MoreHorizontal />
                     더보기
                   </PopoverTrigger>
                   <PopoverContent className='flex flex-col items-start gap-2'>
+                    <button
+                      type='button'
+                      className={cn(toolClass, draft.depth === 'deep' && toolOn)}
+                      aria-pressed={draft.depth === 'deep'}
+                      disabled={busy}
+                      onClick={() => updateDraft({ depth: draft.depth === 'deep' ? 'auto' : 'deep' })}>
+                      <Microscope />
+                      깊게 분석
+                    </button>
                     <AutomaticRecordingToggle send={send} />
                     <DocumentPicker send={send} />
                     <HistoryScope send={send} />
@@ -356,8 +370,13 @@ export function Composer({
             {[draft.historyCompany, draft.historyProject, draft.historyDecision].some(Boolean) && (
               <span className='rounded border px-2 py-0.5'>과거 경험 범위 지정</span>
             )}
-            {draft.webSearch && <span className='rounded border px-2 py-0.5'>웹 검색 사용</span>}
-            {draft.allowDataRecording && <span className='rounded border border-primary/30 bg-accent px-2 py-0.5 text-accent-foreground'>자동 기록 켜짐</span>}
+            {draft.depth === 'deep' && (
+              <OptionChip label='깊게 분석' disabled={busy} onClear={() => updateDraft({ depth: 'auto' })} />
+            )}
+            {draft.webSearch && <OptionChip label='웹 검색 사용' disabled={busy} onClear={() => updateDraft({ webSearch: false })} />}
+            {draft.allowDataRecording && (
+              <OptionChip label='자동 기록 켜짐' accent disabled={busy} onClear={() => updateDraft({ allowDataRecording: false })} />
+            )}
           </div>
         )}
         {draft.webSearch && !waiting && (

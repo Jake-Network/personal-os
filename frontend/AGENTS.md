@@ -19,7 +19,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 대시보드는 중요한 상태와 다가오는 일정을 빠르게 파악하는 곳이다. 요약에서 관련 데이터 관리·상담으로 이어지게 한다. 대시보드 조회를 위해 LLM을 호출하지 않는다.
 - 상담은 질문·답변뿐 아니라 공유 범위, 사용한 데이터, 인용 근거와 승인할 제안을 함께 확인하는 작업 공간이다. 답변과 근거 패널의 연결을 유지한다.
 - 재무 화면은 통화·기준일·출처·기록 범위를 보여주고, 커리어·일정·목표 화면은 진행 상태와 다음 행동을 보여준다. 각 도메인의 의미를 무시한 범용 표만으로 모든 경험을 대체하지 않는다.
-- 기억은 `/settings/memory`의 `AI가 아는 나`, 결정·회고는 `/reflect`, 플레이북은 `/reflect/playbooks`, 상담 방식·자동 학습은 `/settings/agent`, 알림은 `/inbox`에서 관리한다. 알림은 이 기기 전용이며 신호·브리핑·학습 제안·예약 중지·실패를 서로 다른 상태로 표시하고 다음 행동 링크를 둔다. `/memory`, `/reflect/memory`는 기억 화면으로 연결한다. 장부는 `/finance/cashflow`에서 원본 종류와 ID를 함께 보존하며 `/finance/transactions`의 기존 링크도 이어받는다.
+- 기억은 `/settings/memory`의 `AI가 아는 나`, 결정·회고는 `/reflect`, 플레이북은 `/reflect/playbooks`, 상담 방식·자동 학습·자동 기록 시작값은 `/settings/agent`에서 관리한다. 승인 대기·회고할 결정·알림은 `/review`(검토함) 한곳에 모으고 `/approvals`, `/inbox`는 이곳으로 연결한다. 알림은 이 기기 전용이며 신호·브리핑·학습 제안·예약 중지·실패를 서로 다른 상태로 표시하고 다음 행동 링크를 둔다. `/memory`, `/reflect/memory`는 기억 화면으로 연결한다. 장부는 `/finance/cashflow`에서 원본 종류와 ID를 함께 보존하며 `/finance/transactions`의 기존 링크도 이어받는다.
 - 기억·의사결정 기록은 사용자의 확인과 회고를 돕는다. 모델이 제안한 기억, 확정된 기억, 예상 결과와 실제 결과를 구별한다.
 - 한국어 UI와 기존 앱 셸을 기본으로 한다. 내비게이션은 영역(홈·상담·할 일·일정·자산·커리어·기록·회고·문서함·설정) 단위이며 영역 안의 화면은 라우트 탭(`AreaLayout`, `PageTabs`)으로 나눈다. DB 테이블을 그대로 메뉴로 노출하지 않는다. 좁은 화면에서는 하단 탭바와 더보기 메뉴를 쓰며, 상담 목록, 입력창과 근거를 사용할 수 있게 한다. 키보드 탐색, 입력 라벨, 포커스, dialog/sheet 제목과 아이콘 버튼의 접근 가능한 이름을 챙긴다.
 
@@ -30,7 +30,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 | 위치 | 책임 |
 | --- | --- |
 | `src/app/` | App Router 페이지·레이아웃·메타데이터. 도메인 로직은 기능 모듈로 위임한다. |
-| `src/features/` | `advisor`, `dashboard`, `plan`(할 일·일정·목표·운동, 달력 소스), `finance`, `holdings`, `documents`, `personal-data`(스키마 폼, `RecordSheet`, `ResourceTable`, 리소스 hooks), `memory`, `career`, `reviews`(정기 회고·브리핑 예약), `security`, `approvals`, `playbooks`, `inbox`, `settings` 등 기능별 UI·상태·어댑터. |
+| `src/features/` | `advisor`, `dashboard`, `plan`(할 일·일정·목표·운동, 달력 소스), `finance`, `holdings`, `documents`, `personal-data`(스키마 폼, `RecordSheet`, `ResourceTable`, 리소스 hooks), `memory`, `career`, `reviews`(정기 회고·브리핑 예약), `security`, `approvals`, `playbooks`, `inbox`, `review`(검토함 합성), `onboarding`(시작 가이드), `settings` 등 기능별 UI·상태·어댑터. |
 | `src/api-client/generated/`, `src/api-client/model/` | 백엔드 OpenAPI에서 Orval로 생성하는 함수·Query hooks·타입. 직접 수정하지 않는다. |
 | `src/api-client/custom-client.ts` | 일반 HTTP 요청의 공용 axios mutator. |
 | `src/api-client/event-stream.ts`, `src/api-client/api-error.ts` | SSE 전송과 공통 오류 정규화. |
@@ -98,6 +98,7 @@ corepack yarn lint
 corepack yarn typecheck
 corepack yarn test
 corepack yarn build
+corepack yarn e2e # 브라우저 스모크: 가짜 모델 제공자 + 이름이 _e2e로 끝나는 폐기용 DB(시작 시 초기화)
 ```
 
 - 최소 검증은 변경 영향에 맞춰 선택한다. 포맷·시간대는 `src/lib/utils/format.test.ts`·`zoned.test.ts`, 달력은 `src/components/calendar/calendar-utils.test.ts`·`src/features/plan/calendar-sources.test.ts`, 레코드 갱신 payload는 `src/features/personal-data/hooks/use-resource.test.ts`, SSE는 `src/api-client/event-stream.test.ts`, 실행 이벤트 재연결은 `src/features/advisor/run-events.test.ts`, 오류는 `src/api-client/api-error.test.ts`, 재무 표시는 `src/features/finance/presentation.test.ts`, Sheets 입력은 `src/features/holdings/api.test.ts`, 스키마 폼은 `src/features/personal-data/utils/schema-fields.test.ts`를 출발점으로 삼는다.

@@ -21,6 +21,14 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BalanceCheckInInput,
+  BalanceCheckInResult,
+  CashflowCategoryRuleCreate,
+  CashflowCategoryRuleItem,
+  CashflowImportInput,
+  CashflowImportPresets,
+  CashflowImportPreview,
+  CashflowImportResult,
   CashflowResponse,
   CoverageInput,
   HTTPValidationError,
@@ -28,6 +36,11 @@ import type {
   HoldingInput,
   HouseholdCashflowParams,
   MonthCloseInput,
+  RecurringCashflowCreate,
+  RecurringCashflowItem,
+  RecurringDueItem,
+  RecurringDueParams,
+  RecurringRecordInput,
   SheetsSettingsInput,
   SnapshotCorrection,
   SnapshotInput,
@@ -1296,3 +1309,888 @@ export function useHouseholdCashflow<TData = Awaited<ReturnType<typeof household
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+/**
+ * @summary Cashflow Import Preview
+ */
+export const cashflowImportPreview = (
+  cashflowImportInput: BodyType<CashflowImportInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CashflowImportPreview>(
+    {
+      url: `/api/finance/cashflow/import/preview`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: cashflowImportInput,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getCashflowImportPreviewMutationKey = () => ['cashflowImportPreview'] as const;
+
+export const getCashflowImportPreviewMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof cashflowImportPreview>>, TError, CashflowImportPreviewMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof cashflowImportPreview>>, TError, CashflowImportPreviewMutationVariables, TContext> => {
+  const mutationKey = getCashflowImportPreviewMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof cashflowImportPreview>>, CashflowImportPreviewMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return cashflowImportPreview(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CashflowImportPreviewMutationResult = NonNullable<Awaited<ReturnType<typeof cashflowImportPreview>>>;
+export type CashflowImportPreviewMutationBody = BodyType<CashflowImportInput>;
+export type CashflowImportPreviewMutationError = ErrorType<HTTPValidationError>;
+export type CashflowImportPreviewMutationVariables = { data: BodyType<CashflowImportInput> };
+
+/**
+ * @summary Cashflow Import Preview
+ */
+export const useCashflowImportPreview = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof cashflowImportPreview>>, TError, CashflowImportPreviewMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof cashflowImportPreview>>, TError, CashflowImportPreviewMutationVariables, TContext> => {
+  return useMutation(getCashflowImportPreviewMutationOptions(options), queryClient);
+};
+/**
+ * @summary Cashflow Import Commit
+ */
+export const cashflowImportCommit = (
+  cashflowImportInput: BodyType<CashflowImportInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CashflowImportResult>(
+    { url: `/api/finance/cashflow/import`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: cashflowImportInput, signal },
+    options,
+  );
+};
+
+export const getCashflowImportCommitMutationKey = () => ['cashflowImportCommit'] as const;
+
+export const getCashflowImportCommitMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof cashflowImportCommit>>, TError, CashflowImportCommitMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof cashflowImportCommit>>, TError, CashflowImportCommitMutationVariables, TContext> => {
+  const mutationKey = getCashflowImportCommitMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof cashflowImportCommit>>, CashflowImportCommitMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return cashflowImportCommit(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CashflowImportCommitMutationResult = NonNullable<Awaited<ReturnType<typeof cashflowImportCommit>>>;
+export type CashflowImportCommitMutationBody = BodyType<CashflowImportInput>;
+export type CashflowImportCommitMutationError = ErrorType<HTTPValidationError>;
+export type CashflowImportCommitMutationVariables = { data: BodyType<CashflowImportInput> };
+
+/**
+ * @summary Cashflow Import Commit
+ */
+export const useCashflowImportCommit = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof cashflowImportCommit>>, TError, CashflowImportCommitMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof cashflowImportCommit>>, TError, CashflowImportCommitMutationVariables, TContext> => {
+  return useMutation(getCashflowImportCommitMutationOptions(options), queryClient);
+};
+/**
+ * @summary Cashflow Import Presets
+ */
+export const cashflowImportPresets = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<CashflowImportPresets>({ url: `/api/finance/cashflow/import/presets`, method: 'GET', signal }, options);
+};
+
+export const getCashflowImportPresetsQueryKey = () => {
+  return [`/api/finance/cashflow/import/presets`] as const;
+};
+
+export const getCashflowImportPresetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof cashflowImportPresets>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getCashflowImportPresetsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof cashflowImportPresets>>> = ({ signal }) => cashflowImportPresets(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type CashflowImportPresetsQueryResult = NonNullable<Awaited<ReturnType<typeof cashflowImportPresets>>>;
+export type CashflowImportPresetsQueryError = ErrorType<unknown>;
+
+export function useCashflowImportPresets<TData = Awaited<ReturnType<typeof cashflowImportPresets>>, TError = ErrorType<unknown>>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, Awaited<ReturnType<typeof cashflowImportPresets>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useCashflowImportPresets<TData = Awaited<ReturnType<typeof cashflowImportPresets>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, Awaited<ReturnType<typeof cashflowImportPresets>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useCashflowImportPresets<TData = Awaited<ReturnType<typeof cashflowImportPresets>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Cashflow Import Presets
+ */
+
+export function useCashflowImportPresets<TData = Awaited<ReturnType<typeof cashflowImportPresets>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowImportPresets>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getCashflowImportPresetsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Save Cashflow Import Presets
+ */
+export const saveCashflowImportPresets = (
+  cashflowImportPresets: BodyType<CashflowImportPresets>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CashflowImportPresets>(
+    {
+      url: `/api/finance/cashflow/import/presets`,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: cashflowImportPresets,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getSaveCashflowImportPresetsMutationKey = () => ['saveCashflowImportPresets'] as const;
+
+export const getSaveCashflowImportPresetsMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof saveCashflowImportPresets>>, TError, SaveCashflowImportPresetsMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof saveCashflowImportPresets>>, TError, SaveCashflowImportPresetsMutationVariables, TContext> => {
+  const mutationKey = getSaveCashflowImportPresetsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveCashflowImportPresets>>, SaveCashflowImportPresetsMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return saveCashflowImportPresets(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveCashflowImportPresetsMutationResult = NonNullable<Awaited<ReturnType<typeof saveCashflowImportPresets>>>;
+export type SaveCashflowImportPresetsMutationBody = BodyType<CashflowImportPresets>;
+export type SaveCashflowImportPresetsMutationError = ErrorType<HTTPValidationError>;
+export type SaveCashflowImportPresetsMutationVariables = { data: BodyType<CashflowImportPresets> };
+
+/**
+ * @summary Save Cashflow Import Presets
+ */
+export const useSaveCashflowImportPresets = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof saveCashflowImportPresets>>,
+      TError,
+      SaveCashflowImportPresetsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof saveCashflowImportPresets>>, TError, SaveCashflowImportPresetsMutationVariables, TContext> => {
+  return useMutation(getSaveCashflowImportPresetsMutationOptions(options), queryClient);
+};
+/**
+ * @summary Cashflow Category Rules
+ */
+export const cashflowCategoryRules = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<CashflowCategoryRuleItem[]>({ url: `/api/finance/cashflow/category-rules`, method: 'GET', signal }, options);
+};
+
+export const getCashflowCategoryRulesQueryKey = () => {
+  return [`/api/finance/cashflow/category-rules`] as const;
+};
+
+export const getCashflowCategoryRulesQueryOptions = <
+  TData = Awaited<ReturnType<typeof cashflowCategoryRules>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getCashflowCategoryRulesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof cashflowCategoryRules>>> = ({ signal }) => cashflowCategoryRules(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type CashflowCategoryRulesQueryResult = NonNullable<Awaited<ReturnType<typeof cashflowCategoryRules>>>;
+export type CashflowCategoryRulesQueryError = ErrorType<unknown>;
+
+export function useCashflowCategoryRules<TData = Awaited<ReturnType<typeof cashflowCategoryRules>>, TError = ErrorType<unknown>>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, Awaited<ReturnType<typeof cashflowCategoryRules>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useCashflowCategoryRules<TData = Awaited<ReturnType<typeof cashflowCategoryRules>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, Awaited<ReturnType<typeof cashflowCategoryRules>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useCashflowCategoryRules<TData = Awaited<ReturnType<typeof cashflowCategoryRules>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Cashflow Category Rules
+ */
+
+export function useCashflowCategoryRules<TData = Awaited<ReturnType<typeof cashflowCategoryRules>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof cashflowCategoryRules>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getCashflowCategoryRulesQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Create Cashflow Category Rule
+ */
+export const createCashflowCategoryRule = (
+  cashflowCategoryRuleCreate: BodyType<CashflowCategoryRuleCreate>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<CashflowCategoryRuleItem>(
+    {
+      url: `/api/finance/cashflow/category-rules`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: cashflowCategoryRuleCreate,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getCreateCashflowCategoryRuleMutationKey = () => ['createCashflowCategoryRule'] as const;
+
+export const getCreateCashflowCategoryRuleMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCashflowCategoryRule>>,
+    TError,
+    CreateCashflowCategoryRuleMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof createCashflowCategoryRule>>, TError, CreateCashflowCategoryRuleMutationVariables, TContext> => {
+  const mutationKey = getCreateCashflowCategoryRuleMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCashflowCategoryRule>>, CreateCashflowCategoryRuleMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return createCashflowCategoryRule(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateCashflowCategoryRuleMutationResult = NonNullable<Awaited<ReturnType<typeof createCashflowCategoryRule>>>;
+export type CreateCashflowCategoryRuleMutationBody = BodyType<CashflowCategoryRuleCreate>;
+export type CreateCashflowCategoryRuleMutationError = ErrorType<HTTPValidationError>;
+export type CreateCashflowCategoryRuleMutationVariables = { data: BodyType<CashflowCategoryRuleCreate> };
+
+/**
+ * @summary Create Cashflow Category Rule
+ */
+export const useCreateCashflowCategoryRule = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof createCashflowCategoryRule>>,
+      TError,
+      CreateCashflowCategoryRuleMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof createCashflowCategoryRule>>, TError, CreateCashflowCategoryRuleMutationVariables, TContext> => {
+  return useMutation(getCreateCashflowCategoryRuleMutationOptions(options), queryClient);
+};
+/**
+ * @summary Delete Cashflow Category Rule
+ */
+export const deleteCashflowCategoryRule = (ruleId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<void>({ url: `/api/finance/cashflow/category-rules/${ruleId}`, method: 'DELETE', signal }, options);
+};
+
+export const getDeleteCashflowCategoryRuleMutationKey = () => ['deleteCashflowCategoryRule'] as const;
+
+export const getDeleteCashflowCategoryRuleMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCashflowCategoryRule>>,
+    TError,
+    DeleteCashflowCategoryRuleMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof deleteCashflowCategoryRule>>, TError, DeleteCashflowCategoryRuleMutationVariables, TContext> => {
+  const mutationKey = getDeleteCashflowCategoryRuleMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCashflowCategoryRule>>, DeleteCashflowCategoryRuleMutationVariables> = props => {
+    const { ruleId } = props ?? {};
+
+    return deleteCashflowCategoryRule(ruleId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCashflowCategoryRuleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCashflowCategoryRule>>>;
+
+export type DeleteCashflowCategoryRuleMutationError = ErrorType<HTTPValidationError>;
+export type DeleteCashflowCategoryRuleMutationVariables = { ruleId: number };
+
+/**
+ * @summary Delete Cashflow Category Rule
+ */
+export const useDeleteCashflowCategoryRule = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteCashflowCategoryRule>>,
+      TError,
+      DeleteCashflowCategoryRuleMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof deleteCashflowCategoryRule>>, TError, DeleteCashflowCategoryRuleMutationVariables, TContext> => {
+  return useMutation(getDeleteCashflowCategoryRuleMutationOptions(options), queryClient);
+};
+/**
+ * @summary Recurring Cashflows
+ */
+export const recurringCashflows = (options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<RecurringCashflowItem[]>({ url: `/api/finance/recurring`, method: 'GET', signal }, options);
+};
+
+export const getRecurringCashflowsQueryKey = () => {
+  return [`/api/finance/recurring`] as const;
+};
+
+export const getRecurringCashflowsQueryOptions = <TData = Awaited<ReturnType<typeof recurringCashflows>>, TError = ErrorType<unknown>>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData>>;
+  request?: SecondParameter<typeof customInstance>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getRecurringCashflowsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof recurringCashflows>>> = ({ signal }) => recurringCashflows(requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type RecurringCashflowsQueryResult = NonNullable<Awaited<ReturnType<typeof recurringCashflows>>>;
+export type RecurringCashflowsQueryError = ErrorType<unknown>;
+
+export function useRecurringCashflows<TData = Awaited<ReturnType<typeof recurringCashflows>>, TError = ErrorType<unknown>>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, Awaited<ReturnType<typeof recurringCashflows>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecurringCashflows<TData = Awaited<ReturnType<typeof recurringCashflows>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, Awaited<ReturnType<typeof recurringCashflows>>>,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecurringCashflows<TData = Awaited<ReturnType<typeof recurringCashflows>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Recurring Cashflows
+ */
+
+export function useRecurringCashflows<TData = Awaited<ReturnType<typeof recurringCashflows>>, TError = ErrorType<unknown>>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringCashflows>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getRecurringCashflowsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Create Recurring Cashflow
+ */
+export const createRecurringCashflow = (
+  recurringCashflowCreate: BodyType<RecurringCashflowCreate>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<RecurringCashflowItem>(
+    { url: `/api/finance/recurring`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: recurringCashflowCreate, signal },
+    options,
+  );
+};
+
+export const getCreateRecurringCashflowMutationKey = () => ['createRecurringCashflow'] as const;
+
+export const getCreateRecurringCashflowMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof createRecurringCashflow>>, TError, CreateRecurringCashflowMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof createRecurringCashflow>>, TError, CreateRecurringCashflowMutationVariables, TContext> => {
+  const mutationKey = getCreateRecurringCashflowMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRecurringCashflow>>, CreateRecurringCashflowMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return createRecurringCashflow(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateRecurringCashflowMutationResult = NonNullable<Awaited<ReturnType<typeof createRecurringCashflow>>>;
+export type CreateRecurringCashflowMutationBody = BodyType<RecurringCashflowCreate>;
+export type CreateRecurringCashflowMutationError = ErrorType<HTTPValidationError>;
+export type CreateRecurringCashflowMutationVariables = { data: BodyType<RecurringCashflowCreate> };
+
+/**
+ * @summary Create Recurring Cashflow
+ */
+export const useCreateRecurringCashflow = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof createRecurringCashflow>>, TError, CreateRecurringCashflowMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof createRecurringCashflow>>, TError, CreateRecurringCashflowMutationVariables, TContext> => {
+  return useMutation(getCreateRecurringCashflowMutationOptions(options), queryClient);
+};
+/**
+ * @summary Update Recurring Cashflow
+ */
+export const updateRecurringCashflow = (
+  itemId: number,
+  recurringCashflowCreate: BodyType<RecurringCashflowCreate>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<RecurringCashflowItem>(
+    {
+      url: `/api/finance/recurring/${itemId}`,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      data: recurringCashflowCreate,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getUpdateRecurringCashflowMutationKey = () => ['updateRecurringCashflow'] as const;
+
+export const getUpdateRecurringCashflowMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateRecurringCashflow>>, TError, UpdateRecurringCashflowMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof updateRecurringCashflow>>, TError, UpdateRecurringCashflowMutationVariables, TContext> => {
+  const mutationKey = getUpdateRecurringCashflowMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRecurringCashflow>>, UpdateRecurringCashflowMutationVariables> = props => {
+    const { itemId, data } = props ?? {};
+
+    return updateRecurringCashflow(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateRecurringCashflowMutationResult = NonNullable<Awaited<ReturnType<typeof updateRecurringCashflow>>>;
+export type UpdateRecurringCashflowMutationBody = BodyType<RecurringCashflowCreate>;
+export type UpdateRecurringCashflowMutationError = ErrorType<HTTPValidationError>;
+export type UpdateRecurringCashflowMutationVariables = { itemId: number; data: BodyType<RecurringCashflowCreate> };
+
+/**
+ * @summary Update Recurring Cashflow
+ */
+export const useUpdateRecurringCashflow = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateRecurringCashflow>>, TError, UpdateRecurringCashflowMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof updateRecurringCashflow>>, TError, UpdateRecurringCashflowMutationVariables, TContext> => {
+  return useMutation(getUpdateRecurringCashflowMutationOptions(options), queryClient);
+};
+/**
+ * @summary Delete Recurring Cashflow
+ */
+export const deleteRecurringCashflow = (itemId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<void>({ url: `/api/finance/recurring/${itemId}`, method: 'DELETE', signal }, options);
+};
+
+export const getDeleteRecurringCashflowMutationKey = () => ['deleteRecurringCashflow'] as const;
+
+export const getDeleteRecurringCashflowMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringCashflow>>, TError, DeleteRecurringCashflowMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringCashflow>>, TError, DeleteRecurringCashflowMutationVariables, TContext> => {
+  const mutationKey = getDeleteRecurringCashflowMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteRecurringCashflow>>, DeleteRecurringCashflowMutationVariables> = props => {
+    const { itemId } = props ?? {};
+
+    return deleteRecurringCashflow(itemId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteRecurringCashflowMutationResult = NonNullable<Awaited<ReturnType<typeof deleteRecurringCashflow>>>;
+
+export type DeleteRecurringCashflowMutationError = ErrorType<HTTPValidationError>;
+export type DeleteRecurringCashflowMutationVariables = { itemId: number };
+
+/**
+ * @summary Delete Recurring Cashflow
+ */
+export const useDeleteRecurringCashflow = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringCashflow>>, TError, DeleteRecurringCashflowMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof deleteRecurringCashflow>>, TError, DeleteRecurringCashflowMutationVariables, TContext> => {
+  return useMutation(getDeleteRecurringCashflowMutationOptions(options), queryClient);
+};
+/**
+ * @summary Recurring Due
+ */
+export const recurringDue = (params?: RecurringDueParams, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<RecurringDueItem[]>({ url: `/api/finance/recurring/due`, method: 'GET', params, signal }, options);
+};
+
+export const getRecurringDueQueryKey = (params?: RecurringDueParams) => {
+  return [`/api/finance/recurring/due`, ...(params ? [params] : [])] as const;
+};
+
+export const getRecurringDueQueryOptions = <TData = Awaited<ReturnType<typeof recurringDue>>, TError = ErrorType<HTTPValidationError>>(
+  params?: RecurringDueParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getRecurringDueQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof recurringDue>>> = ({ signal }) => recurringDue(params, requestOptions, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type RecurringDueQueryResult = NonNullable<Awaited<ReturnType<typeof recurringDue>>>;
+export type RecurringDueQueryError = ErrorType<HTTPValidationError>;
+
+export function useRecurringDue<TData = Awaited<ReturnType<typeof recurringDue>>, TError = ErrorType<HTTPValidationError>>(
+  params: undefined | RecurringDueParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData>> &
+      Pick<DefinedInitialDataOptions<Awaited<ReturnType<typeof recurringDue>>, TError, Awaited<ReturnType<typeof recurringDue>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecurringDue<TData = Awaited<ReturnType<typeof recurringDue>>, TError = ErrorType<HTTPValidationError>>(
+  params?: RecurringDueParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData>> &
+      Pick<UndefinedInitialDataOptions<Awaited<ReturnType<typeof recurringDue>>, TError, Awaited<ReturnType<typeof recurringDue>>>, 'initialData'>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useRecurringDue<TData = Awaited<ReturnType<typeof recurringDue>>, TError = ErrorType<HTTPValidationError>>(
+  params?: RecurringDueParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Recurring Due
+ */
+
+export function useRecurringDue<TData = Awaited<ReturnType<typeof recurringDue>>, TError = ErrorType<HTTPValidationError>>(
+  params?: RecurringDueParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof recurringDue>>, TError, TData>>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getRecurringDueQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+/**
+ * @summary Record Recurring Cashflow
+ */
+export const recordRecurringCashflow = (
+  itemId: number,
+  recurringRecordInput: BodyType<RecurringRecordInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<RecurringDueItem>(
+    {
+      url: `/api/finance/recurring/${itemId}/record`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: recurringRecordInput,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getRecordRecurringCashflowMutationKey = () => ['recordRecurringCashflow'] as const;
+
+export const getRecordRecurringCashflowMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof recordRecurringCashflow>>, TError, RecordRecurringCashflowMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof recordRecurringCashflow>>, TError, RecordRecurringCashflowMutationVariables, TContext> => {
+  const mutationKey = getRecordRecurringCashflowMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordRecurringCashflow>>, RecordRecurringCashflowMutationVariables> = props => {
+    const { itemId, data } = props ?? {};
+
+    return recordRecurringCashflow(itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecordRecurringCashflowMutationResult = NonNullable<Awaited<ReturnType<typeof recordRecurringCashflow>>>;
+export type RecordRecurringCashflowMutationBody = BodyType<RecurringRecordInput>;
+export type RecordRecurringCashflowMutationError = ErrorType<HTTPValidationError>;
+export type RecordRecurringCashflowMutationVariables = { itemId: number; data: BodyType<RecurringRecordInput> };
+
+/**
+ * @summary Record Recurring Cashflow
+ */
+export const useRecordRecurringCashflow = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof recordRecurringCashflow>>, TError, RecordRecurringCashflowMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof recordRecurringCashflow>>, TError, RecordRecurringCashflowMutationVariables, TContext> => {
+  return useMutation(getRecordRecurringCashflowMutationOptions(options), queryClient);
+};
+/**
+ * @summary Balance Check In
+ */
+export const balanceCheckIn = (
+  balanceCheckInInput: BodyType<BalanceCheckInInput>,
+  options?: SecondParameter<typeof customInstance>,
+  signal?: AbortSignal,
+) => {
+  return customInstance<BalanceCheckInResult[]>(
+    { url: `/api/finance/balance-check-in`, method: 'POST', headers: { 'Content-Type': 'application/json' }, data: balanceCheckInInput, signal },
+    options,
+  );
+};
+
+export const getBalanceCheckInMutationKey = () => ['balanceCheckIn'] as const;
+
+export const getBalanceCheckInMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof balanceCheckIn>>, TError, BalanceCheckInMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof balanceCheckIn>>, TError, BalanceCheckInMutationVariables, TContext> => {
+  const mutationKey = getBalanceCheckInMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof balanceCheckIn>>, BalanceCheckInMutationVariables> = props => {
+    const { data } = props ?? {};
+
+    return balanceCheckIn(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BalanceCheckInMutationResult = NonNullable<Awaited<ReturnType<typeof balanceCheckIn>>>;
+export type BalanceCheckInMutationBody = BodyType<BalanceCheckInInput>;
+export type BalanceCheckInMutationError = ErrorType<HTTPValidationError>;
+export type BalanceCheckInMutationVariables = { data: BodyType<BalanceCheckInInput> };
+
+/**
+ * @summary Balance Check In
+ */
+export const useBalanceCheckIn = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof balanceCheckIn>>, TError, BalanceCheckInMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof balanceCheckIn>>, TError, BalanceCheckInMutationVariables, TContext> => {
+  return useMutation(getBalanceCheckInMutationOptions(options), queryClient);
+};

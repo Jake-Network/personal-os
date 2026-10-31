@@ -5,4 +5,8 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export type DashboardSummaryData = { [key: string]: unknown };
+export interface DashboardCalendarConflict {
+  a: string;
+  b: string;
+  [key: string]: unknown;
+}

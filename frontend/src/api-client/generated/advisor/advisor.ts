@@ -28,6 +28,7 @@ import type {
   ConversationItem,
   ConversationLinkCreate,
   ConversationLinkItem,
+  DataOperationUndo,
   GetConversationParams,
   HTTPValidationError,
   ListConversationsParams,
@@ -1359,3 +1360,51 @@ export function useListRecommendations<TData = Awaited<ReturnType<typeof listRec
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+/**
+ * The user's explicit undo of one consultation write that nothing has changed since.
+ * @summary Undo Data Operation
+ */
+export const undoDataOperation = (receiptId: number, options?: SecondParameter<typeof customInstance>, signal?: AbortSignal) => {
+  return customInstance<DataOperationUndo>({ url: `/api/advisor/data-operations/${receiptId}/undo`, method: 'POST', signal }, options);
+};
+
+export const getUndoDataOperationMutationKey = () => ['undoDataOperation'] as const;
+
+export const getUndoDataOperationMutationOptions = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof undoDataOperation>>, TError, UndoDataOperationMutationVariables, TContext>;
+  request?: SecondParameter<typeof customInstance>;
+}): UseMutationOptions<Awaited<ReturnType<typeof undoDataOperation>>, TError, UndoDataOperationMutationVariables, TContext> => {
+  const mutationKey = getUndoDataOperationMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof undoDataOperation>>, UndoDataOperationMutationVariables> = props => {
+    const { receiptId } = props ?? {};
+
+    return undoDataOperation(receiptId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UndoDataOperationMutationResult = NonNullable<Awaited<ReturnType<typeof undoDataOperation>>>;
+
+export type UndoDataOperationMutationError = ErrorType<HTTPValidationError>;
+export type UndoDataOperationMutationVariables = { receiptId: number };
+
+/**
+ * @summary Undo Data Operation
+ */
+export const useUndoDataOperation = <TError = ErrorType<HTTPValidationError>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof undoDataOperation>>, TError, UndoDataOperationMutationVariables, TContext>;
+    request?: SecondParameter<typeof customInstance>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof undoDataOperation>>, TError, UndoDataOperationMutationVariables, TContext> => {
+  return useMutation(getUndoDataOperationMutationOptions(options), queryClient);
+};

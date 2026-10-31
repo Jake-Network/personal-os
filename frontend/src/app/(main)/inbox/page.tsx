@@ -1,9 +1,5 @@
-import type { Metadata } from 'next';
-
-import { InboxView } from '@/features/inbox/inbox-view';
-
-export const metadata: Metadata = { title: '알림' };
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  return <InboxView />;
+  redirect('/review?view=inbox');
 }
