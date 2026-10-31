@@ -88,3 +88,76 @@ def test_http_contract(client):
     assert client.post(f"/api/finance/recurring/{item_id}/record", json={"month": "2026-01"}).status_code == 409
     assert client.get("/api/finance/recurring/due", params={"month": "2026-01"}).json()[0]["recorded"] is True
     assert client.delete(f"/api/finance/recurring/{item_id}").status_code == 204
+
+
+@pytest.mark.parametrize(("start_on", "end_on", "month", "expected"), [
+    (date(2026, 1, 20), None, "2026-01", False),
+    (date(2026, 1, 1), date(2026, 2, 5), "2026-02", False),
+    (date(2026, 1, 10), date(2026, 2, 10), "2026-02", True),
+])
+def test_occurrence_must_fall_within_schedule_dates(start_on, end_on, month, expected):
+    from app.modules.database.model import RecurringCashflow
+
+    item = RecurringCashflow(active=True, start_on=start_on, end_on=end_on, day_of_month=10)
+    assert recurring.applies(item, month) is expected
+
+
+def test_concurrent_rerecord_after_delete_keeps_one_entry(session, today):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, current_thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    from sqlalchemy import event, text
+    from sqlalchemy.orm import Session
+
+    item_id = rent(session).id
+    original = recurring.record(session, item_id, "2026-01")
+    session.delete(session.get(CashflowEntry, original["entry_id"]))
+    session.commit()
+    engine = session.get_bind()
+    inserted, release = Event(), Event()
+    second_name = "recurring_test_" + uuid4().hex
+
+    def hold_first_insert(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith("INSERT INTO cashflow_entries") and current_thread().name.endswith("_0"):
+            inserted.set()
+            assert release.wait(10), "first request was never released"
+
+    def record_one(name):
+        with Session(engine) as other:
+            other.execute(text("SELECT set_config('application_name', :name, true)"), {"name": name})
+            try:
+                recurring.record(other, item_id, "2026-01")
+                return "recorded"
+            except RuntimeError:
+                return "duplicate"
+
+    event.listen(engine, "after_cursor_execute", hold_first_insert)
+    try:
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="recurring") as pool:
+            first = pool.submit(record_one, "recurring_first")
+            assert inserted.wait(10)
+            second = pool.submit(record_one, second_name)
+            try:
+                # Observe a real DB lock, rather than relying on a scheduling delay.
+                deadline = monotonic() + 5
+                waiting = False
+                while monotonic() < deadline and not second.done():
+                    with engine.connect() as observer:
+                        waiting = observer.execute(text(
+                            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                            "WHERE application_name = :name AND wait_event_type = 'Lock')"
+                        ), {"name": second_name}).scalar_one()
+                    if waiting:
+                        break
+                    sleep(0.01)
+                assert waiting, "second request completed without serializing against the first"
+            finally:
+                release.set()
+            assert first.result(timeout=10) == "recorded"
+            assert second.result(timeout=10) == "duplicate"
+    finally:
+        release.set()
+        event.remove(engine, "after_cursor_execute", hold_first_insert)
+    assert len(session.scalars(select(CashflowEntry)).all()) == 1

@@ -89,6 +89,96 @@ def test_requires_transfer_confirmation_for_this_server_and_model(session):
         run(session, provider([]), LLMRequest(model="m", instructions="", input=[{"role": "user", "content": "q"}]))
 
 
+def test_revocation_during_loaded_model_check_blocks_personal_payload(confirmed):
+    from sqlalchemy.orm import Session
+    from app.modules.llm.transfer_policy import TransferNotConfirmed
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.path == "/v1/models":
+            with Session(confirmed.get_bind()) as concurrent:
+                transfer_policy.invalidate(concurrent)
+                concurrent.commit()
+            return httpx.Response(200, json={"data": [{"id": MODEL}]})
+        return httpx.Response(200, text=sse({"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]}))
+
+    local = LocalOpenAICompatibleProvider(lambda: "http://127.0.0.1:18081", lambda: MODEL,
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(TransferNotConfirmed):
+        run(confirmed, local, LLMRequest(model=MODEL, instructions="", input=[
+            {"role": "user", "content": "합성 개인 상담 내용"}]))
+    assert [request.url.path for request in seen] == ["/v1/models"]
+
+
+def test_source_sharing_change_during_model_check_blocks_personal_payload(confirmed):
+    from sqlalchemy.orm import Session
+    from app.enums.context_category import Category
+    from app.modules.context.privacy_manager import privacy_manager
+    from app.modules.database.model import ContextSnapshot
+    from app.modules.llm.errors import AdvisorError
+
+    snapshot = ContextSnapshot(id="synthetic-local-source", context_categories=["financial"], record_references=[],
+        source_updated_at={}, data_quality_flags=[], payload={}, content_hash="synthetic")
+    confirmed.add(snapshot)
+    confirmed.commit()
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.path == "/v1/models":
+            with Session(confirmed.get_bind()) as concurrent:
+                privacy_manager.set_excluded(concurrent, [Category.FINANCIAL])
+            return httpx.Response(200, json={"data": [{"id": MODEL}]})
+        return httpx.Response(200, text=sse({"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]}))
+
+    local = LocalOpenAICompatibleProvider(lambda: "http://127.0.0.1:18081", lambda: MODEL,
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(AdvisorError) as caught:
+        run(confirmed, local, LLMRequest(model=MODEL, instructions="", input=[
+            {"role": "user", "content": "합성 재무 상담 내용"}], source_snapshot_id=snapshot.id))
+    assert caught.value.provider_code == "source_policy_changed"
+    assert [request.url.path for request in seen] == ["/v1/models"]
+
+
+def test_run_cancellation_during_model_check_blocks_personal_payload(confirmed):
+    from datetime import timedelta
+    from sqlalchemy.orm import Session
+    from app.modules.database.model import AdvisorConversation
+    from app.modules.database.model.advisor_runtime import AdvisorRun
+    from app.modules.database.model.base import utcnow
+    from app.modules.llm.errors import AdvisorError
+
+    conversation = AdvisorConversation(title="합성 상담")
+    confirmed.add(conversation)
+    confirmed.flush()
+    advisor_run = AdvisorRun(id="synthetic-local-run", conversation_id=conversation.id, request_id="synthetic",
+        status="running", input_payload={}, lease_owner="synthetic-worker", lease_generation=1,
+        lease_until=utcnow() + timedelta(minutes=5))
+    confirmed.add(advisor_run)
+    confirmed.commit()
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.path == "/v1/models":
+            with Session(confirmed.get_bind()) as concurrent:
+                concurrent.get(AdvisorRun, advisor_run.id).status = "cancel_requested"
+                concurrent.commit()
+            return httpx.Response(200, json={"data": [{"id": MODEL}]})
+        return httpx.Response(200, text=sse({"choices": [{"delta": {"content": "answer"}, "finish_reason": "stop"}]}))
+
+    local = LocalOpenAICompatibleProvider(lambda: "http://127.0.0.1:18081", lambda: MODEL,
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(AdvisorError) as caught:
+        run(confirmed, local, LLMRequest(model=MODEL, instructions="", input=[
+            {"role": "user", "content": "합성 개인 상담 내용"}], run_id=advisor_run.id,
+            run_owner="synthetic-worker", run_generation=1))
+    assert caught.value.provider_code == "run_authorization_changed"
+    assert [request.url.path for request in seen] == ["/v1/models"]
+
+
 def test_only_local_urls_are_allowed():
     assert all(local_url_allowed(u) for u in ["http://127.0.0.1:18081", "http://localhost:1", "http://densecore:8080",
                                                "http://192.168.0.5:8080", "http://10.0.0.2",

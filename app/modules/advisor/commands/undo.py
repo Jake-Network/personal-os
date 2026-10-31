@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.crud import audit_log_handler
+from app.modules.advisor.commands.references import has_dependents
 from app.modules.database.model import AuditLog, LocalPosition
 from app.modules.database.model.base import utcnow
 from app.modules.finance.clock import local_today
@@ -38,6 +39,8 @@ def undo(session: Session, receipt_id: int) -> dict:
         raise RuntimeError("상담에서 저장한 뒤 다시 바뀐 기록이라 되돌리지 않습니다. 관리 화면에서 직접 고쳐 주세요")
 
     if operation == "create":
+        if has_dependents(session, obj):
+            raise RuntimeError("다른 기록에서 참조 중입니다. 연결된 기록을 먼저 정리해 주세요.")
         if tracks(name):
             value_history_manager.record(session, name, obj, capture(name, obj), "delete", today=local_today())
         resource.handler.delete(session, obj)

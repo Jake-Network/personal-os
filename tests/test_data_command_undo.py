@@ -120,3 +120,30 @@ def test_undo_restores_long_text_in_full(runtime_env):
     assert client.post(f"/api/advisor/data-operations/{operation['receipt_id']}/undo").status_code == 200
     with database.session() as session:
         assert session.get(JobApplication, record_id).notes == long_notes
+
+
+def test_undo_created_application_preserves_later_interview(runtime_env):
+    from datetime import UTC, datetime
+    from app.modules.database.model import Interview, JobApplication
+
+    client, database, _ = runtime_env
+    query = "합성 회사 엔지니어 지원 기록을 만들어줘"
+    run, _ = consult(runtime_env, "undo-linked-application", query, [command(
+        "create", "job-applications", query,
+        values={"company": "합성 회사", "role": "엔지니어", "status": "applied"},
+    )])
+    [operation] = run["result"]["data_operations"]
+    assert operation["status"] == "saved", operation
+    with database.session() as session:
+        interview = Interview(application_id=operation["record_id"], stage="합성 면접",
+                              starts_at=datetime(2026, 11, 2, 10, tzinfo=UTC))
+        session.add(interview)
+        session.commit()
+        interview_id = interview.id
+
+    response = client.post(f"/api/advisor/data-operations/{operation['receipt_id']}/undo")
+    assert response.status_code == 409, response.text
+    with database.session() as session:
+        assert session.get(JobApplication, operation["record_id"]) is not None
+        assert session.get(Interview, interview_id) is not None
+        assert not session.get(AuditLog, operation["receipt_id"]).detail.get("undone_at")

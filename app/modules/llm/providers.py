@@ -317,7 +317,7 @@ class LocalOpenAICompatibleProvider:
 
     async def stream(self, session: Session, request: LLMRequest) -> AsyncIterator[StreamEvent]:
         from app.modules.context.source_policy import require_live_request_sources
-        from app.modules.llm.run_policy import require
+        from app.modules.llm.run_policy import require, require_execution
         from app.modules.llm.transfer_policy import require_confirmation
         session.expire_all()
         require(session, request.authorization)
@@ -335,6 +335,13 @@ class LocalOpenAICompatibleProvider:
         try:
             async with self.http_factory() as http:
                 await self._check_loaded(http, base)
+                # The model probe awaited I/O: sharing or authority may have changed
+                # meanwhile. Revalidate before sending the personal payload.
+                session.expire_all()
+                require(session, request.authorization)
+                require_confirmation(session, self.name)
+                require_live_request_sources(session, request)
+                require_execution(session, request)
                 async with http.stream("POST", f"{base}/v1/chat/completions", json=body,
                                        headers={"Accept": "text/event-stream"}) as resp:
                     if resp.status_code >= 400:

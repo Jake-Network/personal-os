@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.modules.context.record_privacy import RECORD_CATEGORY
 from app.modules.context.source_policy import source_allowed
 from app.modules.database.model import AdvisorMessage, AuditLog, Base, LocalPosition
+from app.modules.advisor.commands.references import has_dependents
 from app.modules.finance.clock import local_today
 from app.modules.finance.value_history import capture, split_history_fields, tracks
 from app.modules.finance.value_history_manager import value_history_manager
@@ -446,14 +447,8 @@ def _execute(session, command, excluded, *, separate_authority=False):
     if operation == "delete":
         # Cascades/SET NULL can silently change other records. Ask the user to resolve
         # links first rather than letting a single-record request delete a collection.
-        table = resource.handler.model.__tablename__
-        for mapper in Base.registry.mappers:
-            if mapper.class_ is LocalPosition:
-                continue
-            for column in mapper.columns:
-                if any(foreign.column.table.name == table for foreign in column.foreign_keys):
-                    if session.scalar(select(mapper.class_).where(getattr(mapper.class_, column.key) == obj.id).limit(1)) is not None:
-                        return _result(command, "needs_input", "다른 기록에서 참조 중입니다. 연결된 기록을 먼저 정리해 주세요.")
+        if has_dependents(session, obj):
+            return _result(command, "needs_input", "다른 기록에서 참조 중입니다. 연결된 기록을 먼저 정리해 주세요.")
         record = _serialized(resource, obj)
         reference = _reference(resource, obj)
         if tracks(name):

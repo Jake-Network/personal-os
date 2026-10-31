@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Upload } from 'lucide-react';
@@ -60,15 +60,25 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
   const [presetName, setPresetName] = useState('');
   const savedPresets = presets.data?.presets ?? [];
   const columns = useMemo(() => headerColumns(text, format.skip_rows ?? 0), [text, format.skip_rows]);
-  const data = preview.data;
+  const [data, setData] = useState<CashflowImportPreview>();
+  const previewGeneration = useRef(0);
 
-  const reset = () => {
-    setText('');
-    setSourceId('');
+  const invalidatePreview = () => {
+    previewGeneration.current += 1;
+    setData(undefined);
     setExcluded(new Set());
     setOverrides({});
     setRemember(new Set());
     preview.reset();
+  };
+  const reset = () => {
+    invalidatePreview();
+    setText('');
+    setSourceId('');
+  };
+  const updateFormat = (update: (current: Format) => Format) => {
+    invalidatePreview();
+    setFormat(update);
   };
   const fields: (keyof CashflowColumnMapping)[] = shape === 'single' ? ['date', 'amount', 'description', 'category'] : ['date', 'debit', 'credit', 'description', 'category'];
   const mapping: CashflowColumnMapping = { date: format.mapping.date ?? '' };
@@ -97,13 +107,18 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
   const applyPreset = (name: string) => {
     const preset = savedPresets.find(p => p.name === name);
     if (!preset) return;
+    invalidatePreview();
     setShape(preset.mapping.debit || preset.mapping.credit ? 'split' : 'single');
     setFormat({ mapping: preset.mapping, amount_sign: preset.amount_sign, skip_rows: preset.skip_rows });
     setPresetName(preset.name);
-    preview.reset();
   };
   const runPreview = async () => {
+    const generation = ++previewGeneration.current;
+    setData(undefined);
     const result: CashflowImportPreview = await preview.mutateAsync({ data: { ...body(), exclude_rows: [] } });
+    // Editing the import format or closing the dialog invalidates even an in-flight response.
+    if (generation !== previewGeneration.current) return;
+    setData(result);
     // Rows that look like an entry already typed by hand start excluded; the user can include them.
     setExcluded(new Set(result.rows.filter(r => r.possible_duplicate).map(r => r.row)));
   };
@@ -118,7 +133,8 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
     notify.success(`'${name}' 형식을 저장했습니다`);
     await client.invalidateQueries({ queryKey: getCashflowImportPresetsQueryKey() });
   };
-  const runImport = () =>
+  const runImport = () => {
+    if (!data || preview.isPending || commit.isPending) return;
     commit.mutate(
       { data: body() },
       {
@@ -138,6 +154,7 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
         onError: notify.error,
       },
     );
+  };
 
   const included = data?.rows.filter(r => !excluded.has(r.row)) ?? [];
   const blocking = included.filter(r => r.issues.length > 0).length;
@@ -187,7 +204,15 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
             <div className='grid gap-3 sm:grid-cols-3'>
               <div>
                 <Label htmlFor='cashflow-csv-source'>원본 이름 (같은 계좌·카드는 같게)</Label>
-                <Input id='cashflow-csv-source' value={sourceId} pattern='[A-Za-z0-9_-]+' onChange={e => setSourceId(e.target.value)} />
+                <Input
+                  id='cashflow-csv-source'
+                  value={sourceId}
+                  pattern='[A-Za-z0-9_-]+'
+                  onChange={e => {
+                    invalidatePreview();
+                    setSourceId(e.target.value);
+                  }}
+                />
               </div>
               <div>
                 <Label htmlFor='cashflow-csv-skip'>머리글 앞 줄 수</Label>
@@ -197,12 +222,18 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
                   min={0}
                   max={50}
                   value={format.skip_rows ?? 0}
-                  onChange={e => setFormat(f => ({ ...f, skip_rows: Math.max(0, Math.min(50, Number(e.target.value) || 0)) }))}
+                  onChange={e => updateFormat(f => ({ ...f, skip_rows: Math.max(0, Math.min(50, Number(e.target.value) || 0)) }))}
                 />
               </div>
               <div>
                 <Label htmlFor='cashflow-csv-shape'>금액 열</Label>
-                <NativeSelect id='cashflow-csv-shape' value={shape} onChange={e => setShape(e.target.value as AmountShape)}>
+                <NativeSelect
+                  id='cashflow-csv-shape'
+                  value={shape}
+                  onChange={e => {
+                    invalidatePreview();
+                    setShape(e.target.value as AmountShape);
+                  }}>
                   <option value='single'>금액 열 하나</option>
                   <option value='split'>출금·입금 열 따로</option>
                 </NativeSelect>
@@ -216,7 +247,7 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
                   <NativeSelect
                     id={`cashflow-csv-${field}`}
                     value={format.mapping[field] ?? ''}
-                    onChange={e => setFormat(f => ({ ...f, mapping: { ...f.mapping, [field]: e.target.value || undefined } }))}>
+                    onChange={e => updateFormat(f => ({ ...f, mapping: { ...f.mapping, [field]: e.target.value || undefined } }))}>
                     <option value=''>선택 안 함</option>
                     {columns.map(c => (
                       <option key={c} value={c}>
@@ -232,7 +263,7 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
                   <NativeSelect
                     id='cashflow-csv-sign'
                     value={format.amount_sign}
-                    onChange={e => setFormat(f => ({ ...f, amount_sign: e.target.value as Format['amount_sign'] }))}>
+                    onChange={e => updateFormat(f => ({ ...f, amount_sign: e.target.value as Format['amount_sign'] }))}>
                     <option value='negative_is_expense'>음수가 지출 (통장 내역)</option>
                     <option value='positive_is_expense'>양수가 지출 (카드 이용 내역)</option>
                   </NativeSelect>

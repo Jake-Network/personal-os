@@ -27,8 +27,8 @@ def scheduled_on(item: RecurringCashflow, month: str) -> date:
 
 
 def applies(item: RecurringCashflow, month: str) -> bool:
-    first, last = _month_bounds(month)
-    return item.active and item.start_on <= last and (item.end_on is None or item.end_on >= first)
+    occurrence = scheduled_on(item, month)
+    return item.active and item.start_on <= occurrence and (item.end_on is None or item.end_on >= occurrence)
 
 
 def source_ref(item_id: int, month: str) -> str:
@@ -87,7 +87,10 @@ def due(session: Session, month: str | None = None) -> list[dict]:
 
 def record(session: Session, item_id: int, month: str) -> dict:
     """Records this month's occurrence once. A deleted entry may be recorded again on request."""
-    item = session.get(RecurringCashflow, item_id)
+    # Lock the schedule even when a mapping exists only as a deletion tombstone.
+    # Otherwise concurrent re-records can both create an entry and overwrite that mapping.
+    item = session.scalar(select(RecurringCashflow).where(
+        RecurringCashflow.id == item_id).with_for_update().execution_options(populate_existing=True))
     if item is None:
         raise LookupError("반복 거래를 찾을 수 없습니다")
     if month > local_today().strftime("%Y-%m"):
