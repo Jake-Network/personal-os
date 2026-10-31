@@ -97,6 +97,9 @@ def record(session: Session, item_id: int, month: str) -> dict:
         raise ValueError("다가오는 달은 미리 기록하지 않습니다")
     if not applies(item, month):
         raise ValueError("이 달에는 적용되지 않는 반복 거래입니다")
+    if scheduled_on(item, month) > local_today():
+        # A ledger entry dated ahead would count money that has not moved yet in expenses and runway.
+        raise ValueError("예정일이 지나야 기록할 수 있습니다")
     ref = source_ref(item.id, month)
     mapping = session.get(FinanceImportMapping, ref)
     if mapping is not None and session.get(CashflowEntry, mapping.record_id) is not None:

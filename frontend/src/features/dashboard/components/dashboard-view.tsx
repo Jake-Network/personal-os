@@ -21,6 +21,7 @@ import { dateOnly, dateTime, dayLabel, moneyShort, relative, timeOnly } from '@/
 import { formatDuration } from '@/lib/utils/duration';
 import { cn } from '@/lib/utils';
 import { addDays, todayKey, zonedDayKey } from '@/lib/utils/zoned';
+import { flagText } from '@/lib/labels';
 
 import { BalanceCheckInSheet } from '@/features/finance/balance-check-in';
 import { CashflowImportDialog } from '@/features/finance/cashflow-import-dialog';
@@ -30,6 +31,16 @@ import { useReviewCounts } from '@/features/review/review-view';
 import { recordHref } from '@/features/personal-data/hooks/use-record-param';
 
 import type { DashboardData, DashboardRunway } from '@/api-client/model';
+
+/** Where each data-quality problem without its own quick action below is fixed. */
+const FLAG_FIX: Record<string, string> = {
+  no_accounts: '/finance/accounts',
+  spendable_liquidity_unknown: '/finance/accounts',
+  stale_price: '/finance/investments',
+  missing_fx: '/finance/investments',
+  cashflow_mixed_sources: '/finance/cashflow',
+  net_worth_incomplete: '/finance',
+};
 
 const refId = (ref: unknown) => (typeof ref === 'string' ? ref.slice(ref.lastIndexOf(':') + 1) : '');
 
@@ -157,7 +168,8 @@ export function DashboardView() {
         기록하지 않은 반복 거래 <strong>{unrecorded.length}건</strong> · {unrecorded.map(r => r.name).slice(0, 2).join(', ')}
       </AttentionItem>
     ),
-    (flagCodes.has('stale_balance') || flagCodes.has('spendable_liquidity_unknown')) && worth && (
+    // The check-in sheet edits existing balances only; a missing cash account is linked below instead.
+    flagCodes.has('stale_balance') && worth && (
       <AttentionItem key='balance' onClick={() => setCheckingIn(true)} icon={Wallet} tone='warning'>
         오래된 잔고가 있습니다 · <strong>한 번에 업데이트</strong>
       </AttentionItem>
@@ -167,6 +179,11 @@ export function DashboardView() {
         최근 3개월 지출 기록이 부족합니다 · <strong>은행·카드 내역 가져오기</strong>
       </AttentionItem>
     ),
+    ...[...new Set(flags.map(f => f.code).filter(code => FLAG_FIX[code]))].slice(0, 3).map(code => (
+      <AttentionItem key={`flag-${code}`} href={FLAG_FIX[code]} icon={TriangleAlert} tone='warning'>
+        {flagText(code)}
+      </AttentionItem>
+    )),
   ].filter(Boolean);
 
   return (
@@ -198,7 +215,7 @@ export function DashboardView() {
         <>
           <Section title='오늘' count={todayItems.length || undefined}>
             {todayItems.length ? (
-              <ul className='-mx-2'>{todayItems.slice(0, 4)}</ul>
+              <ul className='-mx-2'>{todayItems.slice(0, 6)}</ul>
             ) : (
               <p className='flex items-center gap-2 py-2 text-ui text-muted-foreground'>
                 <CheckCircle2 className='size-4 text-success' aria-hidden /> 지금 처리할 항목이 없습니다.

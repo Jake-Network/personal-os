@@ -29,12 +29,19 @@ function splitLine(line: string, delimiter: string): string[] {
   return cells;
 }
 
+/**
+ * The delimiter that splits the header into the most quote-aware cells; ties keep the earlier one.
+ * Must match `_delimiter` in app/modules/finance/cashflow_import.py, or the dropdowns offer columns the server does not see.
+ */
+export function headerDelimiter(header: string): string {
+  return [',', '\t', ';'].reduce((best, d) => (splitLine(header, d).length > splitLine(header, best).length ? d : best), ',');
+}
+
 /** Header cells after `skipRows` preamble lines, for the mapping dropdowns only; the server parses the file. */
 export function headerColumns(text: string, skipRows: number): string[] {
   const header = text.replace(/^﻿/, '').split(/\r?\n/)[skipRows] ?? '';
   if (!header.trim()) return [];
-  const delimiter = [',', '\t', ';'].reduce((best, d) => (header.split(d).length > header.split(best).length ? d : best), ',');
-  return splitLine(header, delimiter).filter(Boolean);
+  return splitLine(header, headerDelimiter(header)).filter(Boolean);
 }
 
 const GUESSES: [keyof CashflowColumnMapping, RegExp][] = [
@@ -58,12 +65,27 @@ export function guessMapping(columns: string[]): Partial<CashflowColumnMapping> 
   return mapping;
 }
 
-/** A filename-derived source ID: re-importing the same account should reuse it. */
+/** Stable 32-bit FNV-1a over UTF-8 bytes, so non-ASCII names keep distinct IDs. */
+function shortHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+/**
+ * A filename-derived source ID: re-importing the same account should reuse it.
+ * The server accepts ASCII only, so a name with other characters (e.g. Korean card names) gets a hash
+ * of the full name; otherwise '신한카드.csv' and '국민카드.csv' would share one ID and their rows would collide.
+ */
 export function sourceIdFrom(name: string): string {
-  const slug = name
-    .replace(/\.[^.]+$/, '')
+  const base = name.replace(/\.[^.]+$/, '');
+  const slug = base
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug || 'csv';
+    .slice(0, 50);
+  if (/^[\x00-\x7F]*$/.test(base)) return slug || 'csv';
+  return `${slug || 'csv'}-${shortHash(base.normalize('NFC'))}`;
 }

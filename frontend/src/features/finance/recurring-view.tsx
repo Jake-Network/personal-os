@@ -85,10 +85,13 @@ export function RecurringDueList({ compact = false }: { compact?: boolean }) {
                   <span className='flex items-center gap-1 text-xs text-success'>
                     <Check className='size-3.5' aria-hidden /> 기록함
                   </span>
+                ) : r.scheduled_on > today ? (
+                  // The server records only after the scheduled day, so the ledger never holds money that has not moved.
+                  <span className='text-xs text-faint'>예정</span>
                 ) : (
                   <Button
                     size='sm'
-                    variant={r.scheduled_on <= today ? 'primary' : 'default'}
+                    variant='primary'
                     disabled={record.isPending}
                     onClick={() =>
                       record.mutate(

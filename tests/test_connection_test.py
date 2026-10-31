@@ -35,3 +35,22 @@ def test_provider_failure_is_reported_without_switching(client, fake_provider):
     body = client.post("/api/settings/ai-provider/test").json()
     assert body["ok"] is False and body["code"] == QuotaExceeded.code
     assert len(fake_provider.requests) == 1  # ExplodingProvider (paid API) was never called
+
+
+def test_slow_model_lookup_counts_against_the_same_timeout(client, fake_provider, session, monkeypatch):
+    import asyncio
+
+    from app.modules.llm import connection_test
+    from app.modules.llm.llm_gateway_manager import llm_gateway_manager
+
+    async def slow_lookup(_session):
+        await asyncio.sleep(5)
+        return "fake-model"
+
+    monkeypatch.setattr(connection_test, "TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(llm_gateway_manager, "resolve_model", slow_lookup)
+    body = client.post("/api/settings/ai-provider/test").json()
+    assert (body["ok"], body["code"]) == (False, "timeout")
+    assert fake_provider.requests == []
+    session.expire_all()
+    assert session.scalars(select(BackgroundJob)).all() == []

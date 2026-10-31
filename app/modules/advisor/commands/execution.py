@@ -528,6 +528,10 @@ def execute_commands(session, *, commands, conversation_id, message_id, excluded
         if existing:
             if existing.detail.get("fingerprint") != fingerprint:
                 results.append(_result(command, "failed", "같은 메시지의 작업 내용이 달라졌습니다. 새 메시지로 요청해 주세요."))
+            elif existing.detail.get("undone_at"):
+                # The user reverted this write; a retry must not report it as in effect or offer undo again.
+                results.append({**_result(command, "saved", "이 작업은 반영된 뒤 사용자가 되돌렸습니다. 현재 기록에는 적용되어 있지 않습니다."),
+                                "receipt_id": existing.id, "undone": True, "replayed": True})
             else:
                 prior = existing.detail["result"]
                 resource = RESOURCES.get(prior.get("resource"))

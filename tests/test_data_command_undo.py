@@ -44,6 +44,8 @@ def test_undo_created_record_once_and_mark_message(runtime_env):
     messages = client.get("/api/advisor/conversations/1/messages").json()
     operations = [op for m in messages for op in m["data_operations"]]
     assert [op.get("undone") for op in operations] == [True]
+    workspace = client.get("/api/advisor/conversations/1/workspace").json()
+    assert [op.get("undone") for op in workspace["latest_run"]["result"]["data_operations"]] == [True]
 
 
 def test_undo_update_restores_previous_value_through_history(runtime_env):

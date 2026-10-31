@@ -38,7 +38,14 @@ function UndoButton({ operation, onUndone }: { operation: DataOperation; onUndon
             onSuccess: async () => {
               onUndone();
               notify.success(operation.operation === 'create' ? '저장한 기록을 지웠습니다' : '이전 값으로 되돌렸습니다');
-              await invalidateDataOperationQueries(client, [operation]);
+              // Conversation messages and the workspace carry `undone`; refetch them so a remount does not offer undo again.
+              await Promise.all([
+                invalidateDataOperationQueries(client, [operation]),
+                client.invalidateQueries({
+                  predicate: query =>
+                    typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/advisor/conversations/'),
+                }),
+              ]);
             },
             onError: notify.error,
           },

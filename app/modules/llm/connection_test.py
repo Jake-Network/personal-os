@@ -45,10 +45,11 @@ async def run(session: Session) -> dict:
     provider = llm_gateway_manager.provider_name(session)
     model = None
     try:
-        model = await llm_gateway_manager.resolve_model(session)
-        request = LLMRequest(model=model, instructions="짧게 답합니다.", input=[{"role": "user", "content": PROMPT}])
-
         async def call() -> str:
+            # Model resolution can contact the provider too, so it shares the bound that keeps the call inside the lease.
+            nonlocal model
+            model = await llm_gateway_manager.resolve_model(session)
+            request = LLMRequest(model=model, instructions="짧게 답합니다.", input=[{"role": "user", "content": PROMPT}])
             text = ""
             async for event in llm_gateway_manager.stream(session, request):
                 if event.type == "delta":

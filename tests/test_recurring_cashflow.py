@@ -54,9 +54,16 @@ def test_future_inactive_and_out_of_range_months_are_refused(session, today):
     assert recurring.due(session, "2025-12") == []
 
 
+def test_current_month_is_not_recorded_before_its_scheduled_day(session, today):
+    item = rent(session)  # Feb occurrence clamps to the 28th; today is the 20th.
+    with pytest.raises(ValueError, match="예정일"):
+        recurring.record(session, item.id, "2026-02")
+    assert session.scalars(select(CashflowEntry)).all() == []
+
+
 def test_deleting_schedule_keeps_recorded_entries(session, today):
     item = rent(session)
-    recurring.record(session, item.id, "2026-02")
+    recurring.record(session, item.id, "2026-01")
     recurring.delete(session, item.id)
     assert len(session.scalars(select(CashflowEntry)).all()) == 1
 

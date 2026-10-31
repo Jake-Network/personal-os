@@ -28,6 +28,9 @@ describe('cashflow import helpers', () => {
 
   it('derives a stable source ID from a filename', () => {
     expect(sourceIdFrom('synthetic card 2026-08.csv')).toBe('synthetic-card-2026-08');
-    expect(sourceIdFrom('카드내역.csv')).toBe('csv');
+    expect(sourceIdFrom('카드내역.csv')).toMatch(/^csv-[0-9a-f]{8}$/);
+    expect(sourceIdFrom('신한카드.csv')).not.toBe(sourceIdFrom('국민카드.csv'));
+    expect(sourceIdFrom('신한카드.csv')).toBe(sourceIdFrom('신한카드.csv'));
+    expect(sourceIdFrom('카드 2026-08.csv')).toMatch(/^2026-08-[0-9a-f]{8}$/);
   });
 });

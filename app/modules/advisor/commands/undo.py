@@ -5,12 +5,13 @@ record is deleted, an updated one gets its previous values back. Both go through
 value history (append-only) and audit log as a direct edit, and the receipt is marked so
 the undo cannot run twice. Deletions are not undone here; they are restored by re-entering.
 """
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.modules.crud import audit_log_handler
 from app.modules.advisor.commands.references import has_dependents
-from app.modules.database.model import AuditLog, LocalPosition
+from app.modules.database.model import AdvisorConversation, AuditLog, LocalPosition
+from app.modules.database.model.advisor_runtime import AdvisorRun
 from app.modules.database.model.base import utcnow
 from app.modules.finance.clock import local_today
 from app.modules.finance.value_history import capture, split_history_fields, tracks
@@ -25,6 +26,7 @@ def undo(session: Session, receipt_id: int) -> dict:
     detail = receipt.detail or {}
     if detail.get("undone_at"):
         raise RuntimeError("이미 되돌린 기록입니다")
+    _require_idle_conversation(session, detail.get("conversation_id"))
     result = detail.get("result") or {}
     name, operation = result.get("resource"), result.get("operation")
     resource = RESOURCES.get(name)
@@ -65,6 +67,20 @@ def undo(session: Session, receipt_id: int) -> dict:
                              {"financial": resource.financial, "operation": operation, "resource": name})
     session.commit()
     return {"receipt_id": receipt.id, "operation": operation, "resource": name, "record_id": result["record_id"]}
+
+
+def _require_idle_conversation(session: Session, conversation_id) -> None:
+    """Do not remove a record while that conversation's run may still be answering from it."""
+    if conversation_id is None:
+        return
+    from app.modules.advisor.runtime.persistence import TERMINAL
+    # Same row lock run creation takes, so a new run cannot start between this check and the commit.
+    session.execute(update(AdvisorConversation).where(AdvisorConversation.id == conversation_id)
+                    .values(updated_at=AdvisorConversation.updated_at))
+    parked = {"waiting_input", "blocked"}  # Not executing; they continue only on an explicit user action.
+    if session.scalar(select(AdvisorRun.id).where(AdvisorRun.conversation_id == conversation_id,
+                                                  AdvisorRun.status.not_in(TERMINAL | parked)).limit(1)):
+        raise RuntimeError("상담 답변이 진행 중입니다. 답변이 끝난 뒤 되돌려 주세요")
 
 
 def undone_receipts(session: Session, receipt_ids: set[int]) -> set[int]:

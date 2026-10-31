@@ -71,6 +71,20 @@ def _date(raw: str | None) -> date:
     raise ValueError("날짜를 읽을 수 없습니다")
 
 
+def _delimiter(header: str) -> str:
+    """The delimiter giving the most quote-aware header cells; ties keep the earlier one.
+
+    Must match `headerDelimiter` in frontend/src/features/finance/cashflow-import.ts so the
+    columns the user mapped are the columns parsed here.
+    """
+    best, best_count = ",", 0
+    for candidate in (",", "\t", ";"):
+        count = len(next(csv.reader([header.rstrip("\r\n")], delimiter=candidate), []))
+        if count > best_count:
+            best, best_count = candidate, count
+    return best
+
+
 def _read(body: CashflowImportInput) -> list[dict[str, str]]:
     stream = io.StringIO(body.csv_text.lstrip("﻿"))
     for _ in range(body.skip_rows):
@@ -79,16 +93,14 @@ def _read(body: CashflowImportInput) -> list[dict[str, str]]:
     header = stream.readline()
     if not header.strip():
         raise ValueError("CSV 머리글 행이 없습니다")
-    try:
-        delimiter = csv.Sniffer().sniff(header, delimiters=",\t;").delimiter
-    except csv.Error:
-        delimiter = ","
     stream.seek(start)
-    reader = csv.DictReader(stream, delimiter=delimiter)
+    reader = csv.DictReader(stream, delimiter=_delimiter(header))
     fields = [f.strip() for f in reader.fieldnames or []]
-    if len(fields) != len(set(fields)):
+    named = [f for f in fields if f]
+    if len(named) != len(set(named)):
         raise ValueError("CSV 머리글에 같은 이름의 열이 있습니다")
-    reader.fieldnames = fields
+    # Blank header cells (e.g. trailing commas) cannot be mapped; give each its own key so they do not merge.
+    reader.fieldnames = [f or f"\x00blank{i}" for i, f in enumerate(fields)]
     mapped = [c for c in body.mapping.model_dump().values() if c]
     missing = [c for c in mapped if c not in fields]
     if missing:

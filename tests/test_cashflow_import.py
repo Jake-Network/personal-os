@@ -163,3 +163,22 @@ def test_http_contract_and_presets(client):
     assert rule.status_code == 201 and rule.json()["match_text"] == "cafe"
     assert client.delete(f"/api/finance/cashflow/category-rules/{rule.json()['id']}").status_code == 204
     assert client.get("/api/finance/cashflow/category-rules").json() == []
+
+
+def test_blank_trailing_header_cells_do_not_reject_the_file(session):
+    text = "거래일,가맹점,이용금액,분류,,\n2026-08-03,Synthetic Mart,12300,,,\n"
+    rows = cashflow_import.public_preview(session, body(text))["rows"]
+    assert [(r["amount"], r["status"]) for r in rows] == [(Decimal("12300"), "new")]
+
+
+def test_duplicate_named_header_cells_are_still_rejected(session):
+    with pytest.raises(ValueError, match="같은 이름"):
+        cashflow_import.public_preview(session, body("거래일,가맹점,이용금액,가맹점\n2026-08-03,A,1,B\n"))
+
+
+def test_delimiter_follows_the_most_quote_aware_cells_like_the_client(session):
+    # A comma inside a column name must not pull the parser away from the semicolon split the user mapped.
+    text = "거래일;가맹점;이용금액;적요(카드,현금)\n2026-08-03;Synthetic Mart;12300;x\n"
+    rows = cashflow_import.public_preview(session, body(text, mapping={
+        "date": "거래일", "amount": "이용금액", "description": "가맹점", "category": "적요(카드,현금)"}))["rows"]
+    assert [r["amount"] for r in rows] == [Decimal("12300")]

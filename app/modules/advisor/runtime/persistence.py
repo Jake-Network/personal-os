@@ -334,6 +334,21 @@ class RunRepository:
         self.session.expire(workspace)
         return workspace
 
+    def _run_view(self, row):
+        """Mark receipts the user has since undone, the same way message items do."""
+        view = RunView.model_validate(row)
+        operations = view.result.data_operations if view.result else []
+        ids = {op["receipt_id"] for op in operations if isinstance(op, dict) and isinstance(op.get("receipt_id"), int)}
+        if not ids:
+            return view
+        from app.modules.advisor.commands.undo import undone_receipts
+        undone = undone_receipts(self.session, ids)
+        if not undone:
+            return view
+        marked = [{**op, "undone": True} if isinstance(op, dict) and op.get("receipt_id") in undone else op
+                  for op in operations]
+        return view.model_copy(update={"result": view.result.model_copy(update={"data_operations": marked})})
+
     def workspace(self, conversation_id):
         self._conversation(conversation_id)
         # Materialize everything in one read transaction; each run/event cursor comes from one row.
@@ -357,7 +372,7 @@ class RunRepository:
         return WorkspaceView(conversation_id=conversation_id,
             revision=workspace.revision if workspace else 1, problem=workspace.problem if workspace else {},
             selected_scenario_id=workspace.selected_scenario_id if workspace else None,
-            active_run=RunView.model_validate(active) if active else None,
-            latest_run=RunView.model_validate(latest) if latest else None,
+            active_run=self._run_view(active) if active else None,
+            latest_run=self._run_view(latest) if latest else None,
             scenarios=scenario_views,
             last_event_seq=(active or latest).last_event_seq if (active or latest) else 0)

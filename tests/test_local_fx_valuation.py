@@ -54,18 +54,53 @@ def test_refresh_keeps_one_current_rate_per_pair(client, session):
     assert Decimal(line["fx_rate"]) == Decimal("1400")
 
 
-def test_refresh_does_not_overwrite_a_later_manual_rate(client, session):
+def test_refresh_does_not_overwrite_a_later_manual_rate(session):
+    from app.modules.crud.fx_rate_handler import fx_rate_handler
+
+    now = datetime.now(UTC)
+    session.add(FxRate(base="USD", quote="KRW", rate=Decimal("1500"), as_of=now - timedelta(minutes=1)))
+    session.commit()
+    assert fx_rate_handler.set_rate(session, "USD", "KRW", Decimal("1300"), now - timedelta(minutes=5),
+                                    only_if_newer=True) is None
+    session.commit()
+    session.expire_all()
+    assert session.query(FxRate).one().rate == Decimal("1500")
+
+
+def test_refresh_replaces_a_future_dated_rate_that_valuation_cannot_use(client, session):
     from app.modules.portfolio import market_data_manager as market
 
     usd_holding(client)
-    later = datetime.now(UTC) + timedelta(hours=1)
-    session.add(FxRate(base="USD", quote="KRW", rate=Decimal("1500"), as_of=later))
+    session.add(FxRate(base="USD", quote="KRW", rate=Decimal("1500"), as_of=datetime.now(UTC) + timedelta(days=7)))
     session.commit()
     quotes = FxQuotes()
     market.initialize(session, quotes)
     market.refresh(session, quotes)
     session.expire_all()
-    assert session.query(FxRate).one().rate == Decimal("1500")
+    stored = session.query(FxRate).one()
+    assert stored.rate != Decimal("1500") and stored.as_of <= datetime.now(UTC)
+
+
+def test_manual_rate_dated_in_the_future_is_rejected(client):
+    future = (datetime.now(UTC) + timedelta(days=7)).isoformat()
+    response = client.post("/api/data/fx-rates", json=dict(base="USD", quote="KRW", rate="1400", as_of=future))
+    assert response.status_code == 422
+    assert client.get("/api/data/fx-rates").json() == []
+
+
+def test_manual_entry_older_than_the_current_rate_is_rejected(client, session):
+    from app.modules.database.model import AuditLog
+
+    now = datetime.now(UTC)
+    client.post("/api/data/fx-rates", json=dict(base="USD", quote="KRW", rate="1450", as_of=now.isoformat()))
+    older = client.post("/api/data/fx-rates", json=dict(
+        base="USD", quote="KRW", rate="1300", as_of=(now - timedelta(days=30)).isoformat()))
+    assert older.status_code == 422
+    assert [r["rate"] for r in client.get("/api/data/fx-rates").json()] == ["1450.00000000"]
+    replaced = client.post("/api/data/fx-rates", json=dict(base="USD", quote="KRW", rate="1460", as_of=now.isoformat()))
+    assert replaced.status_code == 201, replaced.text
+    verbs = [row.action for row in session.query(AuditLog).filter(AuditLog.action.like("data.%")).order_by(AuditLog.id)]
+    assert verbs == ["data.create", "data.update"]
 
 
 def test_manual_entry_for_existing_pair_replaces_the_current_rate(client, session):
