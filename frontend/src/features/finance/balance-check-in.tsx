@@ -29,6 +29,7 @@ export function BalanceCheckInSheet({ open, onOpenChange }: { open: boolean; onO
   const [results, setResults] = useState<Record<number, BalanceCheckInResult>>({});
   const rows = accounts.data ?? [];
   const pendingRows = rows.filter(a => !skipped.has(a.id) && results[a.id]?.status !== 'updated' && results[a.id]?.status !== 'confirmed');
+  const typedAny = pendingRows.some(a => amounts[a.id]?.trim());
   const invalid = pendingRows.some(a => amounts[a.id]?.trim() && !/^-?\d+(\.\d{1,4})?$/.test(amounts[a.id].replaceAll(',', '').trim()));
 
   const close = (next: boolean) => {
@@ -114,6 +115,10 @@ export function BalanceCheckInSheet({ open, onOpenChange }: { open: boolean; onO
                       value={amounts[a.id] ?? ''}
                       disabled={done || skipped.has(a.id)}
                       onChange={e => setAmounts(m => ({ ...m, [a.id]: e.target.value }))}
+                      onKeyDown={e => {
+                        // Blank rows confirm the old balance, so Enter alone must not confirm every account.
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing && !typedAny) e.preventDefault();
+                      }}
                       className='h-8'
                     />
                     <span className='text-xs text-faint'>{a.currency}</span>

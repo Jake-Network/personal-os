@@ -33,6 +33,7 @@ import {
   useStartLogin,
   useUsageEvents,
 } from '@/api-client/generated/ai-provider/ai-provider';
+import { getGetTransferPolicyQueryKey } from '@/api-client/generated/transfer-policy/transfer-policy';
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
 import { ConnectionTest } from './connection-test';
@@ -82,6 +83,8 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
       queryClient.invalidateQueries({ queryKey: getGetStatusQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getListModelsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getSummaryQueryKey() }),
+      // Confirmation is bound to the provider account, so a switch or disconnect changes it.
+      queryClient.invalidateQueries({ queryKey: getGetTransferPolicyQueryKey() }),
     ]);
 
   const login = useStartLogin({

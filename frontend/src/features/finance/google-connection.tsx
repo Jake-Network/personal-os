@@ -103,7 +103,7 @@ export function GoogleConnectionControls() {
   const askDisconnect = async () => {
     const ok = await confirm({
       title: 'Google 연결을 해제할까요?',
-      description: '저장된 Google 로그인 정보를 지우고 권한을 철회합니다. 다시 연결하기 전까지 시세 파일에 쓰지 않습니다. 로컬 재무 기록은 그대로 남습니다.',
+      description: '저장된 Google 로그인 정보를 지우고 Google에 권한 철회를 요청합니다. 다시 연결하기 전까지 시세 파일에 쓰지 않습니다. 로컬 재무 기록은 그대로 남습니다.',
       confirmLabel: '연결 해제',
       destructive: true,
     });
