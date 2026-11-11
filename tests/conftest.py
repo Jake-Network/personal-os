@@ -1,4 +1,5 @@
 import os
+import warnings
 from collections.abc import AsyncIterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
@@ -116,12 +117,131 @@ def postgres_url(postgres_database):
     return postgres_database()
 
 
+class _SharedSchema:
+    """One model schema per pytest run, emptied after every test instead of rebuilt.
+
+    Building 60+ tables per test dominated suite time. Each test still starts from empty
+    tables with identities restarted; a test that drops or loses a model table, or whose
+    cleanup fails, gets the schema rebuilt so later tests never inherit its damage.
+    Tests that need their own schema (migrations, legacy adoption) keep using
+    `postgres_database`/`postgres_url`, which still create and drop one per test.
+    """
+
+    def __init__(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.engine import make_url
+
+        if not TEST_DATABASE_URL:
+            pytest.fail("Set TEST_DATABASE_URL to a disposable PostgreSQL database")
+        self.configured = make_url(TEST_DATABASE_URL)
+        if self.configured.get_backend_name() != "postgresql":
+            pytest.fail("TEST_DATABASE_URL must use PostgreSQL")
+        self.admin = create_engine(self.configured)
+        self.schema = self.url = None
+
+    def _build(self):
+        from sqlalchemy import text
+
+        self.schema = "personal_test_shared_" + uuid4().hex
+        with self.admin.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
+            connection.execute(text(f'CREATE SCHEMA "{self.schema}"'))
+        self.url = self.configured.update_query_dict({
+            "options": f"-csearch_path={self.schema},public",
+        }).render_as_string(hide_password=False)
+        db.init(self.url)
+        db.create_schema()
+        self.tables = self._tables()
+
+    def _tables(self):
+        from sqlalchemy import inspect
+
+        return set(inspect(self.admin).get_table_names(schema=self.schema))
+
+    def _drop(self):
+        from sqlalchemy import text
+
+        if self.schema:
+            with self.admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE'))
+        self.schema = self.url = None
+
+    def _nonempty(self, connection, tables):
+        from sqlalchemy import text
+
+        return set(connection.execute(text(" UNION ALL ".join(
+            f"SELECT '{t}' WHERE EXISTS (SELECT 1 FROM \"{self.schema}\".\"{t}\")" for t in sorted(tables)
+        ))).scalars())
+
+    def checkout(self, nodeid):
+        if self.schema is None:
+            self._build()
+            return self.url
+        # Rows here were written after the previous reset, e.g. by a worker thread a test leaked.
+        with self.admin.connect() as connection:
+            leaked = self._nonempty(connection, self._tables())
+        if leaked:
+            warnings.warn(f"{nodeid}: rows written after the previous test's reset in {sorted(leaked)}")
+            self.reset()
+            if self.schema is None:
+                self._build()
+                return self.url
+        db.init(self.url)
+        return self.url
+
+    def reset(self):
+        from sqlalchemy import text
+
+        if db.engine is not None:
+            db.engine.dispose()
+        try:
+            tables = self._tables()
+            if not self.tables <= tables:
+                raise RuntimeError("a model table was dropped")
+            with self.admin.begin() as connection:
+                # Fail instead of hanging behind a leaked transaction; the schema is then rebuilt.
+                connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+                # Truncating all tables costs more than the scan; only touched ones are reset:
+                # tables with rows, and tables whose identity sequence advanced (rows since deleted).
+                dirty = self._nonempty(connection, tables)
+                dirty |= set(connection.execute(text(
+                    "SELECT DISTINCT t.relname FROM pg_sequences q"
+                    " JOIN pg_class s ON s.relname = q.sequencename AND s.relkind = 'S'"
+                    " JOIN pg_namespace n ON n.oid = s.relnamespace AND n.nspname = q.schemaname"
+                    " JOIN pg_depend d ON d.objid = s.oid AND d.deptype IN ('a', 'i')"
+                    " JOIN pg_class t ON t.oid = d.refobjid"
+                    " WHERE q.schemaname = :schema AND q.last_value IS NOT NULL"
+                ), {"schema": self.schema}).scalars())
+                if dirty:
+                    names = ", ".join(f'"{self.schema}"."{t}"' for t in sorted(dirty))
+                    connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+        except Exception:
+            self._drop()
+
+    def close(self):
+        if db.engine is not None:
+            db.engine.dispose()
+        self._drop()
+        self.admin.dispose()
+
+
+@pytest.fixture(scope="session")
+def _shared_schema():
+    shared = _SharedSchema()
+    try:
+        yield shared
+    finally:
+        shared.close()
+
+
 @pytest.fixture
-def session(postgres_url):
-    db.init(postgres_url)
-    db.create_schema()
-    with db.session() as s:
-        yield s
+def session(_shared_schema, request):
+    _shared_schema.checkout(request.node.nodeid)
+    try:
+        with db.session() as s:
+            yield s
+    finally:
+        _shared_schema.reset()
 
 
 @pytest.fixture

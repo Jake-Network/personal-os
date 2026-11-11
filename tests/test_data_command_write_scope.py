@@ -75,3 +75,20 @@ def test_immediate_subject_can_supply_a_deictic_list_header():
     row = 'NASDAQ:TEST $12.50 8주'
     query = '주식이 더 있어. 이것들 다 저장해줘\n' + row
     assert shared_write_authorized(query, row, 'holdings', 'create')
+
+
+@pytest.mark.parametrize('query', ['면접일정 등록해줘', '너가 면접 일정 등록해줘'])
+def test_interview_schedule_may_be_saved_as_interview_or_calendar_event(query):
+    from app.modules.advisor.commands.intent import direct_write_authorized
+    assert direct_write_authorized(query, 'calendar-events', 'create')
+    assert direct_write_authorized(query, 'interviews', 'create')
+    assert not direct_write_authorized(query, 'workout-logs', 'create')
+    assert not direct_write_authorized('면접 등록해줘', 'calendar-events', 'create')
+
+
+def test_stated_schedule_time_is_an_update_request():
+    from app.modules.advisor.commands.intent import command_requested, operation_authorized
+    for query in ['아침 8시-11시로 해줘', '오후 2시 반으로 옮겨줘', '종일로 해줘']:
+        assert command_requested(query) and operation_authorized(query, 'update')
+    for query in ['원화로 해줘', '1시간으로 해줘', '아침 8시로 하면 어때?']:
+        assert not operation_authorized(query, 'update')

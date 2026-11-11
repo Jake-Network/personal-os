@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 
 import { todayKey } from '@/lib/utils/zoned';
 import { useResourceRows } from '@/features/personal-data/hooks/use-resource';
-import { AccountsView, CoverageConfirm } from './accounts-view';
+import { AccountsView } from './accounts-view';
 import { CheckInStatus } from './check-in-status';
 
 import { financeApi, type Snapshot } from './api';
@@ -154,7 +154,7 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
             </div>
           )}
           <div className='flex flex-wrap gap-2' role='group' aria-label='월말 체크인 단계'>
-            {['오늘 잔고 확인', '입력 범위 확인', '지난달 근거 입력'].map((label, index) => (
+            {['오늘 잔고 확인', '지난달 근거 입력'].map((label, index) => (
               <Button key={label} aria-pressed={step === index} onClick={() => setStep(index)}>
                 {index + 1}. {label}
               </Button>
@@ -163,13 +163,8 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <p className='text-xs text-muted-foreground'>저장한 잔고와 기준일은 중간에 닫아도 유지됩니다. 오늘 확인과 과거 월말 기록은 별도입니다.</p>
           {step === 0 ? (
             <>
-              <AccountsView recordId={null} showCoverage={false} />
-              <Button onClick={() => setStep(1)}>입력 범위 확인으로</Button>
-            </>
-          ) : step === 1 ? (
-            <>
-              <CoverageConfirm />
-              <Button onClick={() => setStep(2)}>지난달 근거 입력으로</Button>
+              <AccountsView recordId={null} />
+              <Button onClick={() => setStep(1)}>지난달 근거 입력으로</Button>
             </>
           ) : target ? (
             <SnapshotCorrection

@@ -15,7 +15,7 @@ from app.modules.database.model.base import utcnow
 from app.modules.finance.clock import local_today
 from app.modules.finance.formatting import quantity_text
 from app.modules.finance.liquidity_policy import account_spendable
-from app.modules.portfolio.valuation import enrich_rows, parse_decimal, value_positions
+from app.modules.portfolio.valuation import KINDS, enrich_rows, parse_decimal, value_positions
 
 
 def confirm_coverage(session, kinds):
@@ -98,15 +98,16 @@ def rows(session, kinds=None):
 
 
 def portfolio(session, kinds=None):
+    """Current state from what the user has entered: a category with no rows counts as none.
+
+    Only the requested kinds are settled, so a caller that leaves a kind out (e.g. investments
+    not shared) never gets it counted as zero. Recorded rows still carry their own evidence
+    checks (dates, FX, prices). Month-end snapshots keep their explicitly declared coverage.
+    """
     positions = rows(session, kinds=kinds)
     coverage = session.get(LocalFinanceCoverage, 1)
     confirmed = coverage.kinds if coverage else []
-    result = value_positions(
-        positions,
-        sorted(set(confirmed) | {row["kind"] for row in positions}),
-        local_today(),
-        True,
-    )
+    result = value_positions(positions, [k for k in KINDS if kinds is None or k in kinds], local_today(), True)
     return dict(
         result,
         synced_at=None,

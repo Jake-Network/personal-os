@@ -148,3 +148,22 @@ def test_calendar_title_proposal_preserves_schedule(session, all_day):
     assert event.all_day is all_day
     assert event.starts_at == starts_at
     assert event.ends_at == ends_at
+
+
+def test_inapplicable_model_proposal_is_dropped_before_recording(session):
+    """One invalid suggestion must not fail the whole answer."""
+    event = CalendarEvent(title="종일 일정", all_day=True,
+                          starts_at=datetime(2026, 11, 21, 15, tzinfo=UTC),
+                          ends_at=datetime(2026, 11, 22, 15, tzinfo=UTC))
+    session.add(event)
+    session.flush()
+    proposals = [
+        {"action": "calendar_update", "payload": {"event_id": event.id, "starts_at": "2026-11-22T08:00:00+09:00"}},
+        {"action": "calendar_update", "payload": {"event_id": event.id, "title": "10km 마라톤 대회"}},
+        {"action": "delete_everything", "payload": {}},
+    ]
+
+    valid, dropped = pm.proposal_manager.valid_proposals(session, proposals)
+
+    assert valid == [proposals[1]]
+    assert dropped == 2

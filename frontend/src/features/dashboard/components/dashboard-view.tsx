@@ -220,7 +220,7 @@ export function DashboardView() {
               label='순자산'
               value={!worth ? '미기록' : worth.net_worth != null ? moneyShort(worth.net_worth) : '확인 필요'}
               sub={worth ? (worth.complete ? `자산 ${moneyShort(worth.total_assets)} · 부채 ${moneyShort(worth.total_liabilities)}` : '일부 항목 제외됨') : '계좌를 등록하면 계산합니다'}
-              flags={financeFlags(['net_worth_incomplete', 'missing_fx', 'stale_balance', 'investment_excluded_from_net_worth', 'no_liabilities_recorded'])}
+              flags={financeFlags(['net_worth_incomplete', 'missing_fx', 'stale_balance', 'investment_excluded_from_net_worth'])}
             />
             <Figure
               href='/finance/accounts'

@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import traceback
 from contextlib import suppress
 from uuid import uuid4
 
@@ -208,6 +209,9 @@ async def process_one(database):
             if metadata.get('single_response') and state.get('single_response'):
                 from app.modules.advisor.proposals import extract_blocks
                 answer, proposals, memories = extract_blocks(answer)
+            proposals, dropped = proposal_manager.valid_proposals(session, proposals)
+            limitations = [*state.get('limitations', []), *(
+                [f'대상이나 형식을 확인할 수 없는 행동 제안 {dropped}건은 만들지 않았습니다.'] if dropped else [])]
             reply = message_handler.create(session, {'conversation_id': row.conversation_id,
                 'role': 'assistant', 'content': answer, 'model': row.model, 'context_snapshot_id': snapshot_id})
             actions, mems = proposal_manager.record(session, row.conversation_id, reply.id, proposals, memories)
@@ -234,7 +238,7 @@ async def process_one(database):
             result = {'message_id': reply.id, 'context_snapshot_id': snapshot_id, 'answer': answer,
                 'data_operations': state.get('data_operations', (row.runtime_metadata or {}).get('data_operations', [])),
                 'context': state.get('context', {}), 'scenarios': scenarios,
-                'limitations': state.get('limitations', []), 'model_calls': state.get('model_calls', 0),
+                'limitations': limitations, 'model_calls': state.get('model_calls', 0),
                 'tool_calls': state.get('tool_calls', 0),
                 'proposals': [{'id': a.id, 'action': a.action, 'payload': a.payload, 'rationale': a.rationale} for a in actions],
                 'memory_proposals': [{'id': m.id, 'kind': m.kind, 'content': m.content} for m in mems]}
@@ -267,6 +271,11 @@ async def process_one(database):
             raise
         except Exception as exc:
             session.rollback()
+            if not isinstance(exc, AdvisorError):
+                # Exception text may quote personal data; the type and code location suffice.
+                frame = traceback.extract_tb(exc.__traceback__)[-1] if exc.__traceback__ else None
+                logger.error('Consultation run failed: %s at %s:%s', type(exc).__name__,
+                             frame.filename if frame else '?', frame.lineno if frame else '?')
             try:
                 error = exc.as_dict() if isinstance(exc, AdvisorError) else {
                     'code': 'run_failed', 'message': '분석을 완료하지 못했습니다. 연결과 근거를 확인한 뒤 재시도하세요.'}

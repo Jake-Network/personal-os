@@ -461,3 +461,58 @@ def test_version_two_empty_plan_does_not_gain_recovery_from_a_rejection_label(se
     conversation, _, current, _ = unindexed_partial_holding_rejection(session, plan=False)
     assert find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
                                  query=current.content, excluded=set()) is None
+
+
+def test_schedule_date_time_and_title_replies_are_followups():
+    for value in ['11월 22일 10km', '아침 8시-11시로 해줘', '오후 2시', '종일로 해줘']:
+        assert is_data_followup(value)
+    for value in ['오늘 아침에 5km 뛰었어', '내일 오후 일정 어때?', '오후 3시에 회의 추천해줘']:
+        assert not is_data_followup(value)
+
+
+def test_schedule_followups_chain_to_the_unfinished_calendar_request(session):
+    """A title reply that asked again must not drop the pending event on the next time reply."""
+    conversation = AdvisorConversation(title='합성 일정 등록')
+    session.add(conversation)
+    session.flush()
+    messages = [AdvisorMessage(conversation_id=conversation.id, role=role, status='complete', content=content)
+                for role, content in [('user', '11월 22일은 다시 등록해줘'), ('assistant', '일정 제목을 알려주세요.'),
+                                      ('user', '11월 22일 10km'), ('assistant', '종일 일정으로 등록할까요?')]]
+    session.add_all(messages)
+    session.flush()
+    command = {'operation': 'create', 'resource': 'calendar-events', 'selector': {}, 'command_index': 0,
+               'values': {'all_day': True, 'starts_at': '2026-11-22T00:00:00+09:00',
+                          'ends_at': '2026-11-23T00:00:00+09:00'}}
+    first = AdvisorRun(id=str(uuid4()), conversation_id=conversation.id, request_id=str(uuid4()), status='completed',
+        user_message_id=messages[0].id, assistant_message_id=messages[1].id,
+        input_payload={'message': messages[0].content},
+        runtime_metadata={'data_command_plan': [command], 'data_command_query': messages[0].content,
+                          'data_command_validation_version': 2},
+        result={'data_operations': [{'operation': 'create', 'resource': 'calendar-events',
+                                     'status': 'needs_input', 'command_index': 0}]})
+    title_reply = AdvisorRun(id=str(uuid4()), conversation_id=conversation.id, request_id=str(uuid4()),
+        status='completed', user_message_id=messages[2].id, assistant_message_id=messages[3].id,
+        input_payload={'message': messages[2].content}, runtime_metadata={}, result={'data_operations': []})
+    current = AdvisorMessage(conversation_id=conversation.id, role='user', status='pending',
+                             content='아침 8시-11시로 해줘')
+    session.add_all([first, title_reply, current])
+    session.flush()
+
+    result = find_pending_commands(session, conversation_id=conversation.id, message_id=current.id,
+        query=current.content, excluded=set())
+
+    assert result is not None
+    assert result['query'] == '11월 22일은 다시 등록해줘'
+    assert result['commands'][0]['resource'] == 'calendar-events'
+
+
+def test_schedule_followup_may_replace_all_day_placeholder_with_stated_time():
+    original = {'operation': 'create', 'resource': 'calendar-events', 'selector': {},
+                'values': {'all_day': True, 'starts_at': '2026-11-22T00:00:00+09:00',
+                           'ends_at': '2026-11-23T00:00:00+09:00'}}
+    timed = {'operation': 'create', 'resource': 'calendar-events', 'selector': {},
+             'values': {'title': '10km 마라톤 대회', 'all_day': False,
+                        'starts_at': '2026-11-22T08:00:00+09:00', 'ends_at': '2026-11-22T11:00:00+09:00'}}
+    assert resolution_allowed(original, timed, '아침 8시-11시로 해줘')
+    # A title-only reply cannot silently move the date the user already gave.
+    assert not resolution_allowed(original, timed, '10km 마라톤 대회')

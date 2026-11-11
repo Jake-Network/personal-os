@@ -37,7 +37,7 @@ Personal OS는 개인 재무·커리어·일정·목표·문서를 연결하는 
 - **시간·연결:** `PERSONAL_OS_TIMEZONE`, UTC 저장·반열린 구간을 따른다. Google과 모델 연결은 독립적이며 계정·제공자·모델·유료 API·외부 임베딩을 몰래 대체하지 않는다. 실패·중단된 답변을 확정 이력으로 재전송하지 않는다.
 - **인증:** `LocalTrustMiddleware`의 Origin/Host 검사, `AppAuthMiddleware`의 쿠키 세션·CSRF, 토큰 암호화와 loopback 기본값을 유지한다. OAuth는 앱 인증을 대신하지 않는다. 원격 공개에는 별도 인증·TLS 설계가 필요하다.
 - **DB:** PostgreSQL만 지원한다. 모델 변경에는 Alembic revision과 기존 데이터 업그레이드 검증이 필요하다. `create_all()`은 migration 검증이 아니다. `stamp head`·테이블 재생성·볼륨 삭제로 불일치를 덮지 않는다. 실제 DB·이미지 전환에는 백업·호환성 확인을 선행한다.
-- **테스트 DB:** `TEST_DATABASE_URL`은 운영 DB와 별개인 폐기용 PostgreSQL만 사용한다. fixture는 테스트별 격리 스키마를 만들고 삭제한다. compose 운영 DB·개인 DB·SQLite를 테스트에 사용하지 않는다.
+- **테스트 DB:** `TEST_DATABASE_URL`은 운영 DB와 별개인 폐기용 PostgreSQL만 사용한다. `session` fixture는 실행당 격리 스키마 하나를 만들어 테스트마다 비우고 끝나면 삭제한다. 마이그레이션 테스트는 `postgres_url`로 테스트별 스키마를 쓴다. compose 운영 DB·개인 DB·SQLite를 테스트에 사용하지 않는다.
 
 ## 구현·검증·완료
 
@@ -45,7 +45,7 @@ Personal OS는 개인 재무·커리어·일정·목표·문서를 연결하는 
 - API 원본은 백엔드 OpenAPI다. `frontend/src/api-client/generated/`와 `model/`을 수작업 수정하지 말고 `corepack yarn generate-api`로 재생성한다. 한국어 UI와 기존 전송·오류·폼·포맷 유틸리티를 재사용한다.
 - 현재 SSE는 실행별 `RunEvent`와 순번 기반 재연결을 사용한다. 네 종류 이벤트만 내보내는 호환 스트림과 구분한다. 계약·취소·캐시·화면 이동 수명을 변경할 때 [상세 구조](docs/backend-agent-guide.md#코드-구조와-변경-방법)를 확인한다.
 - 작은 가역적 diff와 기존 유틸리티를 우선한다. 정리 전 단순화할 대상을 밝히고 동작 보존을 확인한다. 요청 없는 의존성·아키텍처 확장을 피한다.
-- 변경을 입증하는 가장 작은 검증부터 수행한다. 백엔드 환경·영역별 회귀 검증은 [검증 절](docs/backend-agent-guide.md#검증), 프런트는 해당 지침, 실행 명령은 [README](README.md#tests)를 따른다. 개인정보 변경은 최종 모델 payload, 재무·보안·migration·동시성 변경은 관련 반례를 검증한다.
+- 변경을 입증하는 가장 작은 검증부터 수행한다. 작업 중에는 변경 영역의 테스트 파일만 실행하고, 전체 스위트는 커밋 직전이나 fixture·DB·공용 런타임처럼 영향이 넓은 변경에만 `pytest -n 8`로 실행한다. 백엔드 환경·영역별 회귀 검증은 [검증 절](docs/backend-agent-guide.md#검증), 프런트는 해당 지침, 실행 명령은 [README](README.md#tests)를 따른다. 개인정보 변경은 최종 모델 payload, 재무·보안·migration·동시성 변경은 관련 반례를 검증한다.
 - 의존성 변경에는 lockfile 재생성과 CI의 `pip-audit`·`yarn audit`를 포함한다. Python·Node 버전 파일과 Dockerfile 패치 버전을 맞춘다. Docker 소스를 변경한 실행 검증은 재빌드·재시작과 동작·health 확인이 필요하다.
 - 결과에는 사용자 동작 변화, 실제 수행한 검증, skip·미검증·외부 연동 한계를 구분한다. 가짜 제공자·정적 검사 통과를 실제 LLM 품질·OAuth·Sheets·브라우저 검증으로 보고하지 않는다.
 - 커밋·푸시·병합·배포·원격 삭제는 명시적으로 요청된 범위만 수행한다. 커밋 제목은 결정의 의도를 쓰고 필요한 `Constraint:`·`Rejected:`·`Tested:`·`Not-tested:` trailer를 남긴다.

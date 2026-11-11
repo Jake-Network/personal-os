@@ -38,6 +38,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 
 - 금액·수량·환율·비중·시나리오 계산은 백엔드의 `Decimal` 기반 계산과 기존 스키마를 사용한다. LLM이나 프런트엔드에 별도 재무 계산 규칙을 만들지 않는다.
 - 누락, 오래된 값, 수집 실패, 불완전한 범위를 `0`이나 정상 상태로 바꾸지 않는다. 출처, 통화, 기준일, 포함 범위와 `data_quality_flags`를 API·화면·상담까지 전달한다. 부분 합계는 완전한 총액과 구별한다.
+- 현재 순자산(`local_portfolio.portfolio`)은 사용자가 입력한 기록만으로 계산한다. 기록이 0건인 분류(부채·기타 자산 등)는 없음으로 보고 별도 확인을 요구하지 않는다. 상담에는 `no_liabilities_recorded` 같은 플래그로 미입력 사실을 함께 전달한다. 요청에서 빠진 분류(투자 비공유)와 기록된 행의 결측·오래된 근거는 여전히 합계를 확정하지 않는다. 월말 기록은 저장 시 명시한 입력 범위를 따른다.
 - 순자산, 투자 가능 자산, 현금성 자산, 생활비로 사용할 수 있는 유동성을 구별한다. 주식·연금·기타 자산을 자동으로 생활비 재원에 포함하지 않는다. 런웨이는 기존 유동성 정책과 지출 기록 충족 조건을 따른다.
 - 개인 재무 항목은 로컬 DB가 원본이다. Google 연결은 새 전용 Quotes/FX 파일의 시세 조회에만 사용하며 연결 상태로 로컬 입력을 제한하지 않는다. 과거 Sheets import는 미리보기와 원본 행 매핑으로 보존 이전한다.
 - 보유 자산 입력은 로컬 저장 경로, 안정적인 position/request ID와 버전 검사를 따른다. Google에는 티커·통화쌍·생성 수식만 전송한다. 저장 성공·시세 대기·시세 실패를 구별하며 외부 호출과 로컬 감사 로그를 하나의 원자적 트랜잭션으로 가정하지 않는다.
@@ -62,7 +63,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 - 재무, 커리어, 일정과 목표 간의 제약을 연결한다. 검증 가능한 통계 없이 투자 성과나 합격 확률을 만들어내지 않는다.
 - 읽기 도구와 쓰기 경로를 분리한다. 상담이 먼저 권하는 제안은 `create_task`, `calendar_update`, `goal_update`이며 실제 반영은 명시적 사용자 승인 후에만 한다. 사용자가 직접 요청한 CRUD는 `app/modules/advisor/commands/execution.py`의 리소스 허용 목록·입력 검증·공유 제한을 거친다. 자동 기록은 요청별 `allow_data_recording`으로 허용한 자신의 완료 실적·현재 잔액·보유량만 생성·수정하며, 삭제는 명시적 요청이 필요하다. LLM에는 임의 SQL·재무 계산·Sheets 변경 경로를 제공하지 않는다.
 - 상담 CRUD는 실행 lease 검사와 데이터 변경·감사 영수증을 같은 트랜잭션으로 보호한다. 재시도는 원본 사용자 메시지의 영수증을 재사용하고, 답변 실패와 데이터 저장 성공을 구별한다. 서버 실행 결과는 최신 컨텍스트의 예산·스냅샷·카테고리·레코드 근거에 포함하며 공유 제외 후 과거 결과를 재전송하지 않는다.
-- 제안 payload는 서버에서 검증한다. 중복 승인, 승인·거절 경합, 실패 시 롤백과 감사 기록을 보호한다. 도구나 action을 추가할 때 허용 목록과 회귀 검증도 함께 변경한다.
+- 제안 payload는 서버에서 검증한다. 모델이 만든 제안 중 검증에 실패한 항목은 답변 전체를 실패시키지 않고 제외하며 제외 건수를 한계로 표시한다. 중복 승인, 승인·거절 경합, 실패 시 롤백과 감사 기록을 보호한다. 도구나 action을 추가할 때 허용 목록과 회귀 검증도 함께 변경한다.
 - 플레이북 revision은 action과 별개의 승인 대상이다. 모델 제안은 `proposed`로만 저장하고 기준 revision이 현재 승인본일 때만 승인한다. 내용은 고쳐 쓰지 않고 새 revision으로 쌓는다. 모델 제안에 개인 금액·특정 날짜·레코드 ref·지시 변경 문장·비밀값이 있으면 저장하지 않는다(`playbooks/validation.py`, `context/content_safety.py`). 플레이북 본문은 사실이 아닌 절차로 Context Package의 `data.playbooks`에만 넣고, 탐색 목록도 크기를 제한한 `data.playbook_catalog`와 정확한 revision 참조(`catalog_references`)로 기록하되, 목록은 전송 시 검사 대상일 뿐 답변의 근거 의존성이 아니다. 플레이북 삭제는 근거 스냅샷을 무효화하지 않으며 참조에 남긴 출처 범주로 공유 제한을 계속 적용한다. 회고의 원문·결정 결과는 스냅샷에 포함하고, 학습한 절차와 기억은 그 스냅샷 출처를 승인 후에도 보존한다. revision 범주·공유·출처 정책을 `source_allowed`로 매 요청 검사한다.
 - LLM이 추출한 장기 기억은 사용자가 확인하기 전에는 확정하지 않는다. 의사결정 기록은 당시 근거·기대 결과·실제 결과를 구분해 회고할 수 있게 한다.
 - **개발 에이전트의 자율 작업 권한은 제품 안의 승인 절차를 생략할 권한이 아니다.**
@@ -96,7 +97,7 @@ Personal OS는 한 사람의 자산 포트폴리오, 재무 상태와 구조, �
 
 ## 검증
 
-변경한 동작을 입증하는 가장 작은 의미 있는 검증부터 실행한다. 보안·숫자·마이그레이션·동시성 변경에는 관련 회귀 검증을 포함하고, 영향이 넓으면 전체 검증으로 확장한다. 문서만 변경했으면 경로·명령·코드와의 일치 및 diff를 확인한다.
+변경한 동작을 입증하는 가장 작은 의미 있는 검증부터 실행한다. 작업 중에는 아래 표의 관련 테스트 파일만 `pytest tests/test_x.py`로 실행한다. 보안·숫자·마이그레이션·동시성 변경에는 관련 회귀 검증을 포함하고, 전체 스위트는 커밋 직전이나 fixture·DB·공용 런타임처럼 영향이 넓은 변경에만 실행한다. 문서만 변경했으면 경로·명령·코드와의 일치 및 diff를 확인한다.
 
 의존성 변경은 잠금 파일을 재생성한 뒤 CI의 `pip-audit`·`yarn audit` 검사도 실행한다. Python은 `.python-version`, Node는 `frontend/.node-version`과 Dockerfile의 패치 버전을 함께 유지한다. 패키지 감사 통과를 컨테이너 OS 전체 검사나 운영 이미지 교체 완료로 보고하지 않는다.
 
@@ -107,7 +108,9 @@ docker run -d --rm --name personal-os-test-pg -e POSTGRES_USER=personal_os -e PO
   -e POSTGRES_DB=personal_os_test -p 127.0.0.1:55432:5432 pgvector/pgvector:pg17
 # 준비된 뒤 한 번: ORM 스키마 fixture가 쓰는 vector 확장을 public에 둔다
 docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREATE EXTENSION IF NOT EXISTS vector"
-TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test uv run pytest -q
+export TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test
+uv run pytest -q tests/test_<area>.py   # 작업 중: 변경 영역 파일만
+uv run pytest -q -n 8                    # 전체: 워커별 격리 스키마로 병렬 실행
 
 # 프런트엔드: frontend/에서 실행
 corepack yarn install --frozen-lockfile

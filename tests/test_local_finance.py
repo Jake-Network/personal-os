@@ -188,6 +188,28 @@ def test_local_portfolio_uses_living_expense_eligibility(session):
     }
 
 
+def test_current_net_worth_counts_unentered_categories_as_none(session):
+    from app.modules.portfolio.local_portfolio import portfolio
+
+    session.add(Account(name="통장", kind="checking", is_liquid=True, currency="KRW", balance=Decimal("1000"),
+                        balance_as_of=date.today()))
+    session.commit()
+    result = portfolio(session)
+    assert result["complete"] is True and result["issues"] == []
+    assert (result["total_assets"], result["total_liabilities"], result["net_worth"]) == ("1000.00", "0.00", "1000.00")
+    assert result["coverage"] == []  # nothing was confirmed; the live view does not need it
+    # A kind the caller left out (investments not shared) is not settled as zero.
+    partial = portfolio(session, kinds=("cash", "liability", "other"))
+    assert partial["total_assets"] is None and partial["net_worth"] is None
+
+    # A recorded row with bad evidence still keeps its category unconfirmed: never a silent 0.
+    session.add(Holding(symbol="NOPRICE", name="No price", quantity=1, currency="KRW"))
+    session.commit()
+    result = portfolio(session)
+    assert result["investments"] is None and result["net_worth"] is None
+    assert any("NOPRICE" in issue or "No price" in issue for issue in result["issues"])
+
+
 def test_transfers_trades_and_reversals_do_not_inflate_income(session):
     a = Account(
         name="a",

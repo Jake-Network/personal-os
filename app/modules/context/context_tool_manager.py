@@ -34,7 +34,7 @@ from app.modules.crud import (
     task_handler,
     workout_log_handler,
 )
-from app.modules.database.model import FxRate, Holding, LocalFinanceCoverage, WorkoutLog
+from app.modules.database.model import FxRate, Holding, WorkoutLog
 from app.modules.finance.financial_calculator import financial_calculator
 from app.modules.finance import clock as finance_clock
 from app.modules.finance.liquidity_policy import account_bucket, account_spendable, holding_bucket
@@ -89,9 +89,9 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
     flags: list[dict] = []
     if not accounts:
         flags.append(quality_flag("no_accounts", Category.FINANCIAL))
-    coverage = s.get(LocalFinanceCoverage, 1)
-    if not liabilities and (coverage is None or "liability" not in coverage.kinds):
-        flags.append(quality_flag("no_liabilities_recorded", Category.FINANCIAL, "debt may be zero or simply not entered"))
+    if not liabilities:
+        # Net worth counts no recorded debt as none; the model still learns that none was entered.
+        flags.append(quality_flag("no_liabilities_recorded", Category.FINANCIAL, "no debt entered; net worth counts it as none"))
     today = as_aware(ctx.now).astimezone(ZoneInfo(settings.timezone)).date()
     for a in accounts:
         if (today - a.balance_as_of).days > finance_clock.STALE_BALANCE_DAYS:
@@ -116,8 +116,8 @@ def get_accounts_summary(ctx: ToolContext) -> ToolResult:
                            ", ".join(f"{e['label']}({e['reason']})" for e in worth.excluded)))
 
     worth_data = worth.as_dict()
-    # No accounts is an unknown scope until the user explicitly confirms cash coverage.
-    if not any(account_bucket(a.kind) == "cash" for a in accounts) and (coverage is None or "cash" not in coverage.kinds):
+    # With no cash account entered there is nothing to compute runway from: show it as unrecorded, not 0.
+    if not any(account_bucket(a.kind) == "cash" for a in accounts):
         worth_data.update(spendable_liquidity=None, spendable_liquidity_complete=False,
                           cash_and_equivalents=None)
         flags.append(quality_flag("spendable_liquidity_unknown", Category.FINANCIAL,

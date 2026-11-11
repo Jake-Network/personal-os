@@ -36,14 +36,18 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log # port 
 
 ### Tests
 
-Tests require `TEST_DATABASE_URL` pointing to a disposable PostgreSQL container, separate from the operating DB. Each test creates and removes its own schema:
+Tests require `TEST_DATABASE_URL` pointing to a disposable PostgreSQL container, separate from the operating DB. The `session` fixture builds one isolated schema per run, empties the tables each test touched, and drops the schema at the end; migration tests still create a schema per test:
 
 ```bash
 docker run -d --rm --name personal-os-test-pg -e POSTGRES_USER=personal_os -e POSTGRES_PASSWORD=personal_os \
   -e POSTGRES_DB=personal_os_test -p 127.0.0.1:55432:5432 pgvector/pgvector:pg17
 docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREATE EXTENSION IF NOT EXISTS vector"
-TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test uv run pytest -q
+export TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test
+uv run pytest -q tests/test_local_finance.py   # while working: the files for the changed area
+uv run pytest -q -n 8                          # full suite (pytest-xdist, one schema per worker)
 ```
+
+`test_documents.py::test_postgresql_worker_leases_concurrent_recovery_and_stale_completion` relies on a 3-second lease and can fail under CPU load (it also fails occasionally when run alone); rerun it alone before treating it as a regression.
 
 Browser smoke tests (Playwright) run the real backend with a fake model provider (`scripts/e2e_server.py`) against a database whose name must end in `_e2e`; it is wiped at start. The frontend is built and served on port 5174, so it does not collide with a running dev server. The `narrow` project then walks every screen at a 390px-wide viewport and fails on sideways scrolling:
 
@@ -127,7 +131,7 @@ upgrade/check/downgrade), and frontend lint, typecheck (`next typegen && tsc`), 
 
 “최신 현재가 시세 갱신해줘”는 기존 재무 화면의 시세 갱신 경로를 사용합니다. 보유 기록 저장과 별도로 Google 연결 필요·조회 간격 제한·계산 대기·부분 성공을 표시하며, 완료 여부가 불명확한 외부 요청을 자동 반복하지 않습니다.
 
-확인 질문에 “응 이렇게 해줘”, “원화로 해줘”처럼 답하면 같은 대화의 미완료 저장 항목을 이어서 실행합니다. 이미 저장된 항목은 반복하지 않습니다. 원래 지정한 수량·원가 등을 바꾸려면 정정할 값을 명시해야 합니다. 미완료 요청은 같은 대화의 최근 24시간 범위에서만 이어받으며, 새 주제나 완료된 저장 요청이 사이에 있거나 출처·공유 권한이 바뀌면 이어받지 않습니다.
+확인 질문에 “응 이렇게 해줘”, “원화로 해줘”, “11월 22일 10km”, “아침 8시-11시로 해줘”처럼 답하면 같은 대화의 미완료 저장 항목을 이어서 실행합니다. 날짜만 있던 일정에 시각을 말하면 종일 일정 대신 그 시각으로 저장합니다. 이미 저장된 항목은 반복하지 않습니다. 원래 지정한 수량·원가 등을 바꾸려면 정정할 값을 명시해야 합니다. 미완료 요청은 같은 대화의 최근 24시간 범위에서만 이어받으며, 새 주제나 완료된 저장 요청이 사이에 있거나 출처·공유 권한이 바뀌면 이어받지 않습니다.
 
 입력창의 `더보기 → 자동 기록`을 켜면 해당 대화에서 자신의 완료한 운동·현재 계좌 잔액·주식 보유량을 말하는 것만으로 기록할 수 있습니다. 기본은 꺼짐이며 `/settings/agent`의 `새 상담에서 자동 기록을 켠 상태로 시작`으로 시작값을 바꿀 수 있습니다. 서버는 여전히 요청마다 보낸 값만 따릅니다. 상담에서 저장·수정한 기록은 결과 옆의 `되돌리기`로 되돌립니다. 그 뒤 다른 곳에서 바뀌지 않은 기록만 되돌리며(생성은 삭제, 수정은 이전 값 복원), 값 변경 이력과 감사 기록에 새 행으로 남고 같은 작업은 한 번만 되돌릴 수 있습니다. 이전 값은 실행 영수증에만 보관하고 모델에 보내지 않습니다. 삭제는 되돌리지 않습니다. 계획·가정·인용·다른 사람의 실적은 자동 기록 대상이 아니고 삭제는 직접 요청해야 합니다. 기존 상담 제안과 장기 기억은 승인 절차를 유지합니다. 상담에는 각 작업의 저장·조회·확인 필요·실패 결과를 따로 표시하며, 답변 생성이 실패해도 이미 저장된 작업은 유지합니다. 재시도해도 같은 메시지의 저장 작업을 반복하지 않습니다. 자동 기록 옵션을 켠 컨텍스트 미리보기는 저장하지 않습니다.
 
