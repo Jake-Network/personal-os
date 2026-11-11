@@ -10,6 +10,7 @@ import type { RunView } from '@/api-client/model';
 import { Markdown } from '@/components/markdown';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 import { workspaceApi } from '../api';
 import { isUnfinished } from '../hooks/use-workspace';
@@ -82,7 +83,7 @@ export function RunStatus({
 
   return (
     <section className='mx-auto w-full max-w-[760px]' aria-label='답변 진행 상태' aria-live='polite'>
-      <div className='rounded-lg border bg-card px-3.5 py-2.5'>
+      <Card className='px-3.5 py-2.5'>
         <div className='flex items-center gap-2 text-ui text-muted-foreground'>
           {working && <LoaderCircle className='size-3.5 animate-spin' aria-hidden />}
           <span className='flex-1'>{line}</span>
@@ -130,7 +131,7 @@ export function RunStatus({
             {actionError}
           </Alert>
         )}
-      </div>
+      </Card>
     </section>
   );
 }

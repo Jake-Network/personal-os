@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
 import { Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
+import { ChipGroup } from '@/components/toggle-group';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
 import { todayKey } from '@/lib/utils/zoned';
 
 import { recordHref } from '@/features/personal-data/hooks/use-record-param';
@@ -44,28 +44,9 @@ interface LinkedItem {
 export const reviewsKey = ['period-reviews'] as const;
 const PERIOD_LABEL: Record<ReviewPeriod, string> = { month: '월간', quarter: '분기', year: '연간' };
 
-function ChipToggle({ items, value, onChange, label }: { items: LinkedItem[]; value: number[]; onChange: (v: number[]) => void; label: string }) {
+function LinkedItemChips({ items, value, onChange, label }: { items: LinkedItem[]; value: number[]; onChange: (v: number[]) => void; label: string }) {
   if (!items.length) return <p className='text-xs text-faint'>기록된 {label} 없음</p>;
-  return (
-    <div className='flex flex-wrap gap-1.5' role='group' aria-label={label}>
-      {items.map(item => {
-        const on = value.includes(item.id);
-        return (
-          <button
-            key={item.id}
-            type='button'
-            aria-pressed={on}
-            onClick={() => onChange(on ? value.filter(v => v !== item.id) : [...value, item.id])}
-            className={cn(
-              'inline-flex h-7 items-center rounded-full border px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              on ? 'border-primary bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
-            )}>
-            {item.title}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <ChipGroup label={label} value={value} onChange={onChange} options={items.map(item => ({ value: item.id, label: item.title }))} />;
 }
 
 function ReviewCard({ review, decisions }: { review: Review; decisions: Map<number, string> }) {
@@ -159,7 +140,7 @@ export function ReviewsView() {
   const years = Array.from({ length: 10 }, (_, i) => thisYear - i);
 
   return (
-    <div className='max-w-[860px]'>
+    <div className='max-w-reading'>
       <Section title='새 회고 초안' info={<p>선택한 기간의 경력·결정·보존된 월말 재무 기록을 모아 초안을 만듭니다. 외부 AI를 호출하지 않습니다. 확정하기 전까지는 초안입니다.</p>}>
         <form
           className='flex flex-col gap-4 py-2'
@@ -213,12 +194,12 @@ export function ReviewsView() {
           <div className='flex flex-col gap-1.5'>
             <span className='text-ui font-medium'>함께 돌아볼 목표</span>
             <QueryStatus pending={goals.isPending} error={goals.error} retry={goals.refetch} label='목표' rows={1} />
-            {goals.data && <ChipToggle label='목표' items={goals.data} value={goalIds} onChange={changed(setGoalIds)} />}
+            {goals.data && <LinkedItemChips label='목표' items={goals.data} value={goalIds} onChange={changed(setGoalIds)} />}
           </div>
           <div className='flex flex-col gap-1.5'>
             <span className='text-ui font-medium'>함께 돌아볼 프로젝트</span>
             <QueryStatus pending={projects.isPending} error={projects.error} retry={projects.refetch} label='프로젝트' rows={1} />
-            {projects.data && <ChipToggle label='프로젝트' items={projects.data} value={projectIds} onChange={changed(setProjectIds)} />}
+            {projects.data && <LinkedItemChips label='프로젝트' items={projects.data} value={projectIds} onChange={changed(setProjectIds)} />}
           </div>
           <label className='flex items-center gap-2'>
             <Checkbox checked={background} onCheckedChange={v => changed(setBackground)(v === true)} />

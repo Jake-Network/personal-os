@@ -18,7 +18,7 @@ export function QualityBadge({ flags, label = '확인 필요', className }: { fl
     <Popover>
       <PopoverTrigger
         className={cn(
-          'inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-px text-2xs text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-px text-xs text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           className,
         )}>
         <TriangleAlert className='size-3' aria-hidden />

@@ -10,7 +10,7 @@ import { ArrowRight, CalendarClock, CheckCircle2, ChevronRight, Inbox, ListTodo,
 import { useRecurringDue } from '@/api-client/generated/portfolio/portfolio';
 import { useSummary } from '@/api-client/generated/dashboard/dashboard';
 import { EmptyState } from '@/components/empty-state';
-import { PageContainer, Section } from '@/components/page-container';
+import { listRowClassName, PageContainer, PageHeader, Section } from '@/components/page-container';
 import { QualityBadge } from '@/components/quality-badge';
 import { QueryStatus } from '@/components/query-status';
 import { Skeleton } from '@/components/skeleton';
@@ -57,7 +57,7 @@ const toneClass = (tone: Tone) => (tone === 'warning' ? 'text-warning' : tone ==
 
 /** One thing to do now: a link, or a button that opens the quick action in place. */
 function AttentionItem({ href, onClick, icon: Icon, tone = 'default', children }: { href?: string; onClick?: () => void; icon: typeof Inbox; tone?: Tone; children: ReactNode }) {
-  const className = 'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  const className = cn(listRowClassName, 'items-center gap-2.5');
   const content = (
     <>
       <Icon className={cn('size-4 shrink-0', toneClass(tone))} aria-hidden />
@@ -108,7 +108,8 @@ interface AgendaEntry {
 export function DashboardView() {
   const summary = useSummary();
   const review = useReviewCounts();
-  const recurring = useRecurringDue().data ?? [];
+  const recurringDue = useRecurringDue();
+  const recurring = recurringDue.data ?? [];
   const [checkingIn, setCheckingIn] = useState(false);
   const [importing, setImporting] = useState(false);
   const [guideOpen, setGuideOpen] = useState<boolean | undefined>(undefined);
@@ -188,17 +189,17 @@ export function DashboardView() {
 
   return (
     <PageContainer>
-      <div className='mb-5 flex flex-col items-start justify-between gap-3 md:flex-row md:items-end'>
-        <div>
-          <h1 className='text-xl font-bold tracking-tight'>{dayLabel(today)}</h1>
-          <p className='mt-0.5 text-xs text-faint'>{data ? `${dateTime(data.generated_at)} 기준` : ' '}</p>
-        </div>
-        <Button asChild variant='primary'>
-          <Link href='/advisor'>
-            상담하기 <ArrowRight />
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        title={dayLabel(today)}
+        description={data ? `${dateTime(data.generated_at)} 기준` : '\u00a0'}
+        actions={
+          <Button asChild variant='primary'>
+            <Link href='/advisor'>
+              상담하기 <ArrowRight />
+            </Link>
+          </Button>
+        }
+      />
 
       <QueryStatus pending={false} error={summary.error} retry={summary.refetch} label='요약' />
 
@@ -213,14 +214,45 @@ export function DashboardView() {
 
       {data && (
         <>
+          <div className='mb-7 grid grid-cols-1 gap-3 md:grid-cols-3'>
+            <Figure
+              href='/finance'
+              label='순자산'
+              value={!worth ? '미기록' : worth.net_worth != null ? moneyShort(worth.net_worth) : '확인 필요'}
+              sub={worth ? (worth.complete ? `자산 ${moneyShort(worth.total_assets)} · 부채 ${moneyShort(worth.total_liabilities)}` : '일부 항목 제외됨') : '계좌를 등록하면 계산합니다'}
+              flags={financeFlags(['net_worth_incomplete', 'missing_fx', 'stale_balance', 'investment_excluded_from_net_worth', 'no_liabilities_recorded'])}
+            />
+            <Figure
+              href='/finance/accounts'
+              label='생활비로 쓸 수 있는 현금'
+              value={worth?.spendable_liquidity != null ? moneyShort(worth.spendable_liquidity) : '미기록'}
+              sub={runwaySub(data.computed?.runway)}
+              flags={financeFlags(['spendable_liquidity_unknown'])}
+            />
+            <Figure
+              href='/finance/cashflow'
+              label='월평균 지출'
+              value={expense?.available ? moneyShort(expense.monthly_average) : '미기록'}
+              sub={
+                expense?.available
+                  ? `최근 ${expense.months_considered}개월`
+                  : expense?.reason === 'insufficient_coverage'
+                    ? `기록 부족 (${expense.months_with_data}/${expense.months_considered}개월)`
+                    : '수입·지출을 기록하면 계산합니다'
+              }
+              flags={financeFlags(['monthly_expense_unknown', 'monthly_expense_insufficient_coverage', 'cashflow_foreign_currency_ignored', 'cashflow_mixed_sources'])}
+            />
+          </div>
+
           <Section title='오늘' count={todayItems.length || undefined}>
             {todayItems.length ? (
-              <ul className='-mx-2'>{todayItems.slice(0, 6)}</ul>
+              <ul>{todayItems.slice(0, 6)}</ul>
             ) : (
               <p className='flex items-center gap-2 py-2 text-ui text-muted-foreground'>
                 <CheckCircle2 className='size-4 text-success' aria-hidden /> 지금 처리할 항목이 없습니다.
               </p>
             )}
+            <QueryStatus pending={false} error={recurringDue.error} retry={recurringDue.refetch} label='반복 거래' />
             {review.total > 0 && (
               <Link href='/review' className='mt-1 flex items-center gap-2 rounded-md px-0 py-1.5 text-ui text-muted-foreground hover:text-foreground'>
                 <Inbox className='size-4' aria-hidden />
@@ -245,6 +277,7 @@ export function DashboardView() {
               <ul className='flex flex-wrap gap-x-5 gap-y-2 text-ui'>
                 {([
                   [data.checklist.ai_configuration_complete, '/settings/ai-provider', 'AI 연결'],
+                  [data.checklist.ai_transfer_confirmed, '/settings/ai-provider', '전송 확인'],
                   [data.checklist.has_cash_account, '/finance/accounts', '현금 계좌'],
                   [data.checklist.has_recent_expense, '/finance/cashflow', '최근 30일 지출'],
                   [data.checklist.has_active_application_or_goal, '/plan/goals', '목표 또는 지원'],
@@ -283,36 +316,6 @@ export function DashboardView() {
             </Section>
           )}
 
-          <div className='mb-7 grid grid-cols-1 gap-3 md:grid-cols-3'>
-            <Figure
-              href='/finance'
-              label='순자산'
-              value={!worth ? '미기록' : worth.net_worth != null ? moneyShort(worth.net_worth) : '확인 필요'}
-              sub={worth ? (worth.complete ? `자산 ${moneyShort(worth.total_assets)} · 부채 ${moneyShort(worth.total_liabilities)}` : '일부 항목 제외됨') : '계좌를 등록하면 계산합니다'}
-              flags={financeFlags(['net_worth_incomplete', 'missing_fx', 'stale_balance', 'investment_excluded_from_net_worth', 'no_liabilities_recorded'])}
-            />
-            <Figure
-              href='/finance/accounts'
-              label='생활비로 쓸 수 있는 현금'
-              value={worth?.spendable_liquidity != null ? moneyShort(worth.spendable_liquidity) : '미기록'}
-              sub={runwaySub(data.computed?.runway)}
-              flags={financeFlags(['spendable_liquidity_unknown'])}
-            />
-            <Figure
-              href='/finance/cashflow'
-              label='월평균 지출'
-              value={expense?.available ? moneyShort(expense.monthly_average) : '미기록'}
-              sub={
-                expense?.available
-                  ? `최근 ${expense.months_considered}개월`
-                  : expense?.reason === 'insufficient_coverage'
-                    ? `기록 부족 (${expense.months_with_data}/${expense.months_considered}개월)`
-                    : '수입·지출을 기록하면 계산합니다'
-              }
-              flags={financeFlags(['monthly_expense_unknown', 'monthly_expense_insufficient_coverage', 'cashflow_foreign_currency_ignored', 'cashflow_mixed_sources'])}
-            />
-          </div>
-
           <div className='grid grid-cols-1 gap-x-8 lg:grid-cols-2'>
             <Section
               title='이번 주'
@@ -347,7 +350,7 @@ export function DashboardView() {
                               <Link href={a.href} className={cn('min-w-0 flex-1 truncate hover:underline', a.overdue && 'text-destructive')}>
                                 {a.title}
                               </Link>
-                              <span className='text-2xs text-faint'>{a.kind}</span>
+                              <span className='text-xs text-faint'>{a.kind}</span>
                             </li>
                           ))}
                       </ul>

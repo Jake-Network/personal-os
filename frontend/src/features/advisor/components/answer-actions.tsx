@@ -56,7 +56,6 @@ export function AnswerActions({ messageId, conversationId, question }: { message
         variant='ghost'
         aria-label='도움이 됐어요'
         aria-pressed={current?.user_rating === 1}
-        className='aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary'
         disabled={disabled}
         onClick={() => {
           save.mutate({ rating: nextRating(current?.user_rating, 1), feedback, kind: 'rating' });
@@ -68,7 +67,6 @@ export function AnswerActions({ messageId, conversationId, question }: { message
         variant='ghost'
         aria-label='아쉬워요'
         aria-pressed={current?.user_rating === -1}
-        className='aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary'
         disabled={disabled}
         onClick={() => {
           save.mutate({ rating: nextRating(current?.user_rating, -1), feedback, kind: 'rating' });

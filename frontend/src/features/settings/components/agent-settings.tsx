@@ -77,7 +77,7 @@ function StyleForm({ settings }: { settings: AgentSettingsView }) {
           value={style.custom ?? ''}
           onChange={e => setStyle({ ...style, custom: e.target.value })}
         />
-        <p className='text-2xs text-faint'>표현 방식만 바꿉니다. 근거·공유·승인 규칙은 그대로 적용됩니다.</p>
+        <p className='text-xs text-faint'>표현 방식만 바꿉니다. 근거·공유·승인 규칙은 그대로 적용됩니다.</p>
       </div>
       {settings.style_warnings?.length ? (
         <Alert>확인할 내용: {settings.style_warnings.map(w => FINDING_LABEL[w] ?? w).join(', ')}</Alert>
@@ -102,7 +102,7 @@ export function AgentSettings() {
   const a = activity.data;
 
   return (
-    <div className='max-w-[760px]'>
+    <div className='max-w-reading'>
       <Section
         title='상담에서 배우기'
         info={
@@ -163,7 +163,7 @@ export function AgentSettings() {
             <div>
               <dt className='text-xs text-muted-foreground'>AI 호출</dt>
               <dd className='text-title font-semibold tabular-nums'>{a.model_calls}회</dd>
-              {a.failed_calls > 0 && <dd className='text-2xs text-destructive'>완료 못함 {a.failed_calls}회</dd>}
+              {a.failed_calls > 0 && <dd className='text-xs text-destructive'>완료 못함 {a.failed_calls}회</dd>}
             </div>
             <div>
               <dt className='text-xs text-muted-foreground'>플레이북 사용</dt>
@@ -172,7 +172,7 @@ export function AgentSettings() {
             <div>
               <dt className='text-xs text-muted-foreground'>배운 절차 제안</dt>
               <dd className='text-title font-semibold tabular-nums'>{a.learning_proposals}건</dd>
-              <dd className='text-2xs text-faint'>
+              <dd className='text-xs text-faint'>
                 승인 {a.learning_approved} · 거절 {a.learning_rejected}
               </dd>
             </div>

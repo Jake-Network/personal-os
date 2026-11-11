@@ -28,10 +28,10 @@ export function SecuritySettings() {
     staleTime: 0,
   });
   return (
-    <div className='max-w-[760px]'>
+    <div className='max-w-reading'>
       <Section title='앱 잠금'>
         <div className='flex flex-col gap-1 py-2'>
-          <p>15분 동안 아무 활동이 없으면 잠깁니다. 화면의 전체 잠금으로 모든 탭을 바로 잠글 수 있습니다.</p>
+          <p>15분 동안 아무 활동이 없으면 잠깁니다. 메뉴 아래쪽의 전체 잠금으로 모든 탭을 바로 잠글 수 있습니다.</p>
           <p className='text-ui text-muted-foreground'>{diagnostics.data?.lock_scope ?? '잠겨 있어도 허용한 자동 작업은 계속 실행됩니다.'}</p>
         </div>
       </Section>

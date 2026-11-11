@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, FormEvent, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { customInstance } from '@/api-client/custom-client';
@@ -10,11 +10,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { clearPrivateSession, getCsrfToken, setCsrfToken } from './session';
 
+const LockContext = createContext<() => Promise<void>>(async () => undefined);
+
+/** Locks every tab of the app now. */
+export const useLock = () => useContext(LockContext);
+
 /** The private tree only mounts after a live server session has been checked. */
 export function SecurityGate({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   const [status, setStatus] = useState<Status | null>(null);
   const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const channel = useRef<BroadcastChannel | null>(null);
@@ -30,6 +36,7 @@ export function SecurityGate({ children }: { children: ReactNode }) {
     client.clear();
     toast.dismiss();
     setPassword('');
+    setConfirmation('');
     setStatus(value => (value ? { ...value, authenticated: false, csrf_token: null } : value));
   }, [client]);
   const apply = useCallback(
@@ -116,6 +123,10 @@ export function SecurityGate({ children }: { children: ReactNode }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (status && !status.configured && password !== confirmation) {
+      setError('비밀번호가 서로 다릅니다. 다시 입력해 주세요.');
+      return;
+    }
     const submittedGeneration = ++generation.current;
     setPending(true);
     setError('');
@@ -128,6 +139,7 @@ export function SecurityGate({ children }: { children: ReactNode }) {
       if (submittedGeneration !== generation.current) return;
       apply(value);
       setPassword('');
+      setConfirmation('');
       lastActivity.current = Date.now();
       channel.current?.postMessage('unlocked');
     } catch (e) {
@@ -138,18 +150,13 @@ export function SecurityGate({ children }: { children: ReactNode }) {
   }
   if (status?.authenticated)
     return (
-      <div className='flex h-dvh flex-col'>
-        <div className='flex h-11 shrink-0 items-center justify-end border-b bg-card px-3'>
-          <Button size='sm' variant='default' onClick={() => void lock()}>
-            전체 잠금
-          </Button>
-        </div>
-        <div className='min-h-0 flex-1'>{children}</div>
-      </div>
+      <LockContext.Provider value={lock}>
+        <div className='h-dvh'>{children}</div>
+      </LockContext.Provider>
     );
   return (
     <main className='flex min-h-screen items-center justify-center p-6'>
-      <form onSubmit={submit} className='w-full max-w-sm space-y-4 rounded-xl border bg-card p-6 shadow-sm'>
+      <form onSubmit={submit} className='w-full max-w-sm space-y-4 rounded-xl border bg-card p-6'>
         <h1 className='text-xl font-semibold'>Personal OS {status?.configured ? '잠금 해제' : status ? '소유자 설정' : '연결 확인'}</h1>
         <p className='text-sm text-muted-foreground'>개인 데이터를 열려면 비밀번호가 필요합니다. 잠금 중에도 승인한 백그라운드 작업은 계속됩니다.</p>
         {status && (
@@ -169,6 +176,23 @@ export function SecurityGate({ children }: { children: ReactNode }) {
               autoFocus
               disabled={pending}
             />
+            {!status.configured && (
+              <>
+                <label htmlFor='owner-password-confirm' className='block text-sm'>
+                  비밀번호 확인
+                </label>
+                <Input
+                  id='owner-password-confirm'
+                  type='password'
+                  autoComplete='new-password'
+                  value={confirmation}
+                  onChange={event => setConfirmation(event.target.value)}
+                  maxLength={1024}
+                  required
+                  disabled={pending}
+                />
+              </>
+            )}
             <Button type='submit' disabled={pending} className='w-full'>
               {pending ? '확인 중…' : status.configured ? '잠금 해제' : '비밀번호 설정'}
             </Button>

@@ -171,4 +171,5 @@ export const ERROR_HINT: Record<string, { action: string; href: string }> = {
   reauth_required: { action: '다시 로그인', href: '/settings/ai-provider' },
   plan_usage_not_authorized: { action: '권한 포함해 재연결', href: '/settings/ai-provider' },
   plan_usage_limit_exceeded: { action: '사용량 상태 보기', href: '/settings/ai-provider' },
+  transfer_policy_unconfirmed: { action: '전송 확인하기', href: '/settings/ai-provider' },
 };

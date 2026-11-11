@@ -73,9 +73,9 @@ export function LedgerEntrySheet({
   });
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
-      <SheetContent side='right' className='w-[min(480px,100vw)] overflow-y-auto'>
+      <SheetContent side='right'>
         <div className='flex flex-col gap-3 p-5'>
-          <SheetTitle className='pr-8 text-title font-semibold'>{title}</SheetTitle>
+          <SheetTitle>{title}</SheetTitle>
           {schema.isPending && <ListSkeleton rows={5} />}
           {schema.data && (
             <DataForm

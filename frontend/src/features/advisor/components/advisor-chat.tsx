@@ -11,9 +11,11 @@ import { customInstance } from '@/api-client/custom-client';
 import { getGetConversationQueryOptions, getGetSnapshotQueryOptions } from '@/api-client/generated/advisor/advisor';
 import { useGetStatus } from '@/api-client/generated/ai-provider/ai-provider';
 import { useGetPrivacy } from '@/api-client/generated/privacy/privacy';
+import { useGetTransferPolicy } from '@/api-client/generated/transfer-policy/transfer-policy';
 import { useListProposals } from '@/api-client/generated/proposals/proposals';
 import type { ConversationCreateDomain, ConversationDetail } from '@/api-client/model';
 import { notify } from '@/components/notify';
+import { QueryStatus } from '@/components/query-status';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -93,6 +95,8 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   const provider = providerStatus.data;
   const providerNeedsSetup =
     provider?.provider === 'codex_app_server' || (provider?.provider === 'chatgpt_plan' && (!provider.connected || !provider.plan_usage_enabled));
+  const transferUnconfirmed = useGetTransferPolicy().data?.confirmed === false;
+  const sendBlocked = providerNeedsSetup || transferUnconfirmed;
   const pendingProposals = useListProposals(
     { status: 'pending' },
     { query: { enabled: conversationId !== null, select: list => list.filter(p => p.conversation_id === conversationId) } },
@@ -115,7 +119,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
     domain,
     documentParam: searchParams.get('document'),
     workspace,
-    providerNeedsSetup,
+    providerNeedsSetup: sendBlocked,
     privacyBlocked,
     onInspector: (data, mode, loading) => onInspectorRef.current?.(data, mode, loading),
     onConversationCreated,
@@ -173,8 +177,7 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
   }
 
   const suggestions = SUGGESTIONS[domain ?? 'general'] ?? SUGGESTIONS.general;
-  const inlineIds = new Set(messages.flatMap(m => m.proposals?.map(p => p.id) ?? []));
-  const pending = (pendingProposals ?? []).filter(p => !inlineIds.has(p.id));
+  const pending = pendingProposals ?? [];
   const runMemories = (Array.isArray(workspace.run?.result?.memory_proposals) ? workspace.run.result.memory_proposals : []) as MemoryProposal[];
   const runDataOperations = readDataOperations(workspace.run?.result?.data_operations);
   const operationsInMessage = messages.some(message => message.id === workspace.run?.result?.message_id && readDataOperations(message.data_operations).length > 0);
@@ -207,6 +210,14 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             </Button>
           </Alert>
         )}
+        {!providerNeedsSetup && transferUnconfirmed && (
+          <Alert variant='warning' className='mx-auto w-full max-w-[760px]'>
+            <span className='flex-1'>상담을 보내려면 개인 데이터 전송 확인이 필요합니다.</span>
+            <Button asChild size='sm'>
+              <Link href='/settings/ai-provider'>전송 확인하기</Link>
+            </Button>
+          </Alert>
+        )}
         {providerStatus.error && (
           <Alert variant='warning' className='mx-auto w-full max-w-[760px]'>
             <span className='flex-1'>AI 연결 상태를 확인하지 못했습니다.</span>
@@ -215,12 +226,16 @@ export function AdvisorChat({ conversationId, domain, compact, header, onConvers
             </Button>
           </Alert>
         )}
-        {history.error && <Alert variant='destructive'>{errorMessage(history.error)}</Alert>}
+        {conversationId !== null && (history.isPending || history.error) && (
+          <div className='mx-auto w-full max-w-[760px]'>
+            <QueryStatus pending={history.isPending} error={history.error} retry={history.refetch} label='대화' />
+          </div>
+        )}
         {messages.length === 0 && !send.loadError && (conversationId === null || history.isSuccess) && (
           <AdvisorEmptyState
             suggestions={suggestions}
             excluded={privacyBlocked}
-            disabled={send.busy || providerNeedsSetup}
+            disabled={send.busy || sendBlocked}
             onPick={text => void send.send(text)}
           />
         )}

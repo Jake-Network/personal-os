@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useCallback, useRef, useState } from 'react';
 
 import { useMutation } from '@tanstack/react-query';
 import { History, Trash2 } from 'lucide-react';
@@ -62,6 +62,14 @@ export function RecordSheet({
   const invalidate = useInvalidateResource();
   const confirm = useConfirm();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const dirty = useRef(false);
+  const setDirty = useCallback((value: boolean) => {
+    dirty.current = value;
+  }, []);
+  const closeUnlessDirty = async () => {
+    if (dirty.current && !(await confirm({ title: '저장하지 않은 변경을 버릴까요?', confirmLabel: '버리기', destructive: true }))) return;
+    onClose();
+  };
 
   const save = useMutation({
     retry: false,
@@ -102,10 +110,10 @@ export function RecordSheet({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={next => !next && onClose()}>
-        <SheetContent side='right' className='w-[min(480px,100vw)] overflow-y-auto'>
+      <Sheet open={open} onOpenChange={next => !next && void closeUnlessDirty()}>
+        <SheetContent side='right'>
           <div className='flex flex-col gap-3 p-5'>
-            <SheetTitle className='pr-8 text-title font-semibold'>{heading}</SheetTitle>
+            <SheetTitle>{heading}</SheetTitle>
             {note && <p className='text-ui text-muted-foreground'>{note}</p>}
             {children}
             {fields.error && <Alert variant='destructive'>입력 양식을 불러오지 못했습니다.</Alert>}
@@ -121,7 +129,8 @@ export function RecordSheet({
                 current={record ?? defaults}
                 submitLabel={record ? '저장' : '추가'}
                 onSubmit={save.mutateAsync}
-                onCancel={onClose}
+                onCancel={() => void closeUnlessDirty()}
+                onDirtyChange={setDirty}
                 extraActions={
                   record && (
                     <>

@@ -7,6 +7,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
+import { Card } from '@/components/ui/card';
 import { errorMessage } from '@/api-client/api-error';
 import { getListMemoriesQueryKey, useConfirmMemory, useRejectMemory, useListMemories } from '@/api-client/generated/memory/memory';
 import { getListProposalsQueryKey, useApprove, useReject } from '@/api-client/generated/proposals/proposals';
@@ -19,16 +20,15 @@ import { enumLabel, fieldLabel } from '@/features/personal-data/consts/resources
 
 import type { MemoryProposal } from '../types';
 
-const cardClass = 'rounded-lg border bg-card px-3.5 py-3 shadow-sm';
-
 type Proposal = Pick<ProposalItem, 'id' | 'action' | 'payload' | 'rationale'> & { status?: string };
 
 export function ProposalCard({ proposal }: { proposal: Proposal }) {
   const queryClient = useQueryClient();
-  const options = {
+  const decided = (message: string) => ({
     mutation: {
-      onSuccess: () =>
-        Promise.all(
+      onSuccess: () => {
+        notify.success(message);
+        return Promise.all(
           [
             getListProposalsQueryKey(),
             getListTasksQueryKey(),
@@ -37,11 +37,12 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
             getSummaryQueryKey(),
             ['advisor-workspace'],
           ].map(queryKey => queryClient.invalidateQueries({ queryKey })),
-        ),
+        );
+      },
     },
-  };
-  const approve = useApprove(options);
-  const reject = useReject(options);
+  });
+  const approve = useApprove(decided('승인해 반영했습니다'));
+  const reject = useReject(decided('거절했습니다'));
 
   const state = approve.isSuccess ? 'approved' : reject.isSuccess ? 'rejected' : proposal.status !== 'pending' ? proposal.status : undefined;
   const busy = approve.isPending || reject.isPending;
@@ -50,7 +51,7 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
     proposal.payload._before && typeof proposal.payload._before === 'object' ? (proposal.payload._before as Record<string, unknown>) : {};
 
   return (
-    <div className={cardClass}>
+    <Card className='px-3.5 py-3'>
       <div className='flex items-center gap-2'>
         <span className='text-ui font-semibold'>{ACTION_LABEL[proposal.action] ?? '변경'} 제안</span>
         <span className='flex-1' />
@@ -84,10 +85,10 @@ export function ProposalCard({ proposal }: { proposal: Proposal }) {
           <Button size='sm' variant='ghost' disabled={busy} onClick={() => reject.mutate({ proposalId: proposal.id })}>
             거절
           </Button>
-          <span className='text-2xs text-faint'>승인하기 전에는 바뀌지 않습니다.</span>
+          <span className='text-xs text-faint'>승인하기 전에는 바뀌지 않습니다.</span>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -131,7 +132,7 @@ export function MemoryProposalCard({ memory }: { memory: MemoryProposal }) {
   const busy = confirmMemory.isPending || rejectMemory.isPending;
 
   return (
-    <div className={cardClass}>
+    <Card className='px-3.5 py-3'>
       <div className='flex items-center gap-2'>
         <span className='text-ui font-semibold'>기억해 둘까요?</span>
         <Badge>{MEMORY_KIND_LABEL[memory.kind] ?? '기억'}</Badge>
@@ -152,6 +153,6 @@ export function MemoryProposalCard({ memory }: { memory: MemoryProposal }) {
           </Button>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

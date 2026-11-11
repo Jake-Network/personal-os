@@ -78,6 +78,11 @@ export function SourceCalendar({ sources, layers = false }: Props) {
   return (
     <>
       {failed && <QueryStatus pending={false} error={failed.error} retry={failed.refetch} label='달력' />}
+      {pending && (
+        <span role='status' className='sr-only'>
+          달력을 불러오는 중
+        </span>
+      )}
       <CalendarView
         items={items}
         onSelect={pick}

@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { notify } from '@/components/notify';
 import { Section } from '@/components/page-container';
-import { Alert } from '@/components/ui/alert';
+import { QueryStatus } from '@/components/query-status';
 import { Switch } from '@/components/ui/switch';
 
 import { getGetPrivacyQueryKey, useGetPrivacy, usePutPrivacy } from '@/api-client/generated/privacy/privacy';
@@ -45,10 +45,10 @@ export function PrivacySettingsView() {
   }
 
   return (
-    <div className='max-w-[720px]'>
+    <div className='max-w-reading'>
       <Section title='AI와 공유할 영역' info={<p>질문할 때마다 영역별로 한 번 더 조정할 수 있습니다. 홈처럼 이 기기 안에서만 보는 화면에는 적용되지 않습니다.</p>}>
         <p className='py-1 text-ui text-muted-foreground'>꺼 둔 영역은 어떤 질문에서도 외부 AI로 보내지 않습니다.</p>
-        {privacy.error && <Alert variant='destructive'>{privacy.error.message}</Alert>}
+        <QueryStatus pending={false} error={privacy.error} retry={privacy.refetch} label='공유 설정' />
         <ul className='divide-y'>
           {ALL_CATEGORIES.map(c => {
             const shared = excluded ? !excluded.has(c) : false;

@@ -4,7 +4,8 @@ export const PROVIDERS = [
   {
     key: 'local_densecore',
     label: '로컬 모델 (DenseCore)',
-    note: '이 PC나 내부망의 DenseCore 서버로 답합니다. 서버 주소(LLM_LOCAL_URL)와 불러온 모델 ID(LLM_LOCAL_MODEL_ID)를 설정해야 하며, 작은 모델은 분석 단계의 형식 검증에 실패할 수 있습니다.',
+    note: '이 PC나 내부망의 DenseCore 서버로 답합니다. 서버 환경 설정에 서버 주소와 모델을 넣어야 하며, 작은 모델은 분석 단계의 형식 검증에 실패할 수 있습니다.',
+    advanced: '서버 환경 변수 LLM_LOCAL_URL(서버 주소)과 LLM_LOCAL_MODEL_ID(불러온 모델 ID)를 설정합니다.',
   },
   { key: 'codex_app_server', label: 'Codex 앱 서버', note: '아직 지원하지 않습니다.' },
 ];

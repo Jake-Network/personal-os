@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { Alert } from '@/components/ui/alert';
@@ -35,6 +35,8 @@ interface Props {
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => Promise<unknown>;
   onCancel: () => void;
+  /** Reports whether the form differs from the values it opened with. */
+  onDirtyChange?: (dirty: boolean) => void;
   /** Extra actions on the left of the submit row (e.g. delete). */
   extraActions?: ReactNode;
 }
@@ -50,9 +52,15 @@ export function DataForm({
   submitLabel,
   onSubmit,
   onCancel,
+  onDirtyChange,
   extraActions,
 }: Props) {
   const { register, control, handleSubmit, formState, getValues, setValue } = useForm<FormValues>({ defaultValues: initialValues(fields, current) });
+  const { isDirty } = formState;
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
   const values = useWatch({ control });
   const fieldSuggestions = Object.fromEntries(
     Object.entries(suggestions ?? {}).map(([name, config]) => [
@@ -64,8 +72,8 @@ export function DataForm({
   const allDayValue = useWatch({ control, name: ALL_DAY.flag });
   const allDay = allDayForm && Boolean(allDayValue);
   const flipAllDay = (next: boolean) => {
-    setValue(ALL_DAY.start, toggleAllDayValue(String(getValues(ALL_DAY.start) ?? ''), next, '09:00'));
-    setValue(ALL_DAY.end, toggleAllDayValue(String(getValues(ALL_DAY.end) || getValues(ALL_DAY.start) || ''), next, '10:00'));
+    setValue(ALL_DAY.start, toggleAllDayValue(String(getValues(ALL_DAY.start) ?? ''), next, '09:00'), { shouldDirty: true });
+    setValue(ALL_DAY.end, toggleAllDayValue(String(getValues(ALL_DAY.end) || getValues(ALL_DAY.start) || ''), next, '10:00'), { shouldDirty: true });
   };
   const [error, setError] = useState<string | null>(null);
 

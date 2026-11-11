@@ -13,7 +13,7 @@ const REF_HREF = '#ref:';
 const withRefLinks = (text: string) =>
   text.replace(REF, (_m, table: string, id: string) => `[${TABLE_LABEL[table] ?? '기록'}](${REF_HREF}${table}:${id})`);
 
-const chip = 'inline-flex items-center rounded-sm border bg-muted px-1.5 text-2xs leading-5 text-muted-foreground';
+const chip = 'inline-flex items-center rounded-sm border bg-muted px-1.5 text-xs leading-5 text-muted-foreground';
 
 const componentsFor = (onDocumentRef?: (ref: string) => void, recordHref?: (table: string, id: number) => string | null): Components => ({
   // Model/document markdown must never contact an external image server.

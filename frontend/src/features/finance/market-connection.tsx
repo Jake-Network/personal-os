@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { customInstance } from '@/api-client/custom-client';
 import { notify } from '@/components/notify';
+import { QueryStatus } from '@/components/query-status';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,7 +91,7 @@ export function MarketConnection() {
         <Alert variant='warning'>연결된 Google 계정이 기존 시세 파일과 다릅니다. 현재 계정으로 새 시세 파일을 연결하세요.</Alert>
       )}
       {data?.last_error && <Alert variant='warning'>{data.last_error}</Alert>}
-      {state.error && <Alert variant='destructive'>{state.error.message}</Alert>}
+      <QueryStatus pending={false} error={state.error} retry={state.refetch} label='시세 연결 상태' />
       {action.data?.warning && <Alert variant='warning'>{action.data.warning}</Alert>}
     </div>
   );

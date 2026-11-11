@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 
-import { ApiError, errorMessage } from '@/api-client/api-error';
+import { ApiError, errorMessage, toApiError } from '@/api-client/api-error';
 import { useGetAgentSettings } from '@/api-client/generated/agent/agent';
 import { createConversation, getListConversationsQueryKey, previewContext } from '@/api-client/generated/advisor/advisor';
 import { getListProposalsQueryKey } from '@/api-client/generated/proposals/proposals';
@@ -58,7 +58,7 @@ export function useAdvisorSend({
     [rawDraft, recordingChosen, recordingDefault],
   );
   const [sending, setSending] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ message: string; code?: string } | null>(null);
   const [uncertainRetry, setUncertainRetry] = useState(false);
   const [previewState, setPreviewState] = useState<{ key: string; base?: InspectorData; data?: InspectorData; error?: string } | null>(null);
   const [forcedOn, setForcedOn] = useState<Set<Category>>(new Set());
@@ -162,7 +162,7 @@ export function useAdvisorSend({
       return;
     }
     if (block) {
-      setLoadError(SUBMIT_BLOCK_MESSAGE[block] ?? null);
+      setLoadError(SUBMIT_BLOCK_MESSAGE[block] ? { message: SUBMIT_BLOCK_MESSAGE[block] } : null);
       return;
     }
     sendLock.current = true;
@@ -229,7 +229,8 @@ export function useAdvisorSend({
     } catch (e) {
       // Validation/auth rejection cannot have created this run. Conflict/network/5xx remain uncertain.
       if (e instanceof ApiError && [401, 403, 422].includes(e.status)) pendingRequest.current = null;
-      setLoadError(errorMessage(e));
+      const failure = toApiError(e);
+      setLoadError({ message: failure.message, code: failure.code });
       if (convId) void queryClient.invalidateQueries({ queryKey: workspaceKey(convId) });
       if (conversationId === null && convId !== null) {
         try {

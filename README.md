@@ -45,7 +45,7 @@ docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREA
 TEST_DATABASE_URL=postgresql+psycopg://personal_os:personal_os@127.0.0.1:55432/personal_os_test uv run pytest -q
 ```
 
-Browser smoke tests (Playwright) run the real backend with a fake model provider (`scripts/e2e_server.py`) against a database whose name must end in `_e2e`; it is wiped at start. The frontend is built and served on port 5174, so it does not collide with a running dev server:
+Browser smoke tests (Playwright) run the real backend with a fake model provider (`scripts/e2e_server.py`) against a database whose name must end in `_e2e`; it is wiped at start. The frontend is built and served on port 5174, so it does not collide with a running dev server. The `narrow` project then walks every screen at a 390px-wide viewport and fails on sideways scrolling:
 
 ```bash
 docker exec personal-os-test-pg psql -U personal_os -d personal_os_test -c "CREATE DATABASE personal_os_e2e"
@@ -153,7 +153,7 @@ LangChain 모델·조회 도구와 LangGraph 실행은 기존 모델 Gateway와 
 
 저장된 최종 답변은 `결정으로 기록`하거나 👍/👎로 평가할 수 있습니다. 결정 등록·대안 선택·답변 기록은 같은 폼에서 선택·이유·예상 결과·회고일을 입력하며, 원래 답변의 근거를 보존합니다. 새로 저장하는 답변 연결 결정은 원본 메시지 ID도 보존해 재시도한 답변을 구분합니다. 기존 결정의 메시지 ID는 임의로 추정하지 않습니다. 결정 제목은 200자까지이며 질문에서 채운 기본 제목도 같은 길이로 제한합니다. 회고일은 앱 시간대 오전 9시로 저장합니다. 확인 질문과 미완성·실패 답변은 대상에서 제외됩니다. 평가는 답변별로 저장되며 같은 버튼을 다시 누르면 해제합니다. 평가와 사유는 상담 근거로 전송하지 않습니다.
 
-홈의 `이번 주 살펴볼 것`은 모델 호출 없이 지출·목표 마감·면접·운동 기록을 확인합니다. 지출은 자료가 충분할 때만 이번 달 누적과 최근 완료된 3개월의 월평균을 비교합니다. `상담으로 이어가기`는 질문 초안만 채우며 기존 초안을 덮어쓰거나 자동 전송하지 않습니다. 상담 준비 항목의 AI 연결 완료는 로컬 설정 상태이며 실제 추론 성공을 뜻하지 않습니다. 실제로 답하는지는 시작 가이드나 `/settings/ai-provider`의 `연결 테스트`로 확인합니다. 이 버튼은 누를 때만 개인 데이터 없는 고정 문장 하나를 보내고, 상담·모델 작업과 같은 전역 1개 실행 규칙을 따라 다른 분석이 실행 중이면 보내지 않습니다. 처음 실행하면 4단계(AI 연결·생활비 통장·최근 지출·목표 또는 지원)와 첫 질문 초안을 안내하는 `5분 시작 가이드`가 한 번 열립니다. 모두 충족하면 상담 준비 항목이 숨겨집니다. 기억은 `/settings/memory`의 `AI가 아는 나`에서 관리하며 `/memory`, `/reflect/memory`도 이 화면으로 연결됩니다.
+홈의 `이번 주 살펴볼 것`은 모델 호출 없이 지출·목표 마감·면접·운동 기록을 확인합니다. 지출은 자료가 충분할 때만 이번 달 누적과 최근 완료된 3개월의 월평균을 비교합니다. `상담으로 이어가기`는 질문 초안만 채우며 기존 초안을 덮어쓰거나 자동 전송하지 않습니다. 상담 준비 항목의 AI 연결 완료는 로컬 설정 상태이며 실제 추론 성공을 뜻하지 않습니다. 실제로 답하는지는 시작 가이드나 `/settings/ai-provider`의 `연결 테스트`로 확인합니다. 이 버튼은 누를 때만 개인 데이터 없는 고정 문장 하나를 보내고, 상담·모델 작업과 같은 전역 1개 실행 규칙을 따라 다른 분석이 실행 중이면 보내지 않습니다. 처음 실행하면 5단계(AI 연결·개인 데이터 전송 확인·생활비 통장·최근 지출·목표 또는 지원)와 첫 질문 초안을 안내하는 `5분 시작 가이드`가 한 번 열립니다. 모두 충족하면 상담 준비 항목이 숨겨집니다. 기억은 `/settings/memory`의 `AI가 아는 나`에서 관리하며 `/memory`, `/reflect/memory`도 이 화면으로 연결됩니다.
 
 사용 후 살펴볼 지표는 재무 근거 충족률, 30일 이내 잔고 비율, 결정·회고 완료율, 메시지별 최신 👎 비율입니다. 이 지표는 답변의 계산 정확성·근거 연결·공유 제한 준수 검증을 대신하지 않으며, 별도의 자동 품질 측정 기능을 뜻하지 않습니다.
 

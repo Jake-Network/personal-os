@@ -18,7 +18,7 @@ function MobileTabBar({ onMore }: { onMore: () => void }) {
   const pathname = usePathname();
   const tabs = NAV_ITEMS.filter(i => MOBILE_TABS.includes(i.href));
   const moreActive = !tabs.some(t => isActive(pathname, t.href, t.end));
-  const cell = 'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-2xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  const cell = 'flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <nav aria-label='주 메뉴' className='flex border-t bg-card pb-[env(safe-area-inset-bottom)] md:hidden'>
       {tabs.map(t => {

@@ -43,7 +43,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 한국어 UI와 기존 앱 셸을 사용한다. 현재 상태, 불확실성, 다음 행동을 보여준다. 결측·공유 제외·오래됨·부분 성공·실패를 서로 구별한다.
 - 기존 TypeScript 타입, `@/` import, Tailwind/shadcn, React Hook Form/Zod 패턴을 따른다. 입력 폼은 `features/personal-data/hooks/use-schema-fields.ts`와 스키마 유틸리티를 재사용하고 필드 정의를 복제하지 않는다.
 - 서버 상태는 TanStack Query, 일시적인 입력·열림 상태는 필요한 컴포넌트가 소유한다. 다른 대화로 상태가 섞이지 않게 한다. `'use client'`는 상호작용·브라우저 API가 필요한 경계에 둔다.
-- `PageHeader`/`AreaLayout`, `Section`, `RecordSheet`, `EmptyState`, `QueryStatus`, `StatusBadge`/`QualityBadge`를 재사용한다. 삭제 확인은 범위를 설명하는 `useConfirm`을 사용한다.
+- `PageHeader`/`AreaLayout`, `Section`, `RecordSheet`, `EmptyState`, `QueryStatus`, `StatusBadge`/`QualityBadge`, `SegmentedControl`/`ChipGroup`, `listRowClassName`을 재사용한다. 삭제 확인은 범위를 설명하는 `useConfirm`을 사용한다.
 
 ## API·개인정보·표시
 

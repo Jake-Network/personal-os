@@ -137,7 +137,7 @@ function BriefingDialog({ schedule, onClose }: { schedule: ScheduleItem | null; 
                     </label>
                   ))}
                 </div>
-                <p className='mt-1 text-2xs text-faint'>
+                <p className='mt-1 text-xs text-faint'>
                   아무것도 고르지 않으면 항목에 필요한 영역만 보냅니다. 데이터 공유 설정에서 막은 영역은 어느 경우에도 보내지 않습니다.
                 </p>
               </fieldset>
@@ -164,7 +164,7 @@ function BriefingDialog({ schedule, onClose }: { schedule: ScheduleItem | null; 
             바로 실행 허용
           </label>
           {form.llm_enabled && form.enabled && (
-            <p className='text-2xs text-faint'>지금 연결된 AI 계정과 모델로 실행합니다. 연결이 바뀌면 예약을 멈추고 알려 드립니다.</p>
+            <p className='text-xs text-faint'>지금 연결된 AI 계정과 모델로 실행합니다. 연결이 바뀌면 예약을 멈추고 알려 드립니다.</p>
           )}
           {error && <Alert variant='destructive'>{errorMessage(error)}</Alert>}
           <div className='flex justify-end gap-2'>

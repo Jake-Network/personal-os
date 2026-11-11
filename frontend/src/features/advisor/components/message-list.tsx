@@ -22,7 +22,6 @@ import type { DocumentCitation } from '@/features/documents/api';
 import { evidenceHref } from '../consts';
 import type { ChatMessage } from '../types';
 import { snapshotToInspector, stripBlocks } from '../utils';
-import { MemoryProposalCard, ProposalCard } from './proposal-card';
 import { AnswerActions } from './answer-actions';
 import { readDataOperations } from '../data-operations';
 import { DataOperationResults } from './data-operation-results';
@@ -99,12 +98,12 @@ export function MessageItem({
           )}
         </Alert>
       )}
-      <div className={cn('mt-1 flex min-h-7 flex-wrap items-center gap-1 text-2xs text-faint', !assistant && 'justify-end')}>
+      <div className={cn('mt-1 flex min-h-7 flex-wrap items-center gap-1 text-xs text-faint', !assistant && 'justify-end')}>
         {m.created_at && <span>{dateTime(m.created_at)}</span>}
         {m.status === 'incomplete' && <Badge variant='warning'>답변이 끝나지 않음</Badge>}
         {!assistant && m.status === 'failed' && <Badge>답변 없음</Badge>}
         {assistant && !m.streaming && m.context_snapshot_id && (
-          <Button size='sm' variant='ghost' aria-pressed={highlighted} onClick={() => onEvidence(m)} className='text-2xs'>
+          <Button size='sm' variant='ghost' aria-pressed={highlighted} onClick={() => onEvidence(m)} className='text-xs'>
             <FileSearch /> 근거
           </Button>
         )}
@@ -114,16 +113,6 @@ export function MessageItem({
         )}
       </div>
       {assistant && <DataOperationResults operations={readDataOperations(m.data_operations)} />}
-      {m.proposals?.length || m.memoryProposals?.length ? (
-        <div className='mt-2 flex flex-col gap-2.5'>
-          {m.proposals?.map(p => (
-            <ProposalCard key={p.id} proposal={p} />
-          ))}
-          {m.memoryProposals?.map(p => (
-            <MemoryProposalCard key={p.id} memory={p} />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

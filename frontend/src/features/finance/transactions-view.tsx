@@ -10,7 +10,7 @@ import { TabToolbar } from '@/components/area-layout';
 import { EmptyState } from '@/components/empty-state';
 import { InfoPopover } from '@/components/info-popover';
 import { notify } from '@/components/notify';
-import { Section } from '@/components/page-container';
+import { listRowClassName, Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,7 +66,7 @@ export function PlannedExpenses({ recordId = null }: { recordId?: number | null 
                     <button
                       type='button'
                       onClick={() => (setDismissed(false), setSelected(r))}
-                      className='flex w-full items-center gap-3 px-1 py-2.5 text-left hover:bg-muted/50'>
+                      className={cn(listRowClassName, 'items-center gap-3')}>
                       <span className={cn('w-28 shrink-0 text-ui tabular-nums', past ? 'text-faint' : 'text-muted-foreground')}>
                         {dateOnly(String(r.due_on))}
                       </span>

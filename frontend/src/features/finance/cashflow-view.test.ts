@@ -31,7 +31,7 @@ const response: CashflowResponse = {
 describe('household ledger view', () => {
   it('offers all transaction filters and preserved entry points', () => {
     const html = render(response);
-    for (const label of ['매수', '매도', '상환', '예정 지출', '거래 추가', '오늘 평가액 기록', 'CSV 붙여넣기']) expect(html).toContain(label);
+    for (const label of ['매수', '매도', '상환', '예정 지출', '더보기', 'CSV 붙여넣기']) expect(html).toContain(label);
   });
   it('labels totals, categories, trends and excluded records in the response currency', () => {
     const html = render({

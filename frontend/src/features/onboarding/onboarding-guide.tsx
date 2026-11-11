@@ -37,7 +37,7 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
   );
 }
 
-/** First-run guide: four short setup steps and a first question. Opens once; it can be reopened from the home checklist. */
+/** First-run guide: five short setup steps and a first question. Opens once; it can be reopened from the home checklist. */
 export function OnboardingGuide({ checklist, open, onOpenChange }: { checklist: DashboardChecklist; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const client = useQueryClient();
   const state = useOnboarding();
@@ -69,7 +69,15 @@ export function OnboardingGuide({ checklist, open, onOpenChange }: { checklist: 
                 {checklist.ai_configuration_complete && <ConnectionTest />}
               </div>
             </Step>
-            <Step done={checklist.has_cash_account} title='2. 생활비 통장 잔액'>
+            <Step done={checklist.ai_transfer_confirmed} title='2. 개인 데이터 전송 확인'>
+              <div className='flex flex-wrap gap-2'>
+                <Button asChild size='sm'>
+                  <Link href='/settings/ai-provider'>전송 확인하기</Link>
+                </Button>
+              </div>
+              <span className='text-xs text-faint'>연결한 계정의 학습·보관 정책을 확인해야 상담을 보낼 수 있습니다.</span>
+            </Step>
+            <Step done={checklist.has_cash_account} title='3. 생활비 통장 잔액'>
               <div className='flex flex-wrap gap-2'>
                 {checklist.has_cash_account ? (
                   <Button size='sm' onClick={() => setCheckingIn(true)}>
@@ -82,7 +90,7 @@ export function OnboardingGuide({ checklist, open, onOpenChange }: { checklist: 
                 )}
               </div>
             </Step>
-            <Step done={checklist.has_recent_expense} title='3. 최근 지출'>
+            <Step done={checklist.has_recent_expense} title='4. 최근 지출'>
               <div className='flex flex-wrap gap-2'>
                 <Button size='sm' onClick={() => setImporting(true)}>
                   은행·카드 내역 가져오기
@@ -93,7 +101,7 @@ export function OnboardingGuide({ checklist, open, onOpenChange }: { checklist: 
               </div>
               <span className='text-xs text-faint'>버틸 수 있는 기간은 최근 3개월 지출이 모두 기록되어야 계산합니다.</span>
             </Step>
-            <Step done={checklist.has_active_application_or_goal} title='4. 목표 또는 진행 중인 지원'>
+            <Step done={checklist.has_active_application_or_goal} title='5. 목표 또는 진행 중인 지원'>
               <div className='flex flex-wrap gap-2'>
                 <Button asChild size='sm'>
                   <Link href='/plan/goals'>목표 추가</Link>
@@ -103,7 +111,7 @@ export function OnboardingGuide({ checklist, open, onOpenChange }: { checklist: 
                 </Button>
               </div>
             </Step>
-            <Step done={false} title='5. 첫 질문'>
+            <Step done={false} title='6. 첫 질문'>
               <div className='flex flex-wrap gap-2'>
                 {STARTERS.map(([code, label]) => (
                   <Button key={code} asChild size='sm' variant='ghost' onClick={dismiss}>

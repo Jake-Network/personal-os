@@ -6,7 +6,7 @@ import { Briefcase, CalendarClock, Plus } from 'lucide-react';
 
 import { TabToolbar } from '@/components/area-layout';
 import { EmptyState } from '@/components/empty-state';
-import { Section } from '@/components/page-container';
+import { listRowClassName, Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,7 @@ function ApplicationCard({ app, next, onOpen }: { app: Row; next?: Row; onOpen: 
     <button
       type='button'
       onClick={onOpen}
-      className='flex w-full flex-col gap-1 rounded-lg border bg-card p-3 text-left shadow-sm hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
+      className='flex w-full flex-col gap-1 rounded-lg border bg-card p-3 text-left hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
       <span className='font-semibold'>{String(app.company)}</span>
       <span className='text-ui text-muted-foreground'>{String(app.role)}</span>
       {app.next_step ? <span className='text-xs'>다음: {String(app.next_step)}</span> : null}
@@ -157,7 +157,7 @@ export function ApplicationsView({ recordId }: { recordId: number | null }) {
                   <ul className='divide-y'>
                     {closed.map(a => (
                       <li key={a.id}>
-                        <button type='button' onClick={() => openApp(a)} className='flex w-full items-center gap-2 py-2 text-left hover:bg-muted/40'>
+                        <button type='button' onClick={() => openApp(a)} className={cn(listRowClassName, 'items-center gap-2')}>
                           <span className='flex-1'>{appLabel(a)}</span>
                           <StatusBadge value={String(a.status)} />
                         </button>
@@ -180,7 +180,7 @@ export function ApplicationsView({ recordId }: { recordId: number | null }) {
                         <button
                           type='button'
                           onClick={() => setSheet({ resource: 'interviews', record: i })}
-                          className='flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-left hover:bg-muted/40'>
+                          className={cn(listRowClassName, 'flex-wrap items-baseline gap-x-3 gap-y-0.5')}>
                           <span className='w-36 shrink-0 text-ui tabular-nums text-muted-foreground'>{dateTime(i.starts_at as string)}</span>
                           <span className='font-medium'>{app ? appLabel(app) : '연결된 지원 없음'}</span>
                           <span className='text-ui text-muted-foreground'>{String(i.stage)}</span>

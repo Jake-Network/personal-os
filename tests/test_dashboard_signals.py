@@ -10,6 +10,7 @@ NOW = datetime(2026, 10, 20, 3, tzinfo=UTC)
 def test_empty_dashboard_has_incomplete_checklist(session):
     result = dashboard_manager.summary(session, NOW)
     assert result['signals'] == []
+    assert result['checklist']['ai_transfer_confirmed'] is False
     assert result['checklist']['has_cash_account'] is False
     assert result['checklist']['has_recent_expense'] is False
     assert result['checklist']['has_active_application_or_goal'] is False
@@ -96,7 +97,7 @@ def test_configuration_checks_selected_provider_only(session, monkeypatch):
 def test_dashboard_http_contract(client):
     response = client.get('/api/dashboard/summary')
     assert response.status_code == 200
-    assert set(response.json()['checklist']) == {'ai_configuration_complete', 'has_cash_account', 'has_recent_expense', 'has_active_application_or_goal'}
+    assert set(response.json()['checklist']) == {'ai_configuration_complete', 'ai_transfer_confirmed', 'has_cash_account', 'has_recent_expense', 'has_active_application_or_goal'}
 
 
 def test_expense_signal_requires_strict_increase_and_all_three_months(session):

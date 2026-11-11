@@ -45,8 +45,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {options?.description && <DialogDescription className='text-ui text-muted-foreground'>{options.description}</DialogDescription>}
           </DialogHeader>
           <div className='flex justify-end gap-2'>
-            <Button onClick={() => close(false)}>취소</Button>
-            <Button variant={options?.destructive ? 'destructive-solid' : 'primary'} autoFocus onClick={() => close(true)}>
+            {/* Enter on open must not delete: a destructive confirm starts on 취소. */}
+            <Button autoFocus={options?.destructive} onClick={() => close(false)}>
+              취소
+            </Button>
+            <Button variant={options?.destructive ? 'destructive-solid' : 'primary'} autoFocus={!options?.destructive} onClick={() => close(true)}>
               {options?.confirmLabel ?? '확인'}
             </Button>
           </div>

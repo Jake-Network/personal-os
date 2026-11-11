@@ -42,7 +42,7 @@ function Summaries({ conversationId }: { conversationId: number }) {
       {list.data?.length === 0 && <p className='text-ui text-muted-foreground'>아직 요약이 없습니다.</p>}
       {list.data?.map(s => (
         <article key={s.id} className='rounded-md border bg-background p-2.5'>
-          <p className='mb-1 text-2xs text-faint'>{dateTime(s.created_at)} 작성</p>
+          <p className='mb-1 text-xs text-faint'>{dateTime(s.created_at)} 작성</p>
           <p className='whitespace-pre-wrap text-ui'>{s.content}</p>
         </article>
       ))}

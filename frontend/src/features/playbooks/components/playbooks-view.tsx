@@ -20,7 +20,7 @@ import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { Markdown } from '@/components/markdown';
 import { notify } from '@/components/notify';
-import { Section } from '@/components/page-container';
+import { listRowClassName, Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { CATEGORY_LABEL } from '@/lib/labels';
 import { dateTime } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
 
 import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 
@@ -67,103 +68,105 @@ function PlaybookSheet({ playbookId, onClose }: { playbookId: number; onClose: (
 
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
-      <SheetContent side='right' className='w-[min(640px,100%)] overflow-y-auto'>
-        <SheetTitle>{active?.title ?? playbook?.slug ?? '플레이북'}</SheetTitle>
-        <QueryStatus pending={detail.isPending} error={detail.error} retry={detail.refetch} label='플레이북' />
-        {playbook && (
-          <div className='mt-3 flex flex-col gap-4'>
-            <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
-              <Badge variant={playbook.status === 'active' ? 'success' : 'default'}>{PLAYBOOK_STATUS[playbook.status] ?? playbook.status}</Badge>
-              <span>/{playbook.slug}</span>
-              <span>상담에서 {playbook.usage_count}번 사용</span>
-              {playbook.source === 'advisor' && <span>상담에서 배움</span>}
-            </div>
-            <OutcomeLine outcomes={playbook.outcomes} />
-            {active?.source_purged && (
-              <Alert>학습 근거가 된 대화나 결정이 삭제되어 이 플레이북을 상담에 보내지 않습니다. 내용을 확인하고 수정해 저장하면 다시 사용합니다.</Alert>
-            )}
-            {active?.warnings.length ? (
-              <Alert>확인할 내용: {active.warnings.map(w => FINDING_LABEL[w] ?? w).join(', ')}</Alert>
-            ) : null}
-            <label className='flex items-center gap-3'>
-              <span className='flex-1'>
-                <span className='block text-ui'>상담에 보내기</span>
-                <span className='block text-2xs text-faint'>끄면 이 기기에만 두고 AI에는 보내지 않습니다.</span>
-              </span>
-              <Switch
-                checked={playbook.external_allowed}
-                disabled={sharing.isPending}
-                onCheckedChange={value => sharing.mutate({ playbookId, data: { external_allowed: value } })}
-              />
-            </label>
-            {active && (
-              <div>
-                <p className='text-ui text-muted-foreground'>{active.summary}</p>
-                <div className='mt-1 flex flex-wrap gap-1'>
-                  {active.categories.map(c => (
-                    <Badge key={c}>{categoryLabel(c)}</Badge>
-                  ))}
-                  {active.triggers.map(t => (
-                    <Badge key={t} variant='accent'>
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
-                <div className='mt-3 rounded-md border p-3'>
-                  <Markdown text={active.body} />
-                </div>
+      <SheetContent side='right' size='lg'>
+        <div className='p-5'>
+          <SheetTitle>{active?.title ?? playbook?.slug ?? '플레이북'}</SheetTitle>
+          <QueryStatus pending={detail.isPending} error={detail.error} retry={detail.refetch} label='플레이북' />
+          {playbook && (
+            <div className='mt-3 flex flex-col gap-4'>
+              <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
+                <Badge variant={playbook.status === 'active' ? 'success' : 'default'}>{PLAYBOOK_STATUS[playbook.status] ?? playbook.status}</Badge>
+                <span>/{playbook.slug}</span>
+                <span>상담에서 {playbook.usage_count}번 사용</span>
+                {playbook.source === 'advisor' && <span>상담에서 배움</span>}
               </div>
-            )}
-            <div className='flex flex-wrap gap-2'>
+              <OutcomeLine outcomes={playbook.outcomes} />
+              {active?.source_purged && (
+                <Alert>학습 근거가 된 대화나 결정이 삭제되어 이 플레이북을 상담에 보내지 않습니다. 내용을 확인하고 수정해 저장하면 다시 사용합니다.</Alert>
+              )}
+              {active?.warnings.length ? (
+                <Alert>확인할 내용: {active.warnings.map(w => FINDING_LABEL[w] ?? w).join(', ')}</Alert>
+              ) : null}
+              <label className='flex items-center gap-3'>
+                <span className='flex-1'>
+                  <span className='block text-ui'>상담에 보내기</span>
+                  <span className='block text-xs text-faint'>끄면 이 기기에만 두고 AI에는 보내지 않습니다.</span>
+                </span>
+                <Switch
+                  checked={playbook.external_allowed}
+                  disabled={sharing.isPending}
+                  onCheckedChange={value => sharing.mutate({ playbookId, data: { external_allowed: value } })}
+                />
+              </label>
               {active && (
-                <Button size='sm' variant='primary' onClick={() => setEditing(true)}>
-                  수정
-                </Button>
-              )}
-              {playbook.status === 'archived' ? (
-                <Button size='sm' disabled={restore.isPending} onClick={() => restore.mutate({ playbookId })}>
-                  다시 사용
-                </Button>
-              ) : (
-                <Button size='sm' disabled={archive.isPending} onClick={() => archive.mutate({ playbookId })}>
-                  보관
-                </Button>
-              )}
-              <Button size='sm' variant='ghost-destructive' disabled={remove.isPending} onClick={() => void onDelete()}>
-                삭제
-              </Button>
-            </div>
-            {pending.length > 0 && (
-              <Section title='승인 대기 제안' count={pending.length}>
-                <div className='flex flex-col gap-3'>
-                  {pending.map(r => (
-                    <PlaybookProposalCard key={r.id} revision={r} />
-                  ))}
+                <div>
+                  <p className='text-ui text-muted-foreground'>{active.summary}</p>
+                  <div className='mt-1 flex flex-wrap gap-1'>
+                    {active.categories.map(c => (
+                      <Badge key={c}>{categoryLabel(c)}</Badge>
+                    ))}
+                    {active.triggers.map(t => (
+                      <Badge key={t} variant='accent'>
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className='mt-3 rounded-md border p-3'>
+                    <Markdown text={active.body} />
+                  </div>
                 </div>
+              )}
+              <div className='flex flex-wrap gap-2'>
+                {active && (
+                  <Button size='sm' variant='primary' onClick={() => setEditing(true)}>
+                    수정
+                  </Button>
+                )}
+                {playbook.status === 'archived' ? (
+                  <Button size='sm' disabled={restore.isPending} onClick={() => restore.mutate({ playbookId })}>
+                    다시 사용
+                  </Button>
+                ) : (
+                  <Button size='sm' disabled={archive.isPending} onClick={() => archive.mutate({ playbookId })}>
+                    보관
+                  </Button>
+                )}
+                <Button size='sm' variant='ghost-destructive' disabled={remove.isPending} onClick={() => void onDelete()}>
+                  삭제
+                </Button>
+              </div>
+              {pending.length > 0 && (
+                <Section title='승인 대기 제안' count={pending.length}>
+                  <div className='flex flex-col gap-3'>
+                    {pending.map(r => (
+                      <PlaybookProposalCard key={r.id} revision={r} />
+                    ))}
+                  </div>
+                </Section>
+              )}
+              <Section title='수정 기록' count={revisions.length}>
+                <ul className='divide-y'>
+                  {revisions.map(r => (
+                    <li key={r.id} className='py-2'>
+                      <div className='flex flex-wrap items-center gap-2 text-ui'>
+                        <Badge variant={r.status === 'active' ? 'success' : 'default'}>{REVISION_STATUS[r.status] ?? r.status}</Badge>
+                        <span>{r.title}</span>
+                        <span className='text-xs text-faint'>
+                          {dateTime(r.decided_at ?? r.created_at)} · {r.source === 'advisor' ? '상담에서 제안' : '직접 작성'}
+                        </span>
+                        <Button size='sm' variant='ghost' className='ml-auto' aria-expanded={compare === r.id} onClick={() => setCompare(compare === r.id ? null : r.id)}>
+                          {compare === r.id ? '접기' : '이전과 비교'}
+                        </Button>
+                      </div>
+                      {compare === r.id && <DiffView revisionId={r.id} />}
+                    </li>
+                  ))}
+                </ul>
               </Section>
-            )}
-            <Section title='수정 기록' count={revisions.length}>
-              <ul className='divide-y'>
-                {revisions.map(r => (
-                  <li key={r.id} className='py-2'>
-                    <div className='flex flex-wrap items-center gap-2 text-ui'>
-                      <Badge variant={r.status === 'active' ? 'success' : 'default'}>{REVISION_STATUS[r.status] ?? r.status}</Badge>
-                      <span>{r.title}</span>
-                      <span className='text-2xs text-faint'>
-                        {dateTime(r.decided_at ?? r.created_at)} · {r.source === 'advisor' ? '상담에서 제안' : '직접 작성'}
-                      </span>
-                      <Button size='sm' variant='ghost' className='ml-auto' aria-expanded={compare === r.id} onClick={() => setCompare(compare === r.id ? null : r.id)}>
-                        {compare === r.id ? '접기' : '이전과 비교'}
-                      </Button>
-                    </div>
-                    {compare === r.id && <DiffView revisionId={r.id} />}
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          </div>
-        )}
-        {editing && active && <PlaybookEditor open onClose={() => setEditing(false)} base={{ playbookId, revision: active }} />}
+            </div>
+          )}
+          {editing && active && <PlaybookEditor open onClose={() => setEditing(false)} base={{ playbookId, revision: active }} />}
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -173,17 +176,17 @@ function PlaybookRow({ playbook, onOpen }: { playbook: PlaybookItem; onOpen: () 
   const active = playbook.active_revision;
   return (
     <li>
-      <button type='button' onClick={onOpen} className='flex w-full flex-col gap-0.5 rounded-md px-2 py-2.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'>
+      <button type='button' onClick={onOpen} className={cn(listRowClassName, 'flex-col gap-0.5')}>
         <span className='flex flex-wrap items-center gap-2'>
           <span className='font-medium'>{active?.title ?? playbook.slug}</span>
-          <span className='text-2xs text-faint'>/{playbook.slug}</span>
+          <span className='text-xs text-faint'>/{playbook.slug}</span>
           {playbook.status !== 'active' && <Badge>{PLAYBOOK_STATUS[playbook.status] ?? playbook.status}</Badge>}
           {!playbook.external_allowed && <Badge variant='warning'>이 기기에만</Badge>}
           {active?.source_purged && <Badge variant='warning'>근거가 삭제됨</Badge>}
           {(playbook.pending_count ?? 0) > 0 && <Badge variant='accent'>제안 {playbook.pending_count}건</Badge>}
         </span>
         {active && <span className='text-xs text-muted-foreground'>{active.summary}</span>}
-        <span className='text-2xs text-faint'>
+        <span className='text-xs text-faint'>
           {active?.categories.map(categoryLabel).join(' · ') || '영역 지정 없음'} · 상담에서 {playbook.usage_count}번 사용
         </span>
       </button>
@@ -201,7 +204,7 @@ export function PlaybooksView({ recordId }: { recordId: number | null }) {
   const newOnes = pending.data?.filter(r => !r.base_revision_id) ?? [];
 
   return (
-    <div className='max-w-[860px]'>
+    <div className='max-w-reading'>
       {!!newOnes.length && (
         <Section title='새로 배운 절차' count={newOnes.length}>
           <div className='flex flex-col gap-3'>

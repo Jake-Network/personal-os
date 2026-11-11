@@ -18,6 +18,7 @@ class DashboardSignal(BaseModel):
 
 class DashboardChecklist(BaseModel):
     ai_configuration_complete: bool
+    ai_transfer_confirmed: bool
     has_cash_account: bool
     has_recent_expense: bool
     has_active_application_or_goal: bool
