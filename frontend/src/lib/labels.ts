@@ -54,7 +54,7 @@ const FLAG_TEXT: Record<string, string> = {
   no_relevant_document_chunks: '질문을 뒷받침할 문서 구간을 찾지 못했습니다',
   requested_document_unavailable: '지정한 문서 일부를 사용할 수 없습니다',
   no_accounts: '등록된 계좌가 없습니다',
-  no_liabilities_recorded: '부채가 기록되지 않았습니다 (0인지 미입력인지 알 수 없음)',
+  no_liabilities_recorded: '기록된 부채가 없어 0원으로 계산했습니다',
   stale_balance: '잔고 기준일이 오래되었습니다',
   stale_price: '시세 기준일이 오래되었습니다',
   investment_excluded_from_net_worth: '투자 영역이 공유 제외되어 순자산에서 증권이 빠졌습니다',

@@ -19,7 +19,10 @@ def instruction_text(query: str) -> str:
 
 
 CREATE = re.compile(r'(?:기록|저장|등록|추가|입력|생성)(?:해|하자|해줘|해주세요|해\s*줘|해\s*주세요|하겠)|(?:만들어|넣어|적어)\s*(?:줘|주세요)')
-UPDATE = re.compile(r'(?:수정|변경|갱신|업데이트|정정|반영)(?:해|하자|해\s*줘|해\s*주세요)|(?:바꿔|고쳐)\s*(?:줘|주세요)')
+UPDATE = re.compile(r'(?:수정|변경|갱신|업데이트|정정|반영)(?:해|하자|해\s*줘|해\s*주세요)|(?:바꿔|고쳐)\s*(?:줘|주세요)'
+                    # "8시-11시로 해줘" changes an existing schedule's time.
+                    r'|(?:\d{1,2}\s*시(?!간)(?:\s*(?:\d{1,2}\s*분|반))?|\d{1,2}:\d{2}|종일)\s*(?:으로|로)\s*'
+                    r'(?:해|옮겨)\s*(?:줘|주세요)')
 DELETE = re.compile(r'(?:삭제|제거)(?:해|하자|해\s*줘|해\s*주세요)|(?:지워|없애)\s*(?:줘|주세요)')
 READ = re.compile(r'(?:조회|확인)(?:해|하자)|(?:보여|찾아|불러)\s*(?:줘|주세요)|목록')
 
@@ -93,7 +96,10 @@ def _write_scopes(text):
     # Compound domain names are more specific than a noun within that name.
     if 'planned-expenses' in scopes and not re.search(r'가계부|현금흐름', text):
         scopes.discard('cashflow-entries')
-    if 'interviews' in scopes and re.search(r'면접\s*일정', text):
+    # "면접 일정" names one interview, which may be stored either as an interview
+    # stage or as a calendar event of kind=interview.
+    interview_schedule = 'interviews' in scopes and bool(re.search(r'면접\s*일정', text))
+    if interview_schedule:
         scopes.discard('calendar-events')
     if 'goals' in scopes and re.search(r'(?:운동|러닝|달리기|수영|훈련)\s*목표', text):
         scopes.discard('workout-logs')
@@ -111,7 +117,9 @@ def _write_scopes(text):
                 break
             connected.add(scope)
             last_start, last_scope = start, scope
-        return connected
+        scopes = connected
+    if interview_schedule and 'interviews' in scopes:
+        scopes = scopes | {'calendar-events'}
     return scopes
 
 

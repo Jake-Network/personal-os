@@ -96,6 +96,7 @@ class ConversationRuntime:
                 yield {'type': 'delta', 'text': answer}
             reply = message_handler.create(session, {'conversation_id': conversation.id, 'role': 'assistant',
                 'content': answer, 'context_snapshot_id': snapshot_id, 'model': model})
+            proposals, _ = proposal_manager.valid_proposals(session, proposals)
             actions, mems = proposal_manager.record(session, conversation.id, reply.id, proposals, memories)
             session.commit()
             user = None

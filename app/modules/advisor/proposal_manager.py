@@ -123,6 +123,24 @@ def _validate_target_changes(action: str, payload: dict, target) -> None:
 
 class ProposalManager:
     @staticmethod
+    def valid_proposals(session: Session, proposals: list[dict]) -> tuple[list[dict], int]:
+        """Model-written proposals that `record` accepts, and how many were dropped.
+
+        One malformed or inapplicable suggestion must not discard the whole answer.
+        """
+        valid, dropped = [], 0
+        for proposal in proposals:
+            try:
+                action = proposal.get("action")
+                payload = _validate_payload(action, proposal.get("payload"))
+                _validate_target_changes(action, payload, _target(session, action, payload))
+            except ProposalError:
+                dropped += 1
+                continue
+            valid.append(proposal)
+        return valid, dropped
+
+    @staticmethod
     def record(session: Session, conversation_id: int, message_id: int, proposals: list[dict],
                memories: list[dict], *, memory_sources: list[dict] | None = None
                ) -> tuple[list[ProposedAction], list[PersonalMemory]]:

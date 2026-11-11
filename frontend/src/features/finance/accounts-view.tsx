@@ -2,14 +2,11 @@
 
 import { type ReactNode, useState } from 'react';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Plus, RefreshCw } from 'lucide-react';
 
 import { toApiError } from '@/api-client/api-error';
 import { todayKey } from '@/lib/utils/zoned';
-import { getSummaryQueryKey } from '@/api-client/generated/dashboard/dashboard';
-import { customInstance } from '@/api-client/custom-client';
-import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
 import { Section } from '@/components/page-container';
@@ -65,7 +62,7 @@ const LISTS: ListConfig[] = [
     kind: 'liability',
     title: '부채',
     addLabel: '부채 추가',
-    empty: '대출이나 카드 잔액을 기록하세요. 부채가 없다면 아래에서 입력 완료를 확인하세요.',
+    empty: '대출이나 카드 잔액을 기록하세요. 기록이 없으면 순자산에서 부채를 0원으로 계산합니다.',
     amountField: 'balance',
     asOfField: 'balance_as_of',
     detail: row =>
@@ -128,12 +125,7 @@ export function RecordList({
         </Button>
       }>
       <QueryStatus pending={rows.isPending} error={rows.error} retry={rows.refetch} label={config.title} rows={2} />
-      {rows.data?.length === 0 && (
-        <>
-          <EmptyState className='py-5'>{config.empty}</EmptyState>
-          {config.resource === 'liabilities' && <CoverageConfirm onlyDebt />}
-        </>
-      )}
+      {rows.data?.length === 0 && <EmptyState className='py-5'>{config.empty}</EmptyState>}
       {rows.data && rows.data.length > 0 && (
         <Table>
           <TableHeader>
@@ -198,51 +190,7 @@ export function RecordList({
   );
 }
 
-/** "Nothing else to record" is a statement the user makes; without it, a category with no rows stays unknown, not zero. */
-export function CoverageConfirm({ onlyDebt = false }: { onlyDebt?: boolean }) {
-  const client = useQueryClient();
-  const confirm = useConfirm();
-  const portfolio = useQuery({ queryKey: ['finance', 'portfolio'], queryFn: financeApi.portfolio });
-  const coverage = useMutation({
-    mutationFn: () =>
-      customInstance({
-        url: '/api/finance/coverage',
-        method: 'PUT',
-        data: { kinds: onlyDebt ? [...new Set([...(portfolio.data?.coverage ?? []), 'liability'])] : ['cash', 'holding', 'liability', 'other'] },
-      }),
-    onSuccess: () => {
-      notify.success('입력 완료로 확인했습니다');
-      return Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: getSummaryQueryKey() })]);
-    },
-    onError: notify.error,
-  });
-  const ask = async () => {
-    const ok = await confirm({
-      title: onlyDebt ? '부채가 없음을 확인하나요?' : '모든 자산과 부채를 기록했나요?',
-      description: onlyDebt
-        ? '기록할 부채가 없음을 확인합니다. 다른 자산의 입력 완료 여부는 유지됩니다.'
-        : '현금·투자·부채·기타 자산을 빠짐없이 기록했고, 기록이 없는 분류는 실제로 없다는 뜻이라면 확인하세요. 그 뒤로는 빈 분류를 0으로 보고 합계를 확정합니다.',
-      confirmLabel: '입력 완료',
-    });
-    if (ok) coverage.mutate();
-  };
-  return (
-    <div className='flex flex-wrap items-center gap-3 rounded-lg border border-dashed p-4 text-ui'>
-      <p className='flex-1 text-muted-foreground'>
-        {onlyDebt
-          ? portfolio.data?.coverage?.includes('liability')
-            ? '부채 없음 확인 완료'
-            : '부채가 없다면 확인하세요.'
-          : '빠짐없이 기록했다면 입력 완료를 확인해야 합계가 확정됩니다.'}
-      </p>
-      <Button size='sm' disabled={coverage.isPending || portfolio.isPending || portfolio.isError} onClick={() => void ask()}>
-        {onlyDebt ? '부채 없음 확인' : '입력 완료 확인'}
-      </Button>
-    </div>
-  );
-}
-
-export function AccountsView({ recordId, showCoverage = true }: { recordId: number | null; showCoverage?: boolean }) {
+export function AccountsView({ recordId }: { recordId: number | null }) {
   // Deep links (/finance/accounts?record=) point at accounts, the primary list here.
   const [accountId, setAccountId] = useRecordParam(recordId);
   const [liabilityId, setLiabilityId] = useState<number | null>(null);
@@ -276,7 +224,6 @@ export function AccountsView({ recordId, showCoverage = true }: { recordId: numb
           onSelect={selection[i][1]}
         />
       ))}
-      {showCoverage && <CoverageConfirm />}
     </>
   );
 }

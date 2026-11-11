@@ -66,7 +66,7 @@ def test_local_only_transaction_blocks_external_summary_but_not_dashboard(sessio
     assert local["get_cashflow_summary"]["monthly_expense"]["months_with_data"] == 1
 
 
-def test_unrecorded_cash_is_unknown_but_confirmed_empty_cash_is_zero(session):
+def test_unrecorded_cash_stays_unknown_even_with_legacy_coverage(session):
     from app.modules.context.context_tool_manager import get_accounts_summary
     from app.modules.database.model import LocalFinanceCoverage
     ctx = ToolContext(session, NOW, frozenset({Category.FINANCIAL}))
@@ -74,9 +74,10 @@ def test_unrecorded_cash_is_unknown_but_confirmed_empty_cash_is_zero(session):
     assert worth["spendable_liquidity"] is None
     from app.modules.finance.financial_calculator import financial_calculator
     assert financial_calculator.cash_runway(worth, {"available": True, "monthly_average": "100"})["reason"] == "spendable_liquidity_unknown"
+    # No cash account means no basis for runway, so it is shown as unrecorded rather than 0.
     session.add(LocalFinanceCoverage(id=1, kinds=["cash"]))
     session.commit()
-    assert get_accounts_summary(ctx).data["computed"]["net_worth"]["spendable_liquidity"] == "0.00"
+    assert get_accounts_summary(ctx).data["computed"]["net_worth"]["spendable_liquidity"] is None
 
 
 def test_upcoming_interviews_exclude_past_interviews(session):

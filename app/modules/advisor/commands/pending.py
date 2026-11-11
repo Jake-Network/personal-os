@@ -24,6 +24,10 @@ def _assent(text):
         or re.fullmatch(r'(?:그대로|이렇게|그렇게|그걸로)\s*(?:(?:저장|기록|반영|추가|처리|진행)\s*)?(?:해\s*줘|해\s*주세요|해|하자|해주세요)[.!。]*', text))
 
 
+# A date or time of day, the usual reply to an unfinished schedule request.
+SCHEDULE_TIME = re.compile(r'\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*시(?!간)|\d{1,2}:\d{2}|오전|오후|아침|저녁|종일')
+
+
 def is_data_followup(query: str) -> bool:
     text = instruction_text(query).strip()
     from app.modules.advisor.commands.quote_refresh import split_quote_refresh
@@ -45,6 +49,11 @@ def is_data_followup(query: str) -> bool:
     # immediately preceding request was missing. Questions/new tasks do not count.
     if re.search(r'(?:만들어|생성|삭제|지워|조회|보여|추천|설명|조언)', completion):
         return False
+    # "11월 22일 10km", "아침 8시-11시로 해줘" complete a pending schedule's
+    # title, date or time. A report of a finished activity is a new observation.
+    from app.modules.advisor.commands.intent import observation_authorized
+    if len(completion) <= 80 and SCHEDULE_TIME.search(completion) and not observation_authorized(completion):
+        return True
     if re.fullmatch(r'(?:원화|달러|미국\s*달러|엔화|유로|KRW|USD|JPY|EUR)(?:로|이야|야|입니다|예요|이에요|해줘|해\s*줘|로\s*해\s*(?:줘|주세요))?[.!。]*', completion, re.I):
         return True
     return bool(len(completion) <= 300 and (
@@ -350,6 +359,9 @@ def _explicit_correction(field, value, clarification):
             if previous and max(previous)[1] == field:
                 return True
         return False
+    if field in {'starts_at', 'ends_at', 'all_day'}:
+        # A stated date or time of day replaces an all-day placeholder.
+        return bool(SCHEDULE_TIME.search(text))
     if field == 'kind':
         if not isinstance(value, str):
             return False

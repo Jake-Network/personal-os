@@ -59,12 +59,12 @@ def test_dashboard_summary_uses_backend_calculation(client):
     from app.modules.finance.clock import local_today
     client.post("/api/data/accounts", json={"name": "통장", "kind": "checking", "balance": "3000000",
                                             "balance_as_of": local_today().isoformat()})
-    incomplete = client.get("/api/dashboard/summary").json()
-    assert incomplete["data"]["get_accounts_summary"]["computed"]["net_worth"]["net_worth"] is None
-    # Unentered asset/debt categories are unknown until the user confirms coverage.
-    assert client.put("/api/finance/coverage", json={"kinds": ["cash", "holding", "liability", "other"]}).status_code == 200
+    # Net worth is what the user entered: categories with no rows (debt, other assets) count as none.
     s = client.get("/api/dashboard/summary").json()
-    assert s["data"]["get_accounts_summary"]["computed"]["net_worth"]["net_worth"] == "3000000.00"
+    worth = s["data"]["get_accounts_summary"]["computed"]["net_worth"]
+    assert worth["net_worth"] == "3000000.00" and worth["total_liabilities"] == "0.00" and worth["complete"] is True
+    # The model still learns that no debt was entered.
+    assert any(f["code"] == "no_liabilities_recorded" for f in s["data_quality_flags"])
     assert "get_profile" not in s["data"]
 
 

@@ -61,7 +61,7 @@ def test_confirmation_rolls_back_when_history_fails(client, session, monkeypatch
     assert session.get(Account, item_id).updated_at == version
 
 
-def test_debt_absence_requires_explicit_coverage_confirmation(session):
+def test_no_recorded_debt_is_flagged_until_debt_is_entered(session):
     from datetime import UTC, datetime
     from app.enums.context_category import Category
     from app.modules.context.context_tool_manager import get_accounts_summary
@@ -71,10 +71,10 @@ def test_debt_absence_requires_explicit_coverage_confirmation(session):
     def flags():
         return {flag['code'] for flag in get_accounts_summary(ctx).flags}
     assert 'no_liabilities_recorded' in flags()
+    # A legacy coverage confirmation no longer hides that nothing was entered.
     session.add(LocalFinanceCoverage(id=1, kinds=['liability']))
     session.flush()
-    assert 'no_liabilities_recorded' not in flags()
-    session.get(LocalFinanceCoverage, 1).kinds = []
+    assert 'no_liabilities_recorded' in flags()
     session.add(Liability(name='합성 부채', kind='credit', balance=Decimal('10'), balance_as_of=local_today()))
     session.flush()
     assert 'no_liabilities_recorded' not in flags()

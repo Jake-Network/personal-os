@@ -35,6 +35,8 @@ def extraction_instruction(automatic, pending):
         'status=needs_input인 항목만 반환하고 command_index에 그 항목의 기존 번호를 넣으세요. '
         '원래 values의 수량·원가·금액·통화 등 이미 지정한 값은 그대로 유지하고 부족한 필드만 보충하세요. '
         '현재 사용자가 명시적으로 정정한 필드만 바꿀 수 있습니다. '
+        '일정 제목처럼 부족한 값은 현재 메시지와 이 대화에서 사용자가 앞서 말한 같은 대상의 값으로 보충하세요. '
+        '종일로 둔 일정에 사용자가 시각을 말하면 all_day=false, starts_at·ends_at을 그 시각으로 바꾸세요. '
         '이미 saved인 항목을 재생성하지 말고 다른 리소스·종목·대상을 추가하지 마세요. '
         'source_quote는 현재 사용자 확인 메시지를 그대로 복사하세요. '
         '같은 종목을 추가 보유한다는 확인이면 update와 delta=원문 추가 수량을 사용하세요. '
@@ -56,6 +58,11 @@ def extraction_instruction(automatic, pending):
         'source_quote는 이번 사용자 메시지의 실제 원문을 그대로 복사하세요. '
         '여러 항목을 함께 저장하라는 요청에서는 종목별 원문 줄을 인용해도 전체 저장 지시가 적용됩니다. '
         'selector는 대상 식별에 필요한 조건만 사용하며 대상이 불명확하면 추측한 id를 넣지 마세요. '
+        '이전 답변에 나온 기록은 이후 되돌리기·삭제로 없어졌을 수 있습니다. 수정·삭제 대상은 현재 데이터에서 '
+        '사용자가 말한 날짜·제목과 일치하는 기록만 고르세요. 사용자가 가리킨 기록(예: 정정하려는 날짜의 일정)이 '
+        '현재 데이터에 없으면 같은 제목의 다른 기록을 바꾸지 말고 commands=[]와 확인 message를 반환하세요. '
+        '"다시 등록", "그 일정"처럼 이 대화에서 앞서 말한 대상을 가리키면 사용자가 이전에 말한 제목·종류를 '
+        '이어받으세요. 이전 대화에도 없는 값만 부족한 값으로 남기세요. '
         'update의 values에는 요청한 변경 필드만 넣고 나머지 현재 값은 복사하지 마세요. '
         '신규 값과 기존 값을 구별하세요. 현재 잔액·보유량은 절대값이며 입금·매수로 바꾸지 마세요. '
         '증감 요청은 사용자가 말한 증감 값만 values에 delta로 넣으세요(서버가 현재 값에 적용합니다). '
@@ -67,6 +74,9 @@ def extraction_instruction(automatic, pending):
         '거래소가 없어도 보유 사실을 먼저 저장합니다. 거래소를 추측하거나 그 이유로 저장을 보류하지 마세요. '
         '운동 시간은 duration_seconds 정수 초로 환산하고, 거리·대회 등 별도 필드가 없는 원문 정보는 notes에 보존하세요. '
         '계좌 잔액 기준일은 사용자가 지금이라고 말하면 오늘로 하세요. '
+        '일정·면접에 날짜만 있고 시각이 없으면 시각을 묻지 말고 calendar-events에 all_day=true, '
+        'starts_at=그 날짜 00:00, ends_at=다음 날 00:00(위 시간대 기준)으로 저장하세요. '
+        '채용 지원 기록이 확인되지 않은 면접은 kind=interview인 calendar-events로 저장하세요. '
         '필수 정보가 없으면 임의로 만들어내지 말고 해당 commands의 부족한 values를 그대로 두어 서버가 확인하게 하세요. '
         f'오늘은 {clock.local_today().isoformat()}, 시간대는 {settings.timezone}입니다. '
         '허용 리소스와 입력 스키마: ' + json.dumps(catalogue, ensure_ascii=False))
@@ -279,7 +289,10 @@ async def extract_and_execute(ctx, state, working, pending, command_query, sourc
         else:
             rejection = {'operation': command.operation, 'resource': command.resource,
                 'target_label': command_target_label(candidate),
-                'status': 'needs_input', 'message': '이 항목의 수량·금액이 사용자 원문과 일치하지 않아 저장하지 않았습니다.'}
+                'status': 'needs_input', 'message': (
+                    '이 항목의 수량·금액이 사용자 원문과 일치하지 않아 저장하지 않았습니다.'
+                    if command.resource == 'holdings' or not grounded else
+                    '요청 문장에서 이 항목을 저장하라는 지시를 확인하지 못해 저장하지 않았습니다.')}
             if bound and index not in selected_indices:
                 rejected_by_index[index] = {**rejection, 'command_index': index}
             else:
