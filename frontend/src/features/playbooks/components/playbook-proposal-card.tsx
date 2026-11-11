@@ -15,6 +15,7 @@ import type { PlaybookRevisionItem } from '@/api-client/model';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { CATEGORY_LABEL } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
@@ -52,7 +53,7 @@ export function PlaybookProposalCard({ revision }: { revision: PlaybookRevisionI
   const blocked = revision.stale || revision.source_purged;
 
   return (
-    <div className='rounded-lg border bg-card px-3.5 py-3 shadow-sm'>
+    <Card className='px-3.5 py-3'>
       <div className='flex flex-wrap items-center gap-2'>
         <span className='text-ui font-semibold'>{revision.base_revision_id ? '플레이북 수정 제안' : '새 플레이북 제안'}</span>
         <span className='text-ui'>{revision.title}</span>
@@ -63,7 +64,7 @@ export function PlaybookProposalCard({ revision }: { revision: PlaybookRevisionI
         {state === 'rejected' && <Badge>거절됨</Badge>}
       </div>
       <p className='mt-1 text-xs text-muted-foreground'>{revision.summary}</p>
-      <div className='mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs text-faint'>
+      <div className='mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-faint'>
         {dateTime(revision.created_at)}
         {revision.categories.map(category => (
           <Badge key={category}>{CATEGORY_LABEL[category as keyof typeof CATEGORY_LABEL] ?? category}</Badge>
@@ -90,11 +91,11 @@ export function PlaybookProposalCard({ revision }: { revision: PlaybookRevisionI
           <Button size='sm' variant='ghost' disabled={busy} onClick={() => reject.mutate({ revisionId: revision.id })}>
             거절
           </Button>
-          <span className='text-2xs text-faint'>
+          <span className='text-xs text-faint'>
             {blocked ? '이 제안은 승인할 수 없습니다. 거절하고 필요하면 다시 배우기를 요청하세요.' : '승인하기 전에는 상담에 쓰지 않습니다.'}
           </span>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

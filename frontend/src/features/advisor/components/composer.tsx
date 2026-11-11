@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { ALL_CATEGORIES, CATEGORY_HINT, CATEGORY_LABEL } from '@/lib/labels';
+import { ALL_CATEGORIES, CATEGORY_HINT, CATEGORY_LABEL, ERROR_HINT } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 
 import { documentsApi, documentsKey } from '@/features/documents/api';
@@ -64,7 +64,7 @@ export function ShareSummary({ send, privacyBlocked }: { send: AdvisorSend; priv
                 <Switch id={id} checked={checked} disabled={blocked || c === 'profile' || send.busy} onCheckedChange={() => send.toggleCategory(c)} />
                 <Label htmlFor={id} className={cn('flex-1', blocked && 'text-faint')}>
                   {CATEGORY_LABEL[c]}
-                  <span className='block text-2xs font-normal text-faint'>
+                  <span className='block text-xs font-normal text-faint'>
                     {c === 'profile'
                       ? '개인 프로필 공유는 기본 공유 설정에서 변경할 수 있습니다.'
                       : blocked
@@ -112,7 +112,7 @@ function DocumentPicker({ send }: { send: AdvisorSend }) {
         </div>
         {draft.documentSearch && (
           <>
-            <p className='text-2xs text-faint'>지정하지 않으면 질문 주제에 맞는 문서를 찾습니다. 최대 {MAX_DOCUMENTS}개까지 지정할 수 있습니다.</p>
+            <p className='text-xs text-faint'>지정하지 않으면 질문 주제에 맞는 문서를 찾습니다. 최대 {MAX_DOCUMENTS}개까지 지정할 수 있습니다.</p>
             {shareable.length > 6 && (
               <Input placeholder='문서 찾기' value={query} onChange={e => setQuery(e.target.value)} aria-label='문서 이름으로 찾기' />
             )}
@@ -250,7 +250,7 @@ export function AutomaticRecordingToggle({ send }: { send: Pick<AdvisorSend, 'dr
       />
       <Label htmlFor='automatic-data-recording' className='flex-1 leading-snug'>
         자동 기록
-        <span id='automatic-data-recording-description' className='mt-1 block text-2xs font-normal text-faint'>
+        <span id='automatic-data-recording-description' className='mt-1 block text-xs font-normal text-faint'>
           말한 실적·잔액·보유량을 기록합니다. 삭제는 직접 요청해야 합니다.
         </span>
       </Label>
@@ -282,7 +282,16 @@ export function Composer({
             새 메시지 보기
           </Button>
         )}
-        {send.loadError && <Alert variant='destructive'>{send.loadError}</Alert>}
+        {send.loadError && (
+          <Alert variant='destructive'>
+            <span className='flex-1'>{send.loadError.message}</span>
+            {send.loadError.code && ERROR_HINT[send.loadError.code] && (
+              <Button asChild size='sm'>
+                <Link href={ERROR_HINT[send.loadError.code].href}>{ERROR_HINT[send.loadError.code].action}</Link>
+              </Button>
+            )}
+          </Alert>
+        )}
         {send.uncertainRetry && (
           <Button className='self-start' disabled={busy} onClick={send.sendSeparately}>
             바꾼 질문 따로 보내기
@@ -320,6 +329,8 @@ export function Composer({
             {!waiting && (
               <>
                 <ShareSummary send={send} privacyBlocked={privacyBlocked} />
+                <DocumentPicker send={send} />
+                <HistoryScope send={send} />
                 <Popover>
                   <PopoverTrigger className={toolClass} disabled={busy}>
                     <MoreHorizontal />
@@ -336,8 +347,6 @@ export function Composer({
                       깊게 분석
                     </button>
                     <AutomaticRecordingToggle send={send} />
-                    <DocumentPicker send={send} />
-                    <HistoryScope send={send} />
                     <button
                       type='button'
                       className={cn(toolClass, draft.webSearch && toolOn)}
@@ -357,19 +366,7 @@ export function Composer({
           </div>
         </div>
         {!waiting && (
-          <div className='flex flex-wrap gap-1 text-2xs text-muted-foreground'>
-            {!draft.documentSearch ? (
-              <span className='rounded border px-2 py-0.5'>문서 검색 끔</span>
-            ) : (
-              draft.documentIds !== null && (
-                <span className='rounded border px-2 py-0.5'>
-                  {draft.documentIds.length ? `지정 문서 ${draft.documentIds.length}개` : '문서 지정 해제 · 주제로 찾기'}
-                </span>
-              )
-            )}
-            {[draft.historyCompany, draft.historyProject, draft.historyDecision].some(Boolean) && (
-              <span className='rounded border px-2 py-0.5'>과거 경험 범위 지정</span>
-            )}
+          <div className='flex flex-wrap gap-1 text-xs text-muted-foreground'>
             {draft.depth === 'deep' && (
               <OptionChip label='깊게 분석' disabled={busy} onClear={() => updateDraft({ depth: 'auto' })} />
             )}
@@ -390,7 +387,7 @@ export function Composer({
               aria-label='웹 검색어'
               aria-describedby='web-search-disclosure'
             />
-            <span id='web-search-disclosure' className='text-2xs text-faint'>
+            <span id='web-search-disclosure' className='text-xs text-faint'>
               이 검색어만 외부 검색 서비스로 보냅니다. 개인정보는 넣지 마세요.
             </span>
           </div>

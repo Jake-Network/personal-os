@@ -4,6 +4,7 @@ import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useMe
 
 import { ChevronLeft, ChevronRight, Plus, TriangleAlert } from 'lucide-react';
 
+import { SegmentedControl } from '@/components/toggle-group';
 import { Button } from '@/components/ui/button';
 import { dayLabel, displayTimeZone, timeOnly } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
@@ -32,11 +33,11 @@ const MAX_IN_CELL = 3;
 
 export const TONE_CLASS: Record<CalendarTone, string> = {
   event: 'bg-accent text-accent-foreground',
-  interview: 'bg-info-soft text-foreground',
+  interview: 'bg-info-soft text-info',
   task: 'bg-muted text-foreground',
   goal: 'bg-success-soft text-success',
   expense: 'bg-warning-soft text-warning',
-  workout: 'bg-secondary text-muted-foreground',
+  workout: 'bg-card text-muted-foreground ring-1 ring-inset ring-border',
 };
 
 export const TONE_LABEL: Record<CalendarTone, string> = {
@@ -72,7 +73,7 @@ function ItemChip({ item, conflict, onOpen, compact }: { item: CalendarItem; con
       }}
       title={`${TONE_LABEL[item.tone]} · ${item.title}${item.detail ? ` · ${item.detail}` : ''}`}
       className={cn(
-        'flex w-full min-w-0 items-center gap-1 truncate rounded-sm px-1.5 text-left text-2xs leading-5 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'flex w-full min-w-0 items-center gap-1 truncate rounded-sm px-1.5 text-left text-xs leading-5 hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         TONE_CLASS[item.tone],
         item.done && 'line-through opacity-60',
         item.overdue && 'ring-1 ring-destructive',
@@ -218,18 +219,16 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
         <div className='ml-auto flex flex-wrap items-center gap-2'>
           {toolbar}
           {allowTime && (
-            <div className='hidden rounded-md bg-muted p-0.5 md:inline-flex' role='group' aria-label='보기'>
-              {(['month', 'week'] as const).map(v => (
-                <button
-                  key={v}
-                  type='button'
-                  aria-pressed={view === v}
-                  onClick={() => setView(v)}
-                  className={cn('h-7 rounded-sm px-3 text-ui text-muted-foreground', view === v && 'bg-card font-medium text-foreground shadow-sm')}>
-                  {v === 'month' ? '월' : '주'}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label='보기'
+              className='hidden md:inline-flex'
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'month', label: '월' },
+                { value: 'week', label: '주' },
+              ]}
+            />
           )}
         </div>
       </div>
@@ -283,7 +282,7 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
                               setView('week');
                             } else onOpenItem(dayItems[MAX_IN_CELL]);
                           }}
-                          className='px-1.5 text-left text-2xs text-muted-foreground hover:underline'>
+                          className='px-1.5 text-left text-xs text-muted-foreground hover:underline'>
                           +{dayItems.length - MAX_IN_CELL}개 더
                         </button>
                       )}
@@ -325,7 +324,7 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
               <div className='relative grid grid-cols-[52px_repeat(7,minmax(0,1fr))]'>
                 <div className='border-r'>
                   {Array.from({ length: 24 }, (_, h) => (
-                    <div key={h} style={{ height: SLOT_PX * 2 }} className='-translate-y-1.5 pr-1.5 text-right text-2xs tabular-nums text-faint'>
+                    <div key={h} style={{ height: SLOT_PX * 2 }} className='-translate-y-1.5 pr-1.5 text-right text-xs tabular-nums text-faint'>
                       {h === 0 ? '' : `${h}:00`}
                     </div>
                   ))}
@@ -373,7 +372,7 @@ export function CalendarView({ items, onSelect, onOpenItem, allowTime = false, t
                           onPointerDown={e => e.stopPropagation()}
                           onClick={() => onOpenItem(p.item)}
                           className={cn(
-                            'flex h-full w-full flex-col overflow-hidden rounded-sm px-1.5 py-0.5 text-left text-2xs hover:brightness-95',
+                            'flex h-full w-full flex-col overflow-hidden rounded-sm px-1.5 py-0.5 text-left text-xs hover:brightness-95',
                             TONE_CLASS[p.item.tone],
                             p.conflict && 'ring-1 ring-warning',
                           )}>

@@ -142,7 +142,7 @@ export function AdvisorWorkspace() {
 
       <WorkspacePanel key={`panel:${viewKey}`} conversationId={conversationId} inspector={inspectorProps} onBack={backToCurrent} className='hidden xl:block' />
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-        <SheetContent side='right' className='w-[min(380px,100vw)] xl:hidden'>
+        <SheetContent side='right' size='sm' closeButton={false} className='xl:hidden'>
           <SheetTitle className='sr-only'>근거와 제안</SheetTitle>
           <WorkspacePanel
             key={viewKey}

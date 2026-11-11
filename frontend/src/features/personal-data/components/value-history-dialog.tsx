@@ -10,7 +10,7 @@ import {
 } from '@/api-client/generated/personal-data/personal-data';
 import type { ValueChangeItem } from '@/api-client/model';
 import { EmptyState } from '@/components/empty-state';
-import { Alert } from '@/components/ui/alert';
+import { QueryStatus } from '@/components/query-status';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -45,8 +45,7 @@ export function ValueHistoryDialog({ resource, id, label, onClose }: { resource:
           <DialogTitle>{label} 변경 기록</DialogTitle>
           <DialogDescription>직접 입력한 값이 바뀐 기록입니다. 차이는 입력 변경이며 수익이 아닙니다.</DialogDescription>
         </DialogHeader>
-        {history.error && <Alert variant='destructive'>{history.error.message}</Alert>}
-        {history.isPending && <EmptyState>불러오는 중…</EmptyState>}
+        <QueryStatus pending={history.isPending} error={history.error} retry={history.refetch} label='변경 기록' rows={3} />
         {rows.length > 0 && (
           <Table>
             <TableHeader>

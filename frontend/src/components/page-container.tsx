@@ -4,6 +4,9 @@ import { cn } from '@/lib/utils';
 
 import { InfoPopover } from './info-popover';
 
+/** A clickable list row. The hover area reaches 8px past the text on both sides, so row text lines up with the section title. */
+export const listRowClassName = '-mx-2 flex w-[calc(100%+1rem)] rounded-md px-2 py-2.5 text-left hover:bg-muted';
+
 export function PageContainer({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={cn('mx-auto max-w-[1180px] px-4 pb-10 pt-4 md:px-7 md:pb-12 md:pt-6', className)}>{children}</div>;
 }

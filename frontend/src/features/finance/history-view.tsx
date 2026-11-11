@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/empty-state';
 import { Section } from '@/components/page-container';
 import { QualityBadge } from '@/components/quality-badge';
 import { QueryStatus } from '@/components/query-status';
-import { ListSkeleton } from '@/components/skeleton';
+import { SegmentedControl } from '@/components/toggle-group';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,10 +55,10 @@ function SnapshotDetail({ snapshot, onClose, onSaved }: { snapshot: Snapshot; on
   const audit = useQuery({ queryKey: ['finance', 'audit', snapshot.id], queryFn: () => financeApi.audit(snapshot.id) });
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
-      <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
+      <SheetContent side='right' size='xl'>
         <div className='flex flex-col gap-4 p-5'>
           <div className='flex flex-wrap items-center gap-2 pr-8'>
-            <SheetTitle className='text-title font-semibold'>{monthLabel(snapshot.month)} 월말 기록</SheetTitle>
+            <SheetTitle className='pr-0'>{monthLabel(snapshot.month)} 월말 기록</SheetTitle>
             {snapshot.complete ? <Badge variant='success'>확정</Badge> : <QualityBadge flags={issueFlags(snapshot.issues)} label='근거 부족' />}
           </div>
           {correcting ? (
@@ -93,8 +93,7 @@ function SnapshotDetail({ snapshot, onClose, onSaved }: { snapshot: Snapshot; on
               </div>
               <section>
                 <h3 className='mb-2 text-ui font-semibold'>변경 기록</h3>
-                {audit.isPending && <ListSkeleton rows={2} />}
-                {audit.error && <Alert variant='destructive'>{audit.error.message}</Alert>}
+                <QueryStatus pending={audit.isPending} error={audit.error} retry={audit.refetch} label='변경 기록' rows={2} />
                 <ol className='divide-y'>
                   {audit.data?.map((rev, i) => (
                     <li key={rev.id} className='flex flex-wrap items-baseline gap-x-3 py-2 text-ui'>
@@ -136,9 +135,9 @@ function CloseMonthSheet({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const monthSnapshot = saved?.month.startsWith(month) ? saved : allHistory.data?.snapshots.find(snapshot => snapshot.month.startsWith(month));
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
-      <SheetContent side='right' className='w-[min(760px,100vw)] overflow-y-auto'>
+      <SheetContent side='right' size='xl'>
         <div className='flex flex-col gap-4 p-5'>
-          <SheetTitle className='pr-8 text-title font-semibold'>
+          <SheetTitle>
             {target?.kind === 'create' ? `${monthLabel(target.month)} 월말 기록` : '월말 체크인'}
           </SheetTitle>
           <CheckInStatus
@@ -227,21 +226,7 @@ export function HistoryView() {
   return (
     <>
       <TabToolbar>
-        <div className='inline-flex rounded-md bg-muted p-0.5' role='group' aria-label='조회 기간'>
-          {PERIODS.map(([value, label]) => (
-            <button
-              key={value}
-              type='button'
-              aria-pressed={period === value}
-              onClick={() => setPeriod(value)}
-              className={cn(
-                'h-7 rounded-sm px-3 text-ui text-muted-foreground',
-                period === value && 'bg-card font-medium text-foreground shadow-sm',
-              )}>
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label='조회 기간' value={period} onChange={setPeriod} options={PERIODS.map(([value, label]) => ({ value, label }))} />
         <Button variant='primary' className='ml-auto' onClick={() => setClosing(true)}>
           <Plus /> 월말 체크인
         </Button>

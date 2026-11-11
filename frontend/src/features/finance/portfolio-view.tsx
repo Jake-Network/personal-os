@@ -13,6 +13,7 @@ import { Section } from '@/components/page-container';
 import { QualityBadge, type QualityFlag } from '@/components/quality-badge';
 import { QueryStatus } from '@/components/query-status';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { dateOnly, money as formatMoney } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
@@ -61,7 +62,7 @@ function Figure({
   flagLabel?: string;
 }) {
   return (
-    <div className='relative flex flex-col gap-1 rounded-lg border bg-card p-4 shadow-sm hover:border-primary/40'>
+    <Card className='relative flex flex-col gap-1 p-4 transition-colors hover:bg-muted/40'>
       <div className='flex items-center justify-between gap-2'>
         <Link
           href={href}
@@ -78,7 +79,7 @@ function Figure({
           <QualityBadge flags={flags} label={flagLabel} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

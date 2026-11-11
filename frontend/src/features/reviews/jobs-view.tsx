@@ -148,7 +148,7 @@ export function JobsView() {
   const retry = useMutation({ mutationFn: (id: number) => customInstance({ method: 'POST', url: `/api/jobs/${id}/retry` }), onSuccess: refreshJobs, onError: notify.error });
 
   return (
-    <div className='max-w-[860px]'>
+    <div className='max-w-reading'>
       <Section
         title='시세 자동 갱신'
         info={<p>허용하면 약 5분마다 시세 전용 Google 파일을 갱신합니다. Google에는 거래소·티커·통화쌍만 보내며, 앱이 잠겨 있어도 실행합니다.</p>}>

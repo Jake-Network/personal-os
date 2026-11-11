@@ -108,7 +108,7 @@ function LearningProposals({ item }: { item: InboxItemView }) {
       })),
   ];
   if (revisionIds.length + memoryIds.length === 0 || revisions.isPending || memories.isPending) return null;
-  if (rows.length === 0) return <p className='mt-1.5 text-2xs text-faint'>이 알림의 제안은 모두 처리했습니다.</p>;
+  if (rows.length === 0) return <p className='mt-1.5 text-xs text-faint'>이 알림의 제안은 모두 처리했습니다.</p>;
   const chosen = rows.filter(row => selected.has(row.key));
   const approvable = chosen.filter(row => !row.blocked).map(row => row.key);
   return (
@@ -153,7 +153,7 @@ function LearningProposals({ item }: { item: InboxItemView }) {
           }>
           선택 거절
         </Button>
-        <span className='text-2xs text-faint'>바뀐 내용 비교는 제안 검토에서 볼 수 있습니다.</span>
+        <span className='text-xs text-faint'>바뀐 내용 비교는 제안 검토에서 볼 수 있습니다.</span>
       </div>
     </div>
   );
@@ -202,7 +202,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
                 <span className='font-medium'>{item.title}</span>
                 <Badge variant={kind.tone}>{kind.label}</Badge>
                 {item.status === 'unread' && <span className='sr-only'>읽지 않음</span>}
-                <span className='ml-auto text-2xs text-faint'>{relative(item.created_at)}</span>
+                <span className='ml-auto text-xs text-faint'>{relative(item.created_at)}</span>
               </div>
               {item.summary && <p className='mt-1 whitespace-pre-line text-ui text-muted-foreground'>{item.summary}</p>}
               {item.kind === 'learning_proposals' && <LearningProposals item={item} />}
@@ -225,7 +225,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
   );
   if (embedded) return body;
   return (
-    <PageContainer className='max-w-[820px]'>
+    <PageContainer className='max-w-reading'>
       <PageHeader title='알림' description='자동 작업과 학습 결과입니다. 이 기기에서만 보이며 AI에 보내지 않습니다.' actions={readAllButton} />
       {body}
     </PageContainer>

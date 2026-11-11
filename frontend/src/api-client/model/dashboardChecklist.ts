@@ -7,6 +7,7 @@
 
 export interface DashboardChecklist {
   ai_configuration_complete: boolean;
+  ai_transfer_confirmed: boolean;
   has_cash_account: boolean;
   has_recent_expense: boolean;
   has_active_application_or_goal: boolean;

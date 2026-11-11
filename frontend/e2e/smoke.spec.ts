@@ -27,15 +27,33 @@ test('an account appears on the home figures and updates through the check-in sh
   await page.goto('/finance/accounts');
   await page.getByRole('button', { name: '잔고 한 번에 업데이트' }).click();
   await page.getByLabel('E2E 생활비 통장 새 잔액').fill('1500000');
-  await page.getByRole('button', { name: /1개 계좌 저장/ }).click();
+  await page.keyboard.press('Enter');
   await page.goto('/');
   await expect(page.getByText('생활비로 쓸 수 있는 현금')).toBeVisible();
   await expect(page.getByText(/150만/).first()).toBeVisible();
 });
 
+test('closing an edited record asks first, and the destructive confirm starts on 취소', async ({ page }) => {
+  await signIn(page);
+  await page.goto('/finance/accounts');
+  await page.getByRole('button', { name: 'E2E 생활비 통장' }).click();
+  const name = page.locator('#f-name');
+  await name.fill('E2E 저장 안 한 이름');
+  await page.keyboard.press('Escape');
+  const discard = page.getByRole('alertdialog', { name: '저장하지 않은 변경을 버릴까요?' });
+  await expect(discard.getByRole('button', { name: '취소' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(discard).toBeHidden();
+  await expect(name).toHaveValue('E2E 저장 안 한 이름');
+});
+
 test('a card CSV imports once; importing it again adds nothing', async ({ page }) => {
   await signIn(page);
   await page.goto('/finance/cashflow');
+  await page.getByRole('button', { name: '더보기' }).click();
+  await expect(page.getByRole('menuitem', { name: '거래 추가' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '오늘 평가액 기록' })).toBeVisible();
+  await page.keyboard.press('Escape');
   for (const attempt of [1, 2]) {
     await page.getByRole('button', { name: '은행·카드 내역 가져오기' }).click();
     const dialog = page.getByRole('dialog', { name: '은행·카드 내역 가져오기' });
@@ -56,6 +74,10 @@ test('a card CSV imports once; importing it again adds nothing', async ({ page }
 
 test('a consultation proposal is approved from the review inbox and becomes a task', async ({ page }) => {
   await signIn(page);
+  await page.goto('/advisor');
+  await expect(page.getByRole('link', { name: '전송 확인하기' })).toBeVisible();
+  await page.getByLabel('질문 입력').fill('전송 확인 전 질문');
+  await expect(page.getByRole('button', { name: '보내기' })).toBeDisabled();
   await api(page, 'PUT', '/api/settings/transfer-policy', { training_excluded: true, retention_understood: true });
   await page.goto('/advisor');
   await page.getByLabel('질문 입력').fill('이번 주에 무엇부터 하면 좋을까?');
@@ -68,6 +90,19 @@ test('a consultation proposal is approved from the review inbox and becomes a ta
   await expect(page.getByText('승인을 기다리는 항목이 없습니다')).toBeVisible();
   await page.goto('/plan/tasks');
   await expect(page.getByText('E2E 합성 할 일').first()).toBeVisible();
+});
+
+test('a conversation list that fails to load says so and loads on retry', async ({ page }) => {
+  await signIn(page);
+  const isList = (url: URL) => url.pathname === '/api/advisor/conversations';
+  await page.route(isList, route => route.abort());
+  await page.goto('/advisor');
+  const failure = page.getByText(/상담 목록 불러오기 실패/);
+  await expect(failure).toBeVisible();
+  await page.unroute(isList);
+  await page.getByRole('button', { name: '다시 시도' }).click();
+  await expect(failure).toBeHidden();
+  await expect(page.getByRole('link', { name: /이번 주에 무엇부터/ })).toBeVisible();
 });
 
 test('excluding finance from sharing removes it from what the model would receive', async ({ page }) => {
@@ -83,4 +118,10 @@ test('excluding finance from sharing removes it from what the model would receiv
   expect(text).not.toContain('E2E 생활비 통장');
   expect(text).not.toContain('1500000');
   await api(page, 'PUT', '/api/settings/privacy', { excluded_categories: [] });
+});
+
+test('전체 잠금 in the menu locks the app', async ({ page }) => {
+  await signIn(page);
+  await page.getByRole('button', { name: '전체 잠금' }).click();
+  await expect(page.getByRole('button', { name: '잠금 해제' })).toBeVisible();
 });

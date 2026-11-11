@@ -90,8 +90,6 @@ export interface ChatMessage {
   is_final_answer?: boolean;
   source_question?: string | null;
   error?: { code: string; message: string };
-  proposals?: ProposalItem[];
-  memoryProposals?: MemoryProposal[];
   document_citations?: DocumentCitation[];
   /** Server execution receipts; also returned on saved messages after reconnect. */
   data_operations?: unknown;

@@ -143,7 +143,7 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
               </li>
             ))}
           </ul>
-          {mode !== 'preview' && <p className='mt-1 text-2xs text-faint'>답변 당시 승인되어 있던 버전입니다. 이후 수정해도 이 답변의 근거는 바뀌지 않습니다.</p>}
+          {mode !== 'preview' && <p className='mt-1 text-xs text-faint'>답변 당시 승인되어 있던 버전입니다. 이후 수정해도 이 답변의 근거는 바뀌지 않습니다.</p>}
         </Block>
       )}
 
@@ -188,7 +188,7 @@ function InspectorBody({ data, mode }: { data: InspectorData; mode: InspectorMod
                   const href = evidenceHref(r.table, r.id);
                   const text = refs.length > 1 ? `${label} ${n + 1}` : label;
                   return href ? (
-                    <Link key={n} href={href} className='rounded-sm border bg-muted px-1.5 text-2xs leading-5 text-primary hover:bg-accent' title='기록 열기'>
+                    <Link key={n} href={href} className='rounded-sm border bg-muted px-1.5 text-xs leading-5 text-primary hover:bg-accent' title='기록 열기'>
                       {text}
                     </Link>
                   ) : (
@@ -237,8 +237,8 @@ function SnapshotBlock({ snapshotId, reused, model }: { snapshotId: string; reus
           )}
         </div>
       )}
-      <p className='mt-1.5 text-2xs text-faint'>웹 근거는 다시 조회하지 않습니다.</p>
-      <details className='mt-2 text-2xs text-faint'>
+      <p className='mt-1.5 text-xs text-faint'>웹 근거는 다시 조회하지 않습니다.</p>
+      <details className='mt-2 text-xs text-faint'>
         <summary className='cursor-pointer'>자세히</summary>
         {model && <p className='mt-1'>응답 모델 {model}</p>}
         {reused && <p className='mt-1'>직전 질문과 기록이 같아 같은 근거를 다시 썼습니다.</p>}

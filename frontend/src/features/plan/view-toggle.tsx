@@ -4,27 +4,22 @@ import { useEffect, useState } from 'react';
 
 import { CalendarDays, List } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { SegmentedControl } from '@/components/toggle-group';
 
 export type ViewMode = 'list' | 'calendar';
 
 /** List or calendar for one record type; the choice is remembered per screen. */
 export function ViewToggle({ value, onChange }: { value: ViewMode; onChange: (v: ViewMode) => void }) {
-  const item = (mode: ViewMode, label: string, Icon: typeof List) => (
-    <button
-      type='button'
-      aria-pressed={value === mode}
-      onClick={() => onChange(mode)}
-      className={cn('inline-flex h-7 items-center gap-1 rounded-sm px-2.5 text-ui text-muted-foreground', value === mode && 'bg-card font-medium text-foreground shadow-sm')}>
-      <Icon className='size-3.5' aria-hidden />
-      {label}
-    </button>
-  );
   return (
-    <div className='inline-flex rounded-md bg-muted p-0.5' role='group' aria-label='보기 방식'>
-      {item('list', '목록', List)}
-      {item('calendar', '달력', CalendarDays)}
-    </div>
+    <SegmentedControl
+      label='보기 방식'
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: 'list', label: '목록', icon: List },
+        { value: 'calendar', label: '달력', icon: CalendarDays },
+      ]}
+    />
   );
 }
 

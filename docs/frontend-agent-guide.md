@@ -21,6 +21,13 @@
 
 - 페이지·탭 화면은 `PageHeader` 또는 `AreaLayout` 제목 하나와 최대 한 줄 설명을 둔다. 계산 방식·정책·보장 사항 설명은 상시 문단 대신 `InfoPopover`나 `docs/`에 둔다. 단, 문구를 줄여도 신호는 남긴다: 결측·부분 합계·오래됨·공유 제외·확인 필요는 해당 값 옆의 `QualityBadge`·배지·사유 문구로 표시한다.
 - 섹션은 `Section`(제목·개수·우측 액션·구분선)으로 평평하게 두고, `Card`는 누르거나 조작하는 단위에만 쓴다. 상태 값은 `StatusBadge`, 데이터 품질은 `QualityBadge`로 통일한다.
+- 보기 전환(목록/달력, 기간, 탭 안의 하위 보기)은 `components/toggle-group.tsx`의 `SegmentedControl`, 여러 개를 고르는 칩은 `ChipGroup`을 쓴다. 눌린 상태가 있는 단일 버튼은 `Button`에 `aria-pressed`를 준다.
+- 클릭 가능한 리스트 행은 `components/page-container.tsx`의 `listRowClassName`에 배치 클래스(`items-center gap-2`, `flex-col gap-0.5` 등)만 더한다.
+- 우측 Sheet의 폭은 `SheetContent`의 `size`(sm 380, md 480, lg 600, xl 760)로 정한다. 닫기 버튼과 본문 스크롤은 `SheetContent`가 갖고, 내용이 자체 닫기 버튼을 그리면 `closeButton={false}`를 준다.
+- 설정·검토함·기록 화면의 본문 폭은 `max-w-reading`(820px), 상담 본문 폭은 760px이다.
+- 글자 크기는 `text-xs`(12, 보조 정보), `text-ui`(13, 조밀한 컨트롤·표), `text-sm`(14, 본문), `text-title`(16, 섹션 제목), `text-xl`(20, 페이지 제목), `text-display`(28, 핵심 수치) 여섯 단계다. 굵은 글씨(`font-bold`)는 페이지 제목과 핵심 수치에 쓴다. 숫자는 body의 `tabular-nums`로 자릿수를 맞춘다.
+- 페이지 위에 놓인 `Card`와 박스는 테두리로 구분한다. 그림자는 popover·dropdown·sheet·dialog·sticky 막대처럼 다른 내용 위에 뜨는 요소에 쓴다.
+- 색은 `globals.css`의 토큰을 쓴다. 상태 색은 `destructive`·`warning`·`success`·`info`와 각 `-soft` 배경이다.
 - 개인 레코드의 추가·수정은 `RecordSheet`(우측 Sheet + 스키마 폼) 하나로 한다. 미리 채울 값은 `defaults`, 내부 필드는 `hidden`으로 다룬다. 삭제·되돌릴 수 없는 동작은 `useConfirm`으로 범위를 설명하고 `window.confirm()`을 쓰지 않는다.
 - 레코드 딥링크는 `?record=<id>`다. 서버 페이지가 `parseRecordParam`으로 읽어 넘기고 화면은 `useRecordParam`으로 Sheet를 연다. 홈·타임라인·상담 인용·달력이 이 링크를 쓴다.
 - 데이터 없음은 `EmptyState`에 다음 행동 버튼을 함께 두고, 로딩은 `QueryStatus`/`Skeleton`, 실패는 다시 시도와 함께 표시한다.

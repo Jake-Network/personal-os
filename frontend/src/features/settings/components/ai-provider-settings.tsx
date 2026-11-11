@@ -33,6 +33,7 @@ import {
   useStartLogin,
   useUsageEvents,
 } from '@/api-client/generated/ai-provider/ai-provider';
+import { getGetTransferPolicyQueryKey } from '@/api-client/generated/transfer-policy/transfer-policy';
 import { cn } from '@/lib/utils';
 import { dateTime } from '@/lib/utils/format';
 import { ConnectionTest } from './connection-test';
@@ -82,6 +83,8 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
       queryClient.invalidateQueries({ queryKey: getGetStatusQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getListModelsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getSummaryQueryKey() }),
+      // Confirmation is bound to the provider account, so a switch or disconnect changes it.
+      queryClient.invalidateQueries({ queryKey: getGetTransferPolicyQueryKey() }),
     ]);
 
   const login = useStartLogin({
@@ -120,17 +123,36 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
   };
 
   return (
-    <div className='max-w-[860px]'>
+    <div className='max-w-reading'>
       {notice && (
         <Alert variant={notice.tone} className='mb-4'>
           {notice.text}
         </Alert>
       )}
-      {status.error && (
-        <Alert variant='destructive' className='mb-4'>
-          {status.error.message}
-        </Alert>
-      )}
+      <QueryStatus pending={false} error={status.error} retry={status.refetch} label='AI 연결 상태' />
+
+      <Section title='AI 제공자'>
+        <RadioGroup value={s?.provider ?? ''} onValueChange={p => void chooseProvider(p)} aria-label='AI 제공자' className='py-2'>
+          {PROVIDERS.map(p => (
+            <div key={p.key}>
+              <label className='flex cursor-pointer items-start gap-2'>
+                <RadioGroupItem value={p.key} disabled={p.key === 'codex_app_server'} className='mt-0.5' />
+                <span>
+                  <span className='font-medium'>{p.label}</span>
+                  <span className='block text-xs text-muted-foreground'>{p.note}</span>
+                </span>
+              </label>
+              {/* Outside the label, so opening it does not select this provider. */}
+              {p.advanced && (
+                <details className='ml-6 text-xs text-muted-foreground'>
+                  <summary className='cursor-pointer'>고급</summary>
+                  {p.advanced}
+                </details>
+              )}
+            </div>
+          ))}
+        </RadioGroup>
+      </Section>
 
       <Section
         title='ChatGPT 계정'
@@ -194,19 +216,8 @@ export function AIProviderSettings({ callback }: { callback: OAuthCallbackResult
 
       <TransferPolicySettings provider={s?.provider} />
 
-      <Section title='AI 제공자와 모델'>
+      <Section title='모델'>
         <div className='flex flex-col gap-4 py-2'>
-          <RadioGroup value={s?.provider ?? ''} onValueChange={p => void chooseProvider(p)} aria-label='AI 제공자'>
-            {PROVIDERS.map(p => (
-              <label key={p.key} className='flex cursor-pointer items-start gap-2'>
-                <RadioGroupItem value={p.key} disabled={p.key === 'codex_app_server'} className='mt-0.5' />
-                <span>
-                  <span className='font-medium'>{p.label}</span>
-                  <span className='block text-xs text-muted-foreground'>{p.note}</span>
-                </span>
-              </label>
-            ))}
-          </RadioGroup>
           <div className='flex max-w-[360px] flex-col gap-1'>
             <Label htmlFor='model'>모델</Label>
             <NativeSelect

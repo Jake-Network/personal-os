@@ -80,7 +80,7 @@ export function PlaybookEditor({ open, onClose, base }: Props) {
                 value={slug}
                 onChange={e => setSlug(e.target.value)}
               />
-              <p className='text-2xs text-faint'>상담 입력창에서 /짧은 이름 으로 바로 불러올 수 있습니다. 소문자·숫자·한글·하이픈만 씁니다.</p>
+              <p className='text-xs text-faint'>상담 입력창에서 /짧은 이름 으로 바로 불러올 수 있습니다. 소문자·숫자·한글·하이픈만 씁니다.</p>
             </div>
           )}
           <div className='flex flex-col gap-1'>
@@ -110,7 +110,7 @@ export function PlaybookEditor({ open, onClose, base }: Props) {
                 </label>
               ))}
             </div>
-            <p className='text-2xs text-faint'>이 중 하나라도 공유를 막으면 이 플레이북은 상담에 보내지 않습니다.</p>
+            <p className='text-xs text-faint'>이 중 하나라도 공유를 막으면 이 플레이북은 상담에 보내지 않습니다.</p>
           </fieldset>
           <div className='flex flex-col gap-1'>
             <Label htmlFor='playbook-body'>절차</Label>

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Plus, Undo2, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MoreHorizontal, Plus, Undo2, Upload } from 'lucide-react';
 
 import { customInstance } from '@/api-client/custom-client';
 import { notify } from '@/components/notify';
@@ -19,8 +19,10 @@ import { InfoPopover } from '@/components/info-popover';
 import { Section } from '@/components/page-container';
 import { QualityBadge } from '@/components/quality-badge';
 import { QueryStatus } from '@/components/query-status';
+import { SegmentedControl } from '@/components/toggle-group';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -28,6 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { RecordSheet } from '@/features/personal-data/components/record-sheet';
 import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 import { dateOnly } from '@/lib/utils/format';
+import { useDebouncedValue } from '@/lib/utils/use-debounced-value';
 import { todayKey } from '@/lib/utils/zoned';
 
 import { CASHFLOW_CATEGORIES, cashflowCategories } from './cashflow-categories';
@@ -55,13 +58,14 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
   const [kind, setKind] = useState('');
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search.trim());
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useRecordParam(source === 'cashflow_entries' ? recordId : null);
   const [draft, setDraft] = useState<LedgerDraft | null>(null);
   const query = useQuery({
-    queryKey: ['finance', 'cashflow', month, kind, category, search, page],
+    queryKey: ['finance', 'cashflow', month, kind, category, debouncedSearch, page],
     queryFn: ({ signal }) =>
       householdCashflow(
         {
@@ -70,7 +74,7 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
           kind: kind === 'income' || kind === 'expense' ? kind : undefined,
           transaction_kind: kind && kind !== 'income' && kind !== 'expense' ? (kind as TransactionInputKind) : undefined,
           category: category || undefined,
-          search: search || undefined,
+          search: debouncedSearch || undefined,
           page,
           page_size: 50,
         },
@@ -138,13 +142,16 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
           <Button onClick={() => setLinkedDismissed(true)}>선택 닫기</Button>
         </Section>
       )}
-      <div className='mb-4 flex gap-2' role='group' aria-label='장부 보기'>
-        <Button aria-pressed={tab === 'ledger'} onClick={() => setTab('ledger')}>
-          전체 기록
-        </Button>
-        <Button aria-pressed={tab === 'planned'} onClick={() => setTab('planned')}>
-          예정 지출
-        </Button>
+      <div className='mb-4'>
+        <SegmentedControl
+          label='장부 보기'
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'ledger', label: '전체 기록' },
+            { value: 'planned', label: '예정 지출' },
+          ]}
+        />
       </div>
       {tab === 'planned' ? (
         <PlannedExpenses recordId={source === 'planned_expenses' ? recordId : null} />
@@ -157,10 +164,19 @@ export function CashflowView({ recordId, source = 'cashflow_entries' }: { record
             <Button onClick={() => setImporting(true)}>
               <Upload /> 은행·카드 내역 가져오기
             </Button>
-            <Button onClick={() => setDraft({ request_id: crypto.randomUUID() })}>거래 추가</Button>
-            <Button disabled={observe.isPending} onClick={() => observe.mutate()}>
-              오늘 평가액 기록
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  <MoreHorizontal /> 더보기
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='start'>
+                <DropdownMenuItem onSelect={() => setDraft({ request_id: crypto.randomUUID() })}>거래 추가</DropdownMenuItem>
+                <DropdownMenuItem disabled={observe.isPending} onSelect={() => observe.mutate()}>
+                  오늘 평가액 기록
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <InfoPopover label='장부 안내'>
               <p>기록한 수입·지출만 합산합니다. 수지는 기록된 차액이며 저축액을 뜻하지 않습니다. 계좌 잔액은 따로 관리합니다.</p>
               <p>기존 거래의 수입·배당·이자·지출·수수료·세금도 포함합니다. 취소된 거래와 이체·매매·상환은 합계에서 제외합니다.</p>

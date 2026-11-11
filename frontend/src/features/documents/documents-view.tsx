@@ -12,8 +12,9 @@ import type { Category } from '@/api-client/model';
 import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
-import { PageContainer, PageHeader, Section } from '@/components/page-container';
+import { listRowClassName, PageContainer, PageHeader, Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
+import { ChipGroup } from '@/components/toggle-group';
 import { Alert } from '@/components/ui/alert';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,28 +72,7 @@ function useDocumentAction() {
   });
 }
 
-function TopicPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <div className='flex flex-wrap gap-1.5' role='group' aria-label='주제'>
-      {TOPICS.map(c => {
-        const on = value.includes(c);
-        return (
-          <button
-            key={c}
-            type='button'
-            aria-pressed={on}
-            onClick={() => onChange(on ? value.filter(v => v !== c) : [...value, c])}
-            className={cn(
-              'inline-flex h-7 items-center rounded-full border px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              on ? 'border-primary bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
-            )}>
-            {CATEGORY_LABEL[c]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+const TOPIC_OPTIONS = TOPICS.map(topic => ({ value: topic, label: CATEGORY_LABEL[topic] }));
 
 function KindSelect({ id, name, defaultValue }: { id: string; name: string; defaultValue?: string }) {
   const known = !defaultValue || defaultValue in DOCUMENT_KINDS;
@@ -168,7 +148,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
           <div className='flex flex-col gap-1.5'>
             <span className='text-ui font-medium'>주제</span>
-            <TopicPicker value={categories} onChange={setCategories} />
+            <ChipGroup label='주제' value={categories} onChange={setCategories} options={TOPIC_OPTIONS} />
           </div>
           <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
             <div className='flex flex-col gap-1'>
@@ -227,6 +207,19 @@ function DocumentSheet({ doc, onClose }: { doc: PersonalDocument; onClose: () =>
   });
   const busy = action.isPending;
 
+  const askReplace = async (file: File) => {
+    const ok = await confirmDialog({
+      title: `“${file.name}”을(를) 새 버전으로 올릴까요?`,
+      description: '새 버전 처리가 끝날 때까지 기존 버전이 검색됩니다. 이전 버전은 버전 목록에 남습니다.',
+      confirmLabel: '새 버전 올리기',
+    });
+    if (!ok) return;
+    const data = new FormData();
+    data.set('file', file);
+    if (versionDate) data.set('as_of', versionDate);
+    action.mutate(() => documentsApi.replace(doc.id, data), { onSuccess: () => notify.success('새 버전을 올렸습니다') });
+  };
+
   const askRemove = async () => {
     const all = purge === 'purge';
     const ok = await confirmDialog({
@@ -252,10 +245,10 @@ function DocumentSheet({ doc, onClose }: { doc: PersonalDocument; onClose: () =>
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent side='right' className='w-[min(520px,100vw)] overflow-y-auto'>
+      <SheetContent side='right' size='lg'>
         <div className='flex flex-col gap-5 p-5'>
           <div>
-            <SheetTitle className='pr-8 text-title font-semibold'>{doc.title}</SheetTitle>
+            <SheetTitle>{doc.title}</SheetTitle>
             <div className='mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
               <StatusLabel status={doc.status} />
               <span>{doc.filename}</span>
@@ -314,7 +307,7 @@ function DocumentSheet({ doc, onClose }: { doc: PersonalDocument; onClose: () =>
                 <KindSelect id='edit-kind' name='kind' defaultValue={doc.kind} />
               </div>
             </div>
-            <TopicPicker value={categories} onChange={setCategories} />
+            <ChipGroup label='주제' value={categories} onChange={setCategories} options={TOPIC_OPTIONS} />
             <Button type='submit' size='sm' className='self-start' disabled={busy || categories.length === 0}>
               저장
             </Button>
@@ -348,12 +341,8 @@ function DocumentSheet({ doc, onClose }: { doc: PersonalDocument; onClose: () =>
                   disabled={busy}
                   onChange={e => {
                     const file = e.target.files?.[0];
-                    if (!file) return;
-                    const data = new FormData();
-                    data.set('file', file);
-                    if (versionDate) data.set('as_of', versionDate);
-                    action.mutate(() => documentsApi.replace(doc.id, data), { onSuccess: () => notify.success('새 버전을 올렸습니다') });
                     e.target.value = '';
+                    if (file) void askReplace(file);
                   }}
                 />
               </div>
@@ -462,7 +451,7 @@ export function DocumentsView() {
         <ul className='divide-y'>
           {docs.map(doc => (
             <li key={doc.id}>
-              <button type='button' onClick={() => setOpenId(doc.id)} className='flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-left hover:bg-muted/40'>
+              <button type='button' onClick={() => setOpenId(doc.id)} className={cn(listRowClassName, 'flex-wrap items-center gap-x-3 gap-y-1')}>
                 <FileText className='size-4 shrink-0 text-faint' aria-hidden />
                 <span className='min-w-0 flex-1'>
                   <span className='block font-medium'>{doc.title}</span>

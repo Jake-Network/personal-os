@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { Inbox } from 'lucide-react';
 import Link from 'next/link';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { PageContainer, PageHeader, Section } from '@/components/page-container';
 import { QueryStatus } from '@/components/query-status';
@@ -67,6 +68,16 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
 
   const [selected, setSelected] = useState<Set<ApprovalKey>>(new Set());
   const batch = useBatchDecision(() => setSelected(new Set()));
+  const confirm = useConfirm();
+  const askReject = async (keys: ApprovalKey[]) => {
+    const ok = await confirm({
+      title: `선택한 ${keys.length}건을 거절할까요?`,
+      description: '거절한 항목은 승인 대기 목록에서 사라집니다.',
+      confirmLabel: `${keys.length}건 거절`,
+      destructive: true,
+    });
+    if (ok) batch.decide(keys, 'reject');
+  };
   const pending: ApprovalKey[] = [
     ...(proposals.data ?? []).map(p => approvalKey('action', p.id)),
     ...(memories.data ?? []).map(m => approvalKey('memory', m.id)),
@@ -106,7 +117,7 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
       <QueryStatus pending={proposals.isPending} error={proposals.error} retry={proposals.refetch} label='변경 제안' />
       <QueryStatus pending={memories.isPending} error={memories.error} retry={memories.refetch} label='기억 후보' />
       <QueryStatus pending={playbooks.isPending} error={playbooks.error} retry={playbooks.refetch} label='플레이북 제안' />
-      {empty && <EmptyState icon={Inbox} title='승인을 기다리는 항목이 없습니다' className='rounded-lg border bg-card' />}
+      {empty && <EmptyState icon={Inbox} title='승인을 기다리는 항목이 없습니다' />}
 
       {chosen.length > 0 && (
         <div
@@ -115,7 +126,7 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
           aria-label='선택한 항목 처리'>
           <span className='text-ui font-medium'>{chosen.length}건 선택</span>
           {approvable.length < chosen.length && (
-            <span className='text-2xs text-faint'>바뀌었거나 근거가 삭제된 플레이북 제안은 승인에서 빠집니다</span>
+            <span className='text-xs text-faint'>바뀌었거나 근거가 삭제된 플레이북 제안은 승인에서 빠집니다</span>
           )}
           <span className='flex-1' />
           <Button
@@ -125,7 +136,7 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
             onClick={() => batch.decide(approvable, 'approve')}>
             {batch.isPending ? '처리하는 중…' : `${approvable.length}건 승인`}
           </Button>
-          <Button size='sm' variant='ghost' disabled={batch.isPending} onClick={() => batch.decide(chosen, 'reject')}>
+          <Button size='sm' variant='ghost' disabled={batch.isPending} onClick={() => void askReject(chosen)}>
             {chosen.length}건 거절
           </Button>
           <Button size='sm' variant='ghost' disabled={batch.isPending} onClick={() => setSelected(new Set())}>
@@ -141,7 +152,7 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
               const key = approvalKey('action', p.id);
               return (
                 <Selectable key={p.id} id={key} label='변경 제안' checked={selected.has(key)} onChange={toggle(key)}>
-                  <div className='mb-1 flex items-center gap-2 text-2xs text-faint'>
+                  <div className='mb-1 flex items-center gap-2 text-xs text-faint'>
                     {dateTime(p.created_at)}
                     {p.conversation_id && (
                       <Link href={`/advisor/${p.conversation_id}`} className='text-primary hover:underline'>
@@ -206,7 +217,7 @@ export function ApprovalsView({ embedded = false }: { embedded?: boolean }) {
   );
   if (embedded) return body;
   return (
-    <PageContainer className='max-w-[820px]'>
+    <PageContainer className='max-w-reading'>
       <PageHeader title='승인 대기' description='상담에서 나온 변경 제안, 기억 후보와 배운 절차입니다. 승인한 것만 반영됩니다.' />
       {body}
     </PageContainer>

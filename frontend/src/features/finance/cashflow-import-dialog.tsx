@@ -336,12 +336,12 @@ export function CashflowImportDialog({ open, onOpenChange }: { open: boolean; on
                               onChange={e => setOverrides(o => ({ ...o, [r.row]: e.target.value }))}
                             />
                             {overrides[r.row] && r.description && (
-                              <label className='flex items-center gap-1 text-2xs text-muted-foreground'>
+                              <label className='flex items-center gap-1 text-xs text-muted-foreground'>
                                 <Checkbox checked={remember.has(r.row)} onCheckedChange={() => setRemember(s => toggle(s, r.row))} />
                                 규칙
                               </label>
                             )}
-                            {!overrides[r.row] && r.category_source === 'rule' && <span className='text-2xs text-faint'>규칙</span>}
+                            {!overrides[r.row] && r.category_source === 'rule' && <span className='text-xs text-faint'>규칙</span>}
                           </div>
                         </TableCell>
                         <TableCell className='text-xs'>

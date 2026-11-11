@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
@@ -98,6 +99,16 @@ export function GoogleConnectionControls() {
     mutationFn: financeApi.googleDisconnect,
     onSettled: () => Promise.all([client.invalidateQueries({ queryKey: ['finance'] }), client.invalidateQueries({ queryKey: ['market-data'] })]),
   });
+  const confirm = useConfirm();
+  const askDisconnect = async () => {
+    const ok = await confirm({
+      title: 'Google 연결을 해제할까요?',
+      description: '저장된 Google 로그인 정보를 지우고 Google에 권한 철회를 요청합니다. 다시 연결하기 전까지 시세 파일에 쓰지 않습니다. 로컬 재무 기록은 그대로 남습니다.',
+      confirmLabel: '연결 해제',
+      destructive: true,
+    });
+    if (ok) disconnect.mutate();
+  };
   const data = connection.data;
   const setup = data?.setup;
   const origin = useSyncExternalStore(subscribeToOrigin, browserOrigin, serverOrigin);
@@ -121,7 +132,7 @@ export function GoogleConnectionControls() {
           </Button>
         )}
         {linked && (
-          <Button type='button' variant='ghost' disabled={busy} onClick={() => disconnect.mutate()}>
+          <Button type='button' variant='ghost' disabled={busy} onClick={() => void askDisconnect()}>
             연결 해제
           </Button>
         )}

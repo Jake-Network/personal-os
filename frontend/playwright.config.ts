@@ -17,6 +17,11 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: { baseURL, trace: 'retain-on-failure', locale: 'ko-KR', ...devices['Desktop Chrome'] },
+  projects: [
+    { name: 'desktop', testIgnore: /narrow\.spec\.ts/ },
+    // Runs after the desktop specs so it walks screens that already hold their synthetic data.
+    { name: 'narrow', testMatch: /narrow\.spec\.ts/, dependencies: ['desktop'], use: { viewport: { width: 390, height: 844 } } },
+  ],
   webServer: [
     {
       command: 'uv run python scripts/e2e_server.py --reset',

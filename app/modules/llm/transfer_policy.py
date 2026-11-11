@@ -20,7 +20,7 @@ POLICY_VERSION = "2026-10-18"
 class TransferNotConfirmed(AdvisorError):
     code = "transfer_policy_unconfirmed"
     http_status = 403
-    user_message = "현재 연결 계정의 학습 사용·보관 정책을 AI Provider 설정에서 확인하세요."
+    user_message = "현재 연결 계정의 학습 사용·보관 정책을 설정의 AI 연결에서 확인하세요."
 
 
 def account_binding(session: Session, provider: str) -> str | None:

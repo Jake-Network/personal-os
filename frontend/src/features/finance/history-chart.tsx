@@ -16,7 +16,7 @@ export type ChartMonth = {
 
 const SERIES = [
   { key: 'net_worth_krw', label: '순자산', color: 'hsl(var(--primary))' },
-  { key: 'total_assets_krw', label: '총자산', color: 'hsl(var(--success))' },
+  { key: 'total_assets_krw', label: '총자산', color: 'hsl(var(--info))' },
   { key: 'total_liabilities_krw', label: '부채', color: 'hsl(var(--warning))' },
 ] as const;
 

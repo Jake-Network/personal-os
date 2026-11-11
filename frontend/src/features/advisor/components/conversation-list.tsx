@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 
@@ -8,11 +8,13 @@ import { ChevronDown, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 
 import { getListConversationsQueryKey, listConversations, useSearchMessages } from '@/api-client/generated/advisor/advisor';
+import { QueryStatus } from '@/components/query-status';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { cn } from '@/lib/utils';
+import { useDebouncedValue } from '@/lib/utils/use-debounced-value';
 import { dateTime, relative } from '@/lib/utils/format';
 
 import { DOMAINS } from '../consts';
@@ -37,11 +39,7 @@ export function ConversationList({ activeId, onNavigate }: { activeId: number | 
   const [period, setPeriod] = useState<{ days: string; since?: string }>({ days: '' });
   const since = period.since;
   const [query, setQuery] = useState('');
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 200);
-    return () => clearTimeout(t);
-  }, [query]);
+  const debounced = useDebouncedValue(query.trim());
 
   const search = useSearchMessages({ q: debounced || ' ', limit: PAGE, since }, { query: { enabled: !!debounced } });
   const filters = { q: debounced || undefined, since };
@@ -106,7 +104,7 @@ export function ConversationList({ activeId, onNavigate }: { activeId: number | 
       <div className='flex-1 overflow-y-auto'>
         {debounced && !!search.data?.length && (
           <div className='border-b'>
-            <p className='px-3.5 pb-1 pt-2 text-2xs font-medium text-faint'>내용에서 찾음</p>
+            <p className='px-3.5 pb-1 pt-2 text-xs font-medium text-faint'>내용에서 찾음</p>
             {search.data.map(m => (
               <Link
                 key={`match-${m.id}`}
@@ -114,9 +112,14 @@ export function ConversationList({ activeId, onNavigate }: { activeId: number | 
                 onClick={onNavigate}
                 className='block px-3.5 py-2 text-ui hover:bg-muted'>
                 <p className='line-clamp-2'>{m.content}</p>
-                <span className='text-2xs text-faint'>{dateTime(m.created_at)}</span>
+                <span className='text-xs text-faint'>{dateTime(m.created_at)}</span>
               </Link>
             ))}
+          </div>
+        )}
+        {(list.isPending || list.error) && (
+          <div className='px-3.5 py-2'>
+            <QueryStatus pending={list.isPending} error={list.error} retry={list.refetch} label='상담 목록' rows={5} />
           </div>
         )}
         {list.isSuccess && conversations.length === 0 && (
@@ -130,7 +133,7 @@ export function ConversationList({ activeId, onNavigate }: { activeId: number | 
             aria-current={c.id === activeId ? 'page' : undefined}
             className={cn('block px-3.5 py-2 text-foreground hover:bg-muted', c.id === activeId && 'bg-accent hover:bg-accent')}>
             <div className='truncate text-ui font-medium'>{c.title}</div>
-            <div className='text-2xs text-faint'>
+            <div className='text-xs text-faint'>
               {c.origin === 'schedule' && <span className='mr-1 rounded bg-accent px-1 text-accent-foreground'>예약 브리핑</span>}
               {relative(c.updated_at)}
               {c.domain && ` · ${DOMAINS.find(d => d.key === c.domain)?.label ?? ''}`}

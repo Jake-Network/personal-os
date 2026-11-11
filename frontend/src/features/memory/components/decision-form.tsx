@@ -71,9 +71,9 @@ export function DecisionFormSheet({
 
   return (
     <Sheet open={open} onOpenChange={o => !o && onClose()}>
-      <SheetContent side='right' className='w-[min(520px,100vw)] overflow-y-auto'>
+      <SheetContent side='right'>
         <form className='flex flex-col gap-3 p-5' onSubmit={submit}>
-          <SheetTitle className='pr-8 text-title font-semibold'>결정 기록하기</SheetTitle>
+          <SheetTitle>결정 기록하기</SheetTitle>
           <Field label='결정 *' id='d-title'>
             <Input id='d-title' placeholder='예: A사 오퍼 수락 여부' {...form.register('title')} />
           </Field>

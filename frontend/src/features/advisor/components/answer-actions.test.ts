@@ -36,7 +36,7 @@ describe('answer feedback controls', () => {
   it('makes a persisted thumbs-down visually selected and prevents resaving an unchanged reason', () => {
     const html = render();
     expect(html).toMatch(/aria-label="아쉬워요"[^>]*aria-pressed="true"/);
-    expect(html).toContain('aria-pressed:bg-primary');
+    expect(html).toContain('aria-pressed:bg-accent');
     expect(html).toContain('합성 저장된 사유');
     expect(html).toMatch(/type="submit"[^>]*disabled/);
     expect(html).toContain('저장됨');

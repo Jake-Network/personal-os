@@ -108,14 +108,14 @@ function HoldingSheet({
 }) {
   return (
     <Sheet open onOpenChange={open => !open && onClose()}>
-      <SheetContent side='right' className='w-[min(480px,100vw)] overflow-y-auto'>
+      <SheetContent side='right'>
         <form
           className='flex flex-col gap-3 p-5'
           onSubmit={event => {
             event.preventDefault();
             onSubmit();
           }}>
-          <SheetTitle className='pr-8 text-title font-semibold'>{isNew ? '종목 추가' : '종목 수정'}</SheetTitle>
+          <SheetTitle>{isNew ? '종목 추가' : '종목 수정'}</SheetTitle>
           <fieldset className='grid grid-cols-1 gap-3 sm:grid-cols-2' disabled={saving || !canWrite}>
             <div className='flex flex-col gap-1'>
               <Label htmlFor='h-ticker'>종목 코드 *</Label>

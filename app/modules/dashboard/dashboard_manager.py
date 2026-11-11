@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.modules.database.model import Account
 from app.modules.finance.liquidity_policy import CASH_ACCOUNT_KINDS
+from app.modules.llm import transfer_policy
 from app.modules.llm.llm_gateway_manager import llm_gateway_manager
 
 from app.enums.context_category import ALL_CATEGORIES, Category
@@ -43,6 +44,7 @@ class DashboardManager:
             signals.append({"kind": "exercise", "count": 1})
         checklist = {
             "ai_configuration_complete": llm_gateway_manager.configuration_complete(session),
+            "ai_transfer_confirmed": transfer_policy.status(session, llm_gateway_manager.provider_name(session))["confirmed"],
             "has_cash_account": session.scalar(select(Account.id).where(Account.kind.in_(CASH_ACCOUNT_KINDS)).limit(1)) is not None,
             "has_recent_expense": cashflow.get("has_recent_expense", False),
             "has_active_application_or_goal": bool(applications or goals),

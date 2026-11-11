@@ -19,22 +19,23 @@ export default {
         destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))', soft: 'hsl(var(--destructive-soft))' },
         warning: { DEFAULT: 'hsl(var(--warning))', soft: 'hsl(var(--warning-soft))' },
         success: { DEFAULT: 'hsl(var(--success))', soft: 'hsl(var(--success-soft))' },
-        info: { soft: 'hsl(var(--info-soft))' },
+        info: { DEFAULT: 'hsl(var(--info))', soft: 'hsl(var(--info-soft))' },
         faint: 'hsl(var(--faint))',
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
         popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
       },
+      // One column width for settings, review and journal screens.
+      maxWidth: { reading: '820px' },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
-      // Named steps for the dense UI sizes between Tailwind's defaults.
+      // Six steps in use: xs 12 (secondary), ui 13 (dense controls and tables), sm 14 (body), title 16 (section), xl 20 (page), display 28 (key figures).
       fontSize: {
-        '2xs': ['11px', '16px'],
         ui: ['13px', '20px'],
-        title: ['15px', '22px'],
-        display: ['22px', '28px'],
+        title: ['16px', '24px'],
+        display: ['28px', '34px'],
       },
       fontFamily: {
         sans: ['var(--font-pretendard)', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', 'sans-serif'],

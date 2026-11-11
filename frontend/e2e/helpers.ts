@@ -5,9 +5,11 @@ export const PASSWORD = 'e2e-synthetic-password';
 /** First run sets the owner password; later runs in the same database unlock with it. */
 export async function signIn(page: Page) {
   await page.goto('/');
-  const field = page.getByLabel(/비밀번호/);
+  const field = page.getByLabel(/^비밀번호( \(12자 이상\))?$/);
   await expect(field).toBeVisible();
   await field.fill(PASSWORD);
+  const confirmation = page.getByLabel('비밀번호 확인');
+  if (await confirmation.isVisible()) await confirmation.fill(PASSWORD);
   await page.getByRole('button', { name: /비밀번호 설정|잠금 해제/ }).click();
   await expect(page.getByRole('navigation', { name: '주 메뉴' })).toBeVisible();
 }

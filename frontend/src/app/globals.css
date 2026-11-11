@@ -26,6 +26,7 @@
     --warning-soft: 41 79% 92%;
     --success: 131 39% 30%;
     --success-soft: 129 32% 92%;
+    --info: 216 45% 38%;
     --info-soft: 216 45% 94%;
     --border: 60 9% 87%;
     --input: 60 9% 79%;
@@ -56,6 +57,7 @@
     --warning-soft: 41 43% 16%;
     --success: 128 40% 69%;
     --success-soft: 129 24% 16%;
+    --info: 215 60% 72%;
     --info-soft: 215 24% 18%;
     --border: 72 5% 19%;
     --input: 69 5% 26%;
@@ -66,8 +68,13 @@
     @apply border-border;
   }
 
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+
   body {
-    @apply bg-background text-sm leading-[1.55] text-foreground antialiased;
+    @apply bg-background text-sm tabular-nums leading-[1.55] text-foreground antialiased;
   }
 
   h1,

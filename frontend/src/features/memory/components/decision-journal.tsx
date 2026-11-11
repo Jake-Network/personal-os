@@ -13,11 +13,13 @@ import { TabToolbar } from '@/components/area-layout';
 import { EmptyState } from '@/components/empty-state';
 import { notify } from '@/components/notify';
 import { QueryStatus } from '@/components/query-status';
+import { listRowClassName } from '@/components/page-container';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { dateOnly } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
 
 import { useRecordParam } from '@/features/personal-data/hooks/use-record-param';
 
@@ -71,10 +73,10 @@ function DecisionDetail({ decision: d, onClose }: { decision: DecisionItem; onCl
 
   return (
     <Sheet open onOpenChange={o => !o && onClose()}>
-      <SheetContent side='right' className='w-[min(560px,100vw)] overflow-y-auto'>
+      <SheetContent side='right' size='lg'>
         <div className='flex flex-col gap-4 p-5'>
           <div>
-            <SheetTitle className='pr-8 text-title font-semibold'>{d.title}</SheetTitle>
+            <SheetTitle>{d.title}</SheetTitle>
             <p className='mt-1 text-xs text-muted-foreground'>{dateOnly(d.decided_at)}에 결정</p>
           </div>
           <dl className='grid gap-2 text-ui'>
@@ -159,7 +161,7 @@ export function DecisionJournal({ recordId }: { recordId: number | null }) {
   const open = selected !== null ? list.data?.find(d => d.id === selected) : undefined;
 
   return (
-    <div className='max-w-[860px]'>
+    <div className='max-w-reading'>
       <TabToolbar>
         <Button variant='primary' onClick={() => setCreating(true)}>
           <Plus /> 결정 기록하기
@@ -181,7 +183,7 @@ export function DecisionJournal({ recordId }: { recordId: number | null }) {
       <ul className='divide-y'>
         {list.data?.map(d => (
           <li key={d.id}>
-            <button type='button' onClick={() => setSelected(d.id)} className='flex w-full flex-col gap-0.5 py-3 text-left hover:bg-muted/40'>
+            <button type='button' onClick={() => setSelected(d.id)} className={cn(listRowClassName, 'flex-col gap-0.5')}>
               <span className='flex flex-wrap items-center gap-2'>
                 <span className='font-medium'>{d.title}</span>
                 {reviewState(d, now)}

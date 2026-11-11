@@ -266,9 +266,9 @@ export function CareerView({ recordId }: { recordId: number | null }) {
       </ul>
 
       <Sheet open={open} onOpenChange={next => !next && close()}>
-        <SheetContent side='right' className='w-[min(560px,100vw)] overflow-y-auto'>
+        <SheetContent side='right' size='lg'>
           <div className='flex flex-col gap-3 p-5'>
-            <SheetTitle className='pr-8 text-title font-semibold'>{editing ? editing.title : '경력 기록 추가'}</SheetTitle>
+            <SheetTitle>{editing ? editing.title : '경력 기록 추가'}</SheetTitle>
             {editing && (
               <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
                 <span>{CAREER_KIND_LABEL[editing.kind]}</span>
